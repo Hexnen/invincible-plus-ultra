@@ -132,7 +132,7 @@ for (const [name, e] of [["crit", crit], ["strong", strong]]) {
 { const m = src("../splash/main.mjs");
   ok(/remember\(shown, id\);\s*\n\s*\/\*[^\n]*\*\/\s*\n\s*Stage\.tellMoment\(\{ phase: 'start', id \}\);/.test(m), "H main: start is said right after the roll is taken (before the dice, the verdict and the camera are waited for)");
   ok(/try \{[\s\S]{0,4000}Stage\.tellMoment\(\{ phase: 'start', id \}\);[^\n]*\n\s*const ctl = Stage\.play\(/.test(m), "H main: start is said again right before the moment plays");
-  ok(/momentId: id/.test(m) && /handed = !!ctl && !ctl\.dead;/.test(m), "H main: the moment carries the message id and is handed to the stage");
+  ok(/momentId: (id|message\.id)/.test(m) && /handed = !!ctl && !ctl\.dead;/.test(m), "H main: the moment carries the message id and is handed to the stage");
   ok(/\} finally \{ if \(!handed\) Stage\.tellMoment\(\{ phase: 'done', id \}\); \}/.test(m), "H main: every early way out (deleted, hidden tab, verdict, failure) says done");
   ok(/hook\(Stage\.REACT_HOOK, [^\n]*Stage\.onTokenReact\(data\)/.test(m), "R main: the splash listens to the token reactions' blows");
   eq([IP && "ok", (await import("../splash/stage.mjs")).MOMENT_HOOK, (await import("../splash/stage.mjs")).REACT_HOOK], ["ok", HOOK, "invincible-plus-ultra.tokenReact"], "H: the hook names the token reactions listen on (tokenreact/main.mjs SPLASH_HOOK / REACT_HOOK)");

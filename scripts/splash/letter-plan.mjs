@@ -634,9 +634,18 @@ const SIDE_COST = { above: 0, below: 0.15, right: 0.3, left: 0.35 };
 /* CRITPEAK: what a hit weighs (blockHits: area x w): the token the block describes and the roll's targets 50, other tokens 10 (heavy),
    a panel 20 (stage.mjs UI_WEIGHT), a map pin 1 (it may give way when nothing else can) */
 export const TOKEN_W = 50, TARGET_W = 50, OTHER_W = 10;
+/* CRITLATE: the place a block of one size finds in one frame is the same every time it is asked (composeMoment asks it again for every
+   shrink step and split it retries: on a crowded critical 2881 place() calls, 969 different). Kept by the frame's CONTENT (its frame objects
+   are made anew for each try) and the block's size and footprint; a bounded memo */
+const FRAME_KEY = new WeakMap(), PLACE_MEMO = new Map(), PLACE_MAX = 4000;
+const frameKey = (f) => { let k = FRAME_KEY.get(f); if (k === undefined) { try { k = JSON.stringify(f); } catch (e) { k = null; } FRAME_KEY.set(f, k); } return k; };
 function place(out, frame, far = false) {
   const safe = frame.safe, r = out.rect, bw = r.r - r.l, bh = r.b - r.t;
   const T = frame.token, avoid = frame.avoid ?? [];
+  const ft0 = out.foot ?? null, pk = `${bw}|${bh}|${far ? 1 : 0}|${ft0 ? `${ft0.l}|${ft0.t}|${ft0.r}|${ft0.b}` : '-'}`;
+  const fk = frameKey(frame), mk = fk == null ? null : fk + '#' + pk;
+  const hit0 = mk == null ? null : PLACE_MEMO.get(mk);
+  if (hit0) return placeAt(out, r, hit0);
   const at = (l, t) => ({ l, t, r: l + bw, b: t + bh });
   const inSafe = (l, t) => [clamp(l, safe.l, Math.max(safe.l, safe.r - bw)), clamp(t, safe.t, Math.max(safe.t, safe.b - bh))];
   let best = null, side = 'focus';
@@ -644,13 +653,19 @@ function place(out, frame, far = false) {
      plus a small preference of the sides (above, below, right, left) */
   const ref = T ? { x: T.x, y: T.y } : frame.focus, unit = Math.max(1, Math.hypot(bw, bh));
   const ft = out.foot ?? null;   // CALLERS: the standing footprint past the outline (rim + life), kept off what the block must not cover
+  /* CRITLATE (cost: a crowded critical's layout took 0.3-0.45 s in one task, on the moment's own instant): the same choice, cheaper. A place
+     whose distance and side preference alone already reach a clean best's score cannot win (its score is at least that), so its hits are not
+     counted; the heavy share is counted only for a new best. Exact: the same best on every input (check-critlate.mjs, fingerprint) */
+  const heavyAvoid = avoid.filter(a => (a.w ?? 1) >= 10), tg = frame.gap ?? 6;
+  const tokR = T ? { l: T.l - tg + 1, t: T.t - tg + 1, r: T.r + tg - 1, b: T.b + tg - 1 } : null;
   const consider = (s, l, t, pref) => {
     [l, t] = inSafe(l, t);
-    const q0 = at(l, t), q = ft ? { l: q0.l - ft.l, t: q0.t - ft.t, r: q0.r + ft.r, b: q0.b + ft.b } : q0, onT = T ? area(q, { l: T.l - (frame.gap ?? 6) + 1, t: T.t - (frame.gap ?? 6) + 1, r: T.r + (frame.gap ?? 6) - 1, b: T.b + (frame.gap ?? 6) - 1 }) : 0;
-    const hit = blockHits(q, avoid) + onT * TOKEN_W, heavy = onT + blockHits(q, avoid.filter(a => (a.w ?? 1) >= 10));
     const d = Math.hypot(l + bw / 2 - ref.x, t + bh / 2 - ref.y) / unit;
+    if (best && best.hit <= 0.5 && d + pref >= best.score) return;
+    const q0 = at(l, t), q = ft ? { l: q0.l - ft.l, t: q0.t - ft.t, r: q0.r + ft.r, b: q0.b + ft.b } : q0, onT = tokR ? area(q, tokR) : 0;
+    const hit = blockHits(q, avoid) + onT * TOKEN_W;
     const score = (hit > 0.5 ? 1e6 + hit : 0) + d + pref;
-    if (!best || score < best.score) best = { s, l, t, hit, heavy, score };
+    if (!best || score < best.score) best = { s, l, t, hit, heavy: onT + blockHits(q, heavyAvoid), score };
   };
   if (T) {
     const gap = frame.gap ?? 6;
@@ -682,12 +697,15 @@ function place(out, frame, far = false) {
     for (const dy of [0, -0.12, 0.12, -0.24, 0.24, -0.36, 0.36]) for (const dx of [0, -0.15, 0.15, -0.3, 0.3, -0.45, 0.45]) consider('focus', frame.focus.x - bw / 2 + dx * W, frame.focus.y - bh / 2 + dy * H, 0);
     if (far && best.hit > 0.5) for (let gy = 0; gy <= 12; gy++) for (let gx = 0; gx <= 12; gx++) consider('focus', safe.l + gx / 12 * (W - bw), safe.t + gy / 12 * (H - bh), 0.5);
   }
-  side = best.s;
+  if (mk != null) { PLACE_MEMO.set(mk, best); if (PLACE_MEMO.size > PLACE_MAX) PLACE_MEMO.delete(PLACE_MEMO.keys().next().value); }
+  placeAt(out, r, best);
+}
+function placeAt(out, r, best) {
   const dx = best.l - r.l, dy = best.t - r.t;
   for (const it of out.items) { it.x = Math.round(it.x + dx); it.y = Math.round(it.y + dy); }
   if (out.gauge) { out.gauge.x = Math.round(out.gauge.x + dx); out.gauge.y = Math.round(out.gauge.y + dy); }
   out.rect = { l: r.l + dx, t: r.t + dy, r: r.r + dx, b: r.b + dy };
-  out.side = side;
+  out.side = best.s;
   out.hit = best.hit;
   out.heavy = best.heavy;
 }

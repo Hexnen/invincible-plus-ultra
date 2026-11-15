@@ -51,7 +51,7 @@ function fakeDom(W, H) {
   return doc;
 }
 const SLAM = () => ({ ent: [{ ticks: 2, g: { s: 0.82 }, fx: [] }, { ticks: 1, g: { s: 1.12 }, fx: [], impact: true }, { ticks: 2, g: { s: 0.86 }, fx: [{ k: "burst" }] }, { ticks: 4, g: {}, fx: [] }], hold: [{ ticks: 3 }], exit: [{ ticks: 2 }] });
-function fakeEngine(log, impact) {
+function fakeEngine(log, impact, planMs = null) {
   let n = 0;
   const box = (text) => { const lines = String(text).split("\n"); return { w: 0.6 * Math.max(...lines.map((l) => l.length)) + 0.3, h: 1.2 * lines.length + 0.1 }; };
   const L = { prefs: { enabled: true, scale: 1 },
@@ -62,7 +62,7 @@ function fakeEngine(log, impact) {
         ready: Promise.resolve(true), finished: new Promise(() => {}), plan: { timeline: SLAM() } };
       log.push({ t: clock, word: text, o: { ...op, parent: op.parent ? "P" : undefined, token: op.token?.id } }); return h;
     } };
-  if (impact) L.impact = { ...impactApi(), plan: (spec) => planImpact(spec), play(spec) { log.push({ t: clock, impact: { ...spec, subject: spec.subject?.id ?? spec.subject, from: spec.from?.id, keep: spec.keep?.id } }); return { alive: true, finished: Promise.resolve("done"), ready: Promise.resolve(true), stop() {} }; } };
+  if (impact) L.impact = { ...impactApi(), plan: (spec) => { const p = planImpact(spec); return planMs && p ? { ...p, ms: planMs } : p; }, play(spec) { log.push({ t: clock, impact: { ...spec, subject: spec.subject?.id ?? spec.subject, from: spec.from?.id, keep: spec.keep?.id } }); return { alive: true, finished: Promise.resolve("done"), ready: Promise.resolve(true), stop() {} }; } };
   return L;
 }
 const tok = (id, x, y) => ({ id, visible: true, document: { id, x, y, width: 1, height: 1, hidden: false, texture: { scaleX: 1, scaleY: 1 } }, x, y, w: 100, h: 100, center: { x: x + 50, y: y + 50 } });
@@ -77,7 +77,7 @@ function scene({ tokens = [], sees = null, pan = { x: 0, y: 0 } }) {
 const BD_CLASSES = ["ins-backdrop", "ins-fullrays", "ins-raywrap"];
 function nodes(n, out = []) { if (!n) return out; if (BD_CLASSES.some((c) => (n.className ?? "").split(" ").includes(c))) out.push(n); (n.children ?? []).forEach((c) => nodes(c, out)); return out; }
 let runN = 0;
-async function seat({ layer = "screen", e, hero, tokens = [], targets = [], gm = true, sees = null, pan, backdrop, impact = true }) {
+async function seat({ layer = "screen", e, hero, tokens = [], targets = [], gm = true, sees = null, pan, backdrop, impact = true, planMs = null }) {
   clock = 1000;
   { let r = 777; Math.random = () => ((r = (r * 1103515245 + 12345) % 2147483648) / 2147483648); }
   globalThis.document = fakeDom(1600, 900);
@@ -89,7 +89,7 @@ async function seat({ layer = "screen", e, hero, tokens = [], targets = [], gm =
   const S = await import("../splash/splash.mjs");
   globalThis.canvas = scene({ tokens: [hero, ...tokens], sees, pan });
   globalThis.game = { user: { isGM: gm, id: gm ? "GM" : "P1" } };
-  const log = [], L = fakeEngine(log, impact);
+  const log = [], L = fakeEngine(log, impact, planMs);
   Stage.setLetters(L); Stage.setLayer(layer); S.setReduced(false);
   const ctl = Stage.play(e, { token: hero, from: hero, targets, scale: 1, hold: 1, fx: 1, fullFrom: 0.7, seed: "CF", resolve: () => ({ now: 5, max: 8 }), backdrop });
   const states = [{ t: clock, bd: nodes(document.body).map((x) => x.className) }];
@@ -107,6 +107,15 @@ const crit = ev({ n: 4, sixes: 4 }), strong = ev({ n: 5, sixes: 3 });
 const hero = tok("HERO000000000000", 500, 380), T = tok("TGT0000000000000", 900, 420);
 const wordAt = (s) => s.log.find((x) => x.word && /:word$/.test(x.o.seed ?? ""))?.t;
 
+/* ================================================================== B1b: the wash waits for the impact whatever the plan's length
+   (engine 1.9.20: the critical's impact is 500 ms, its end 1673.33 on this clock: a wash scheduled by Math.round(end - now) came a third
+   of a millisecond early); lengths that end on a fraction of a millisecond either side */
+for (const layer of ["screen", "ui"]) for (const ms of [458.3333333, 500, 517.37, 433.61]) {
+  const on = await seat({ layer, e: crit, hero, tokens: [T], targets: [T.id], backdrop: true, planMs: ms });
+  const early = on.states.filter((s) => s.t < on.impactEnd && s.bd.length);
+  ok(Number.isFinite(on.impactEnd) && early.length === 0 && on.first && on.first.t >= on.impactEnd && on.first.t - on.impactEnd <= 1,
+    `B1b ${layer} plan ${ms} ms: the wash enters as the impact ends, never before (end ${on.impactEnd}, first ${on.first?.t})`);
+}
 /* ================================================================== B1 + B2 + B3: the impact first, the backdrop after it */
 for (const layer of ["screen", "overlay", "ui"]) {
   const on = await seat({ layer, e: crit, hero, tokens: [T], targets: [T.id], backdrop: true });
