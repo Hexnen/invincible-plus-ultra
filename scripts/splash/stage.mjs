@@ -442,6 +442,55 @@ function sharedScreenAvoid(hero, full, targets = []) {
   if (full && hero) { const h = sharedTokenBox(hero); if (h) out.push({ ...grow(h, Math.max(10, 0.15 * (h.r - h.l))), w: 50 }); }   // the drawn art (hair, a fist) reaches past the token's box; the hero weighs most
   return out;
 }
+/* SPLASHSAME: the TABLE's frame of a screen moment (table px): the reference window (SP.REF_VW x SP.REF_VH) as it would stand round the roller
+   at the board's reference scale (GRID_VH squares in SP.REF_VH: the map block's scale), built from documents alone: the roller's box, the
+   tokens nobody hides (the roll's targets weigh most), the map pins, the hero of a critical. Every seat builds the same frame, whatever its
+   window, zoom, pan, sidebar or panels, so every seat composes the same block (LP.composeMoment) and only places it (LP.seatPlace).
+   hero: the token the moment describes; full: the critical (the hero is avoided, the block stands by him). -> { frame, hero (table px) } */
+/* SPLASHSAME: the zooms (of the reference board scale) the table plans its block round the documents at */
+export const TABLE_ZOOMS = Object.freeze([1, 0.75, 0.5]);
+export function tableFrame(hero, full, targets = [], scale = 1) {
+  const C = globalThis.canvas, gs = C?.dimensions?.size ?? C?.grid?.size ?? 100;
+  const z = SP.REF_VH / (GRID_VH * gs), hb = docBox(hero, gs), cx = SP.REF_VW / 2, cy = SP.REF_VH / 2;
+  const tp = (b) => ({ ...(b.x != null ? { x: (b.x - hb.x) * z + cx, y: (b.y - hb.y) * z + cy } : {}), l: (b.l - hb.x) * z + cx, t: (b.t - hb.y) * z + cy, r: (b.r - hb.x) * z + cx, b: (b.b - hb.y) * z + cy });
+  /* the block is laid out in the standard view of a reference window whose middle is the roller (a seat looking straight at him); a seat
+     whose view has less room round him (the roller near its edge, a small window, a closer zoom) moves or shrinks it there (LP.seatPlace) */
+  const H = tp(hb), std = SP.standardRect(SP.REF_VW, SP.REF_VH), bw = std.r - std.l, bh = std.b - std.t;
+  const avoid = [];
+  /* a document's place round the roller at the seats' zooms too: a seat zoomed out from the reference (the roller smaller, his neighbours
+     nearer on its screen; the block keeps its px size and its distance from his edge, seatPlace) meets them elsewhere. The table plans
+     round them at TABLE_ZOOMS of the reference as well, each seen from the roller's edge as seatPlace places the block, so the seats at
+     those zooms need not move it (samepic S1: every seat at zoom 1 moved the reference-zoom block off a neighbour) */
+  const hh = { x: (H.r - H.l) / 2, y: (H.b - H.t) / 2 };
+  const atZoom = (q, r) => {
+    if (r === 1) return q;
+    const cxq = (q.l + q.r) / 2 - cx, cyq = (q.t + q.b) / 2 - cy, w = (q.r - q.l) * r, h = (q.b - q.t) * r;
+    /* where the seat's block stands against it: moved in by the roller's shrink along the part's side (seatPlace), so the copy reaches out
+       by that shrink on its own side of the roller (a part beside him does not move along) */
+    const x = cx + cxq * r, y = cy + cyq * r, ex = hh.x * (1 - r), ey = hh.y * (1 - r);
+    return { l: x - w / 2 - (cxq < 0 ? ex : 0), t: y - h / 2 - (cyq < 0 ? ey : 0), r: x + w / 2 + (cxq > 0 ? ex : 0), b: y + h / 2 + (cyq > 0 ? ey : 0) };
+  };
+  const both = (q, w) => { for (const r of TABLE_ZOOMS) avoid.push({ ...atZoom(q, r), ...(w != null ? { w } : {}), ...(r === 1 ? { z1: true } : {}) }); };
+  for (const t of C?.tokens?.placeables ?? []) {
+    try { const d = docOf(t); if (!d || d.hidden || sameTok(t, hero)) continue; both(tp(grow(docBox(t, gs), 0.06 * gs)), targets.includes(t.id) ? LP.TARGET_W : LP.OTHER_W); } catch (e) { /* one token */ }
+  }
+  for (const n of C?.notes?.placeables ?? []) { try { if (docOf(n)) both(tp(noteBox(n, gs))); } catch (e) { /* one pin */ } }
+  if (full) avoid.push({ ...grow(H, Math.max(10, 0.15 * (H.r - H.l))), w: 50 });
+  /* the party panel's corner of the reference window (every seat keeps that zone: the table's block does not plan its caption into it) */
+  for (const zn of SP.panelZones(SP.REF_VW, SP.REF_VH)) avoid.push({ ...zn, w: UI_WEIGHT });
+  const frame = { vh: SP.REF_VH, ref: SP.REF_VH, px: 1, scale, safe: std, freeW: bw, freeH: bh, token: full ? null : H, avoid,
+    gap: full ? 6 : Math.max(8, Math.round(0.08 * (H.r - H.l))), focus: { x: H.x, y: H.y } };
+  return { frame, hero: H };
+}
+/* SPLASHSAME: this seat's place of the table's block: its roller (document box at its zoom), its free view (its window minus the bars every
+   seat keeps, its open sidebar), the same documents as obstacles at its zoom, the party corner of a small window and, under the interface, its
+   own panels (localScreen) */
+function seatOf(ctl, T, lay) {
+  const loc = localScreen(lay);
+  /* the roller himself is kept clear by seatPlace (his box and the table's gap, weighed as the token); the critical hero's art margin (0.15 of
+     his width) is the TABLE's room when it composes the block, not a seat's: before, the screen block stood in it on the GM's seat too */
+  return { hero: T, safe: loc.safe, avoid: [...sharedScreenAvoid(ctl.hero, false, ctl.targets ?? []), ...loc.avoid], own: loc.own ?? [], gap: ctl.full ? 6 : Math.max(8, Math.round(0.08 * (T.r - T.l))) };
+}
 /* this seat's own limits (tier 3): screen = over everything, cut only by the window and the open sidebar (the layer's clip); ui = under
    the windows (the GM's desk is one); hud = under the bars, the panels and the resting dice */
 export const UI_WINDOWS = ['#invincible-tactics-desk:not(.igd-collapsed) .igd'];
@@ -510,9 +559,11 @@ function localScreen(lay = LAYER) {
   const vw = window.innerWidth, vh = window.innerHeight, band = seatBand(lay === 'screen');
   /* a window smaller than the reference keeps the party corner where it really is on this window (it is moving the block anyway) */
   const small = vw < SP.REF_VW || vh < SP.REF_VH ? SP.panelZones(vw, vh, true).filter((z) => z.at === 'bl') : [];   // the party cards (over the scene list it is drawn on the screen layers)
-  if (lay === 'screen') return { safe: band, avoid: small };
-  if (lay === 'ui') return { safe: band, avoid: [...small, ...boxesOf(UI_WINDOWS)] };
-  return { safe: band, avoid: [...seatOwn(), ...boxesOf(UI_WINDOWS), ...diceRects()] };
+  /* own: what of this seat would HIDE the block (SPLASHSAME: the table's place is never kept on it, LP.seatPlace) */
+  if (lay === 'screen') return { safe: band, avoid: small, own: [] };
+  if (lay === 'ui') { const w = boxesOf(UI_WINDOWS); return { safe: band, avoid: [...small, ...w], own: w }; }
+  const own = [...seatOwn(), ...boxesOf(UI_WINDOWS), ...diceRects()];
+  return { safe: band, avoid: own, own };
 }
 const meet = (a, b) => ({ l: Math.max(a.l, b.l), t: Math.max(a.t, b.t), r: Math.min(a.r, b.r), b: Math.min(a.b, b.b) });
 /* the last moments' layouts on this seat (for the checks and the live log): shared, or moved here and how */
@@ -540,7 +591,14 @@ function compose(ctl, items, extra = {}) {
     /* SAMEPIC: the shared frame (see sharedScreenAvoid): reference height, the table's Scale only (the engine's own Scale is divided out
        in letterOne, as on the map), the standard view, the token's document box, shared obstacles */
     const T = ctl.token ? sharedTokenBox(ctl.token) : null, std = standardSafe(T);
-    frame = { vh: SP.REF_VH, ref: SP.REF_VH, px: 1, scale: ctl.userScale || 1, safe: std, token: T, avoid: sharedScreenAvoid(ctl.hero, !ctl.token, ctl.targets ?? []),
+    /* SPLASHSAME: a moment by its roller (a token moment, or the critical with its hero) whose roller stands in this seat's window: the
+       TABLE's block (tableFrame: the same on every seat), placed on this seat (LP.seatPlace). Without a roller in the window (none, unseen,
+       off this seat's screen) the moment is this seat's own, laid out round its view as before */
+    const anchor = ctl.token ?? (ctl.full ? ctl.hero : null), A = anchor ? (T ?? sharedTokenBox(anchor)) : null;
+    if (A && A.x >= 0 && A.y >= 0 && A.x <= window.innerWidth && A.y <= window.innerHeight && globalThis.canvas?.ready) {
+      const tf = tableFrame(anchor, !ctl.token, ctl.targets ?? [], ctl.userScale || 1);
+      frame = { ...tf.frame, ...extra, table: { hero: tf.hero, T: A } };
+    } else frame = { vh: SP.REF_VH, ref: SP.REF_VH, px: 1, scale: ctl.userScale || 1, safe: std, token: T, avoid: sharedScreenAvoid(ctl.hero, !ctl.token, ctl.targets ?? []),
       gap: T ? Math.max(8, Math.round(0.08 * (T.r - T.l))) : 6, focus: { x: (std.l + std.r) / 2, y: vh * (ctl.full ? 0.47 : 0.42) }, ...extra };
   }
   let out = composeIn(ctl, items, frame), same = 'none', why = null, fit = null;  if (ctl.shared) {
@@ -551,6 +609,15 @@ function compose(ctl, items, extra = {}) {
        fit = what this seat shows of the board (its window minus Foundry's bars where they stand, in scene px): only the seat's layer rule
        reads it (playLetters, SP.mapSeat) */
     fit = sceneRectOf(safeRect({ core: true }));
+  } else if (frame.table) {
+    /* SPLASHSAME: the table's block (composed above from the table's frame), placed on this seat */
+    const lay = WORLD_LAYERS.includes(LAYER) ? 'screen' : LAYER, seat = { ...seatOf(ctl, frame.table.T, lay), gap: frame.gap };   // the table's gap to the roller
+    const tableOut = out;
+    out = LP.seatPlace({ ...tableOut, hero: frame.table.hero, ref: frame.ref, scale: frame.scale, tsafe: frame.safe, avoid1: frame.avoid.filter((q) => q.z1) }, seat);
+    out.table = { rect: tableOut.rect, side: tableOut.side, split: !!tableOut.split };
+    same = out.moved;
+    if (same !== 'none') why = whyMoved(tableOut.rect, { safe: seat.safe, avoid: [] });
+    frame = { ...frame, safe: seat.safe, token: ctl.full ? null : seat.hero, avoid: seat.avoid, gap: seat.gap };
   } else {
     const loc = localScreen(WORLD_LAYERS.includes(LAYER) ? 'screen' : LAYER), std = frame.safe;   // CRITPEAK: off the board it is drawn on the screen layer
     why = whyMoved(out.rect, loc);
@@ -838,7 +905,7 @@ function playLetters(ev, o) {
   /* MAPSEAT: ONE rule decides this seat's layer (SP.mapSeat): the board block as every seat has it, or, when this seat cannot show it well
      (a part a speck at its zoom, or outside what its view shows of the board), the moment on its screen layer. Never a copy of the board
      block moved or shrunk for this seat (before: shrunk in place into a close view, moved off the GM's own panels, compared by cover) */
-  const seatRule = ctl.shared ? SP.mapSeat([lay.rect], lay.fit, lay.items.map((it) => ({ px: it.S * zoomNow, word: it.role === 'word' || it.role === 'pre' })), LP.MAP_READ) : null;
+  let seatRule = ctl.shared ? SP.mapSeat([lay.rect], lay.fit, lay.items.map((it) => ({ px: it.S * zoomNow, word: it.role === 'word' || it.role === 'pre' })), LP.MAP_READ) : null;
   if (ctl.shared) {
     ctl.seatRule = seatRule; ctl.board = lay;   // (kept for inspection: the table's board block, also on a seat that plays it on its screen)
     const R = (q) => q && { l: Math.round(q.l), t: Math.round(q.t), r: Math.round(q.r), b: Math.round(q.b) };
@@ -854,15 +921,27 @@ function playLetters(ev, o) {
     lay = compose(ctl, plan.items, gauge ? { gauge } : {});
     /* a close view: the board's ordinary blocks are drawn big here, so a block too big for this view does not come back smaller than they
        are on this very view (the ranks stay in order on one seat: a critical never under the strong roll before it) */
-    const sw = lay.items.find((it) => it.role === 'word');
-    if (big && sw && onScreen > sw.S * 1.02) {
+    /* SPLASHSAME: by THIS SEAT's board scale (m: the board's reference squares on its view against the screen rule), one factor for every
+       outcome it shows (before: each outcome's own ratio of its board word to its screen word, so on a 1366 x 768 seat at zoom 0.8 an ordinary
+       roll came back at 80 px and a strong one at 75). A screen block then matches the board blocks of this view in size and the ranks stay in
+       order on the seat */
+    const gsN = globalThis.canvas?.dimensions?.size ?? globalThis.canvas?.grid?.size ?? 100, mSeat = GRID_VH * gsN * zoomNow / SP.REF_VH;
+    /* only a window as big as the reference: a smaller one is short of room already (at 1366 x 768, zoom 0.8 a critical upscaled 1.4 x
+       covered the roller where the plain one stood clean; provisional SPLASHSAME-3) */
+    const kS = LP.seatFactor(localScreen('screen').safe, SP.standardRect(SP.REF_VW, SP.REF_VH));
+    const sw = lay.items.find((it) => it.role === 'word'), up = kS >= 0.999 ? Math.min(LP.MAP_UP, Math.max(1, mSeat)) : 1;
+    if (big && sw && onScreen > 0 && up > 1.02) {
       /* MAPSEAT: never onto a token the plain screen picture keeps off (the crowded board at 0.5: the board block stood in the wide window
          off this view, and the upscaled screen block lay over a bystander, 91 % of its box, where the plain one stood clean) */
+      /* SPLASHSAME: a moment by its roller (the table's block, placed by seatPlace) keeps the seat's factor for every outcome: seatPlace keeps
+         it clean (farther away, then smaller down to its rank's floor at this factor, so the ranks stay in order on the seat; nothing clean: the
+         least covering place). Before, a block that covered more upscaled came back plain, per outcome: a strong roll then stood under the
+         upscaled ordinary one (80 vs 75 px at 1366 x 768, zoom 0.8). A moment without a roller in this view keeps that cover test */
       const plain = lay, plainGauge = gauge, uScale = ctl.userScale;
-      ctl.userScale = (o.scale || 1) * Math.min(LP.MAP_UP, onScreen / sw.S);
+      ctl.userScale = (o.scale || 1) * up;
       if (ev.stress) gauge = probeGauge(ctl, ev.stress, resolve);
       lay = compose(ctl, plan.items, gauge ? { gauge } : {});
-      if (plain.frame && lay.frame && LP.coverMax(lay, lay.frame) > Math.max(LP.RIM_OK, LP.coverMax(plain, plain.frame))) {
+      if (!lay.table && plain.frame && lay.frame && LP.coverMax(lay, lay.frame) > Math.max(LP.RIM_OK, LP.coverMax(plain, plain.frame))) {
         lay = plain; gauge = plainGauge; ctl.userScale = uScale;
         if (ev.stress) gauge = probeGauge(ctl, ev.stress, resolve);
       }
