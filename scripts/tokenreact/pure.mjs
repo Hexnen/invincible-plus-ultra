@@ -392,13 +392,20 @@ export function chooseSlot(tok, box, safe, blocked = [], { prefer = 0 } = {}) {
 export const FIT = { ks: [1, 0.86, 0.74, 0.62, 0.52], shrinkK: 1.6, keepBonus: 0.12 };
 export const FIT_SLOTS = SLOTS.filter((s) => s !== "on");
 /** -> { slot, k (scale of the group box), score } */
-export function fitSlot(tok, box, safe, blocked = [], { prefer = 0, keep = null, ks = FIT.ks } = {}) {
+/* CROWD2 (live, KA k1 after the VRAM meter's place became a shared zone: Omni-Man's "-2" stood on Kid Omni-Man): a shared zone (push: true,
+   the panels every seat keeps free) is not where a word ends: follow() pushes every word off it each frame, on every seat alike. With slide
+   the fit scores a side where that push will put it (inside the standard view), so a side beside a zone is not given up for a neighbour's
+   face; the push is computed from shared data only, the same on every seat. */
+export function fitSlot(tok, box, safe, blocked = [], { prefer = 0, keep = null, ks = FIT.ks, slide = false } = {}) {
   let best = { slot: FIT_SLOTS[0], k: 1, score: Infinity };
   const own = { ...ringRect(tok), k: SLOT_K.own }, A = box.w * box.h;      // CROWD: the ring is the token's too
+  const push = slide && safe ? blocked.filter((q) => q?.push) : [];
   for (const k of ks) {
     const b = { w: box.w * k, h: box.h * k };
     FIT_SLOTS.forEach((slot, i) => {
-      const r = rectAt(slotPoint(slot, tok, b), b);
+      let p = slotPoint(slot, tok, b);
+      if (push.length && push.some((q) => inter(rectAt(p, b), q) > 0)) p = clampInto(avoidRects(clampInto(p, b, safe), b, push, safe), b, safe);
+      const r = rectAt(p, b);
       let s = i * 0.04 * b.w * b.h + (1 - k) * A * FIT.shrinkK;      // the order is the preference: above unless it costs; then size
       if (prefer && ((prefer > 0 && slot === "aboveL") || (prefer < 0 && slot === "aboveR"))) s += 0.02 * b.w * b.h;
       if (keep && slot === keep) s -= FIT.keepBonus * A + 1e-3;      // CROWD: the kept side also wins a tie
@@ -416,8 +423,11 @@ export function fitSlot(tok, box, safe, blocked = [], { prefer = 0, keep = null,
    sidebar as if open), and kept unless THIS seat would really cut it (a smaller window, a sidebar wider than the reserve) or hide it under
    its own panel (the GM's desk): only then is it fitted again here with those too. -> fitSlot's result + { same } (false = moved here) */
 export function fitSame(tok, box, std, real, shared = [], local = [], o = {}) {
-  const a = fitSlot(tok, box, std, shared, o);
-  const b = { w: box.w * a.k, h: box.h * a.k }, r = rectAt(slotPoint(a.slot, tok, b), b);
+  const a = fitSlot(tok, box, std, shared, { ...o, slide: true });
+  const b = { w: box.w * a.k, h: box.h * a.k }, push = std ? shared.filter((q) => q?.push) : [];
+  let p0 = slotPoint(a.slot, tok, b);
+  if (push.length && push.some((q) => inter(rectAt(p0, b), q) > 0)) p0 = clampInto(avoidRects(clampInto(p0, b, std), b, push, std), b, std);
+  const r = rectAt(p0, b);
   const outR = real ? outside(r, real) : 0, outS = std ? outside(r, std) : 0;
   const clean = outR <= outS + 1 && !local.some((q) => inter(r, q) > 1);
   if (clean) return { ...a, same: true };
@@ -589,11 +599,11 @@ export function impactOf(pub, step = 0, o = {}) {
 /* ---------------------------------------------------------------- a series in proportion (CROWD, ADVX 6)
    Five 1-point blows 0.45 s apart climbed one rung per blow (scratch, blow, hard blow, heavy, CRUSHING): the fifth -1 drew the critical's
    frames with a full white flash and the word grew 56 %, bigger than a single -8 would have drawn. The escalation outran the damage.
-   Rule: a series still BUILDS (each blow at least as strong as the one before, one rung per blow at most), but its rung never passes the
-   rung the series' blows would get as ONE blow (their sum: cumPub) plus one rung for the rhythm itself; the critical's rung (the last) is
-   reached only when the sum alone reaches it. Five -1 now: scratch, blow, hard blow, heavy, heavy (a single -5 is heavy); -2, -3, -4 still
+   Rule (CROWD, then CROWD2 below): a series still BUILDS (each blow at least as strong as the one before, one rung per blow at most), but
+   never past the rung the series' blows would get as ONE blow (their sum: cumPub); the critical's rung (the last) is reached only when the
+   sum alone reaches it; a rung over the blow's own is earned by the share of the track the series has taken (SERIES_LIFT). -2, -3, -4 still
    climbs to crushing; a fall to 0 is the knock-out whatever came before. The word's growth and the token's motion follow the same capped
-   step (seriesStep); the word's TEXT keeps its series (the rhythm of the sound), only its size is capped. cum = { n, a }: the series' summed
+   step (seriesStep); the word's TEXT one tier more at most (textStep). cum = { n, a }: the series' summed
    points and summed amounts (the shared reaction's: the same on every seat that sees the token, never a share of the track a seat may not
    read). Without cum: the old climb. */
 export const cumPub = (pub, cum) => {
@@ -602,13 +612,31 @@ export const cumPub = (pub, cum) => {
   const kind = pub?.kind === "stress" ? "stress" : heavyLoss(n, a) ? "heavy" : "hit";
   return { kind, amt, known: pub?.known !== false };
 };
+/* CROWD2 (orchestrator's after-take of CROWD, KA k3: five 1-point blows 0.45 s apart still drew the full black-and-white slam on the 2nd and
+   3rd blow and a large orange burst over the token on the 5th: far louder than five scratches). The CROWD cap let a series climb one rung per
+   blow up to its SUM's rung plus one for the rhythm, so the 2nd -1 (sum 2 points) already drew what a single -2 draws, the 3rd what a -3
+   draws. Rule now: a blow is drawn at ITS OWN rung (its own damage); the series lifts it by one rung once the blows BEFORE it had taken
+   SERIES_LIFT[0] of the track (half: the token is visibly going down), by two at SERIES_LIFT[1]; never by more than its step, never past its
+   sum's rung (cumPub), and the critical's rung only when the sum alone reaches it. The rhythm of a series builds INSIDE the rung (the
+   engine's `series` boost, pure withSeries: capped under the next strength bound, so no heavier rung's drawings) and in the word's sound
+   (textStep: one tier longer, no lead-in it has not earned). Five -1 on an 8-point track: scratch x4 then a blow (5 of 8 points gone);
+   -2, -2, -2, then the fall: blow, blow, hard blow, knock-out (the peak). cum.a / pub.amt are the shared reaction's amounts (PRIV): the same
+   on every seat that sees the token. */
+export const SERIES_LIFT = [0.5, 0.75];
 export function seriesRung(pub, step = 0, cum = null) {
-  const own = rungOf(pub), top = RUNGS.length - 1, want = Math.min(top, own + IMPACT_STEP * Math.max(0, step));
+  const own = rungOf(pub), top = RUNGS.length - 1, s = Math.max(0, Math.floor(Number(step) || 0)), want = Math.min(top, own + IMPACT_STEP * s);
   if (!cum) return want;
-  const c = rungOf(cumPub(pub, cum));
-  const cap = c >= top ? top : Math.min(top - 1, c + 1);
-  return Math.max(own, Math.min(want, cap));
+  const sum = cumPub(pub, cum), before = Math.max(0, sum.amt - Math.max(0, Math.min(1, Number(pub?.amt) || 0)));
+  const lift = SERIES_LIFT.filter((t) => before >= t - 1e-9).length;
+  return Math.max(own, Math.min(want, own + lift, rungOf(sum)));
 }
+/** the word's step in its vocabulary series (the sound's length and lead-in): the rhythm lengthens the sound blow by blow, but at most
+    TEXT_OVER tiers over what the series earned (sstep), so five scratches never reach the series' loudest form (KA-THWAAAAP!!) (CROWD2) */
+export const TEXT_OVER = 2;
+export const textStep = (step, sstep) => Math.max(0, Math.min(Math.floor(Number(step) || 0), Math.floor(Number(sstep) || 0) + TEXT_OVER));
+/** how much bigger a blow of a series stands (CROWD2): half of STREAK.grow per blow for the rhythm, half per rung the damage earned (sstep);
+    five -1 on 8 points: 1, 1.07, 1.14, 1.21, 1.35 (CROWD's 1, 1, 1, 1.14, 1.14 never grew; before it 1 .. 1.56 for five scratches) */
+export const seriesGrow = (step, sstep) => 1 + STREAK.grow * 0.5 * (Math.min(STREAK.max, Math.max(0, Number(step) || 0)) + Math.min(STREAK.max, Math.max(0, Number(sstep) || 0)));
 /** the step a series has really earned (0..STREAK.max): rungs added over the blow's own one, for ladder kinds; others keep their step */
 export function seriesStep(pub, step = 0, cum = null) {
   const s = Math.max(0, Math.min(STREAK.max, Math.floor(Number(step) || 0)));
@@ -719,7 +747,10 @@ export function withSeries(spec, step) {
   const m = Number(spec.magnitude) || 0;
   const bound = STEP_AT.find((b) => b > m + 1e-9) ?? 2.01;
   const top = Math.min(bound - 0.01, spec.kind === "ko" ? 2 : IMPACT_TOP);
-  const want = Math.max(m, Math.min(top, m + SERIES.step * n));      // the strength drawn: grown inside the rung, never under the rung
+  /* CROWD2: a series now often stays inside a low rung (five -1 are scratches) whose room under the next bound is small (scratch 0.25 ->
+     0.34): the boost halves the room left at each place (never more than the engine's step per place), so every blow of a series still
+     draws a little stronger than the one before instead of standing at the cap from the 2nd blow on */
+  const want = Math.max(m, Math.min(top, m + SERIES.step * n, m + (top - m) * (1 - 2 ** -n)));      // the strength drawn: grown inside the rung, never under the rung
   n = Math.min(n, Math.floor(want / SERIES.step + 1e-9));            // a weak rung late in a series: fewer places, never a negative strength passed
   if (!n) return { ...spec, magnitude: want };
   return { ...spec, series: n, magnitude: Math.round((want - SERIES.step * n) * 1000) / 1000 };

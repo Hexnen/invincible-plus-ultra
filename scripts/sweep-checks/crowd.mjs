@@ -5,6 +5,7 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import * as P from "../tokenreact/pure.mjs";
+import { STEP_AT } from "../letters/impact/plan.mjs";
 
 let n = 0, failed = 0;
 const ck = (name, cond, more = "") => { n++; if (!cond) { failed++; console.log(`FAIL ${name}${more ? `\n   ${more}` : ""}`); } };
@@ -58,6 +59,22 @@ const hitAll = (ids, to = 6, dt = 5) => ids.map((id, i) => ({ t: i * dt, id, to 
   const paced = ser([["hit", 2], ["heavy", 3], ["heavy", 4]]);
   ck(`P14 a paced series of real blows still builds to the crushing rung: ${paced.map((x) => `${x.kind} ${x.magnitude}`).join(", ")}`, paced[0].rung < paced[1].rung && paced[1].rung < paced[2].rung && paced[2].rung === P.RUNGS.length - 1);
   ck("P15 the earned step: five -1 earn at most 3 steps of growth", P.seriesStep({ kind: "hit", amt: 1 / 8, known: true }, 4, { n: 5, a: 5 / 8 }) <= 3);
+  /* CROWD2 (orchestrator's after-take, KA k3): five -1 still drew the full black-and-white slam on the 2nd and 3rd blow. A blow is drawn at
+     its own damage's rung; the series lifts it only once the blows before it took half the track; the rhythm builds inside the rung. The
+     drawn strength is what the engine draws (withSeries + the engine's series boost: effectiveMagnitude); 0.6 is the bound where a hit's
+     drawings turn the scene black and white (impact/plan.mjs STEP_AT) */
+  const drawn = (blows, max = 8) => { let cum = { n: 0, a: 0 }; return blows.map(([kind, k], s) => { const amt = Math.max(k / max, k / 8); cum = { n: cum.n + k, a: cum.a + amt }; const im = P.impactOf({ kind, amt, known: true }, s, { cum }); return { ...im, eff: P.effectiveMagnitude(P.withSeries(im, s)) }; }); };
+  for (const max of [6, 8, 12, 20]) {
+    const f = drawn([["hit", 1], ["hit", 1], ["hit", 1], ["hit", 1], ["hit", 1]], max);
+    ck(`P18 five -1 on a ${max}-point track: blows 2-3 stay scratches (drawn ${f.map((x) => x.eff)}), the rhythm still builds inside the rung`, f.slice(0, 3).every((x) => x.rung === 0 && x.eff < STEP_AT[1]) && f[2].eff > f[0].eff && f.every((x, i) => !i || x.eff >= f[i - 1].eff - 1e-9));
+    ck(`P19 five -1 on a ${max}-point track: never more than one rung over a scratch (rungs ${f.map((x) => x.rung)})`, f.every((x) => x.rung <= 1));
+  }
+  const toDown = (() => { let cum = { n: 0, a: 0 }; const out = [-2, -2, -2].map((d, s) => { const amt = 2 / 8; cum = { n: cum.n + 2, a: cum.a + amt }; return P.impactOf({ kind: "hit", amt, known: true }, s, { cum }); }); out.push(P.impactOf({ kind: "down", amt: 1 / 8 }, 3, { cum: { n: 7, a: 7 / 8 } })); return out; })();
+  ck(`P20 a paced series -2 -2 -2 then the fall builds to a real peak (${toDown.map((x) => `${x.kind} ${x.magnitude}`)})`, toDown[2].rung > toDown[0].rung && toDown[3].kind === "ko" && toDown[3].magnitude > P.IMPACT_TOP);
+  ck("P21 the sound of a series lengthens blow by blow but at most two tiers over what it earned: five -1 never reach its loudest form",
+    typeof P.textStep === "function" && [0, 1, 2, 3, 4].map((s) => P.textStep(s, 0)).join() === "0,1,2,2,2" && P.textStep(4, 1) === 3 && P.textStep(0, 0) === 0);
+  ck("P22 a series' word grows a little every blow (the rhythm) and more for the rungs its damage earned; five -1 end under a third bigger",
+    typeof P.seriesGrow === "function" && [0, 1, 2, 3, 4].map((s) => P.seriesGrow(s, 0)).every((g, i, a) => !i || g > a[i - 1]) && P.seriesGrow(4, 1) < 1.4 && P.seriesGrow(4, 4) > P.seriesGrow(4, 1));
   ck("P16 going down is the knock-out whatever came before", P.impactOf({ kind: "down", amt: 0.3 }, 4, { cum: { n: 1, a: 0.1 } }).kind === "ko");
   ck("P17 a pin every player may open is shared; a GM's pin is not; a pin with no entry a player placed is shared",
     P.pinPublic({ ownership: { default: 2 }, hasEntry: true }) && !P.pinPublic({ ownership: { default: 0 }, hasEntry: true }) && P.pinPublic({ hasEntry: false, authorGM: false }) && !P.pinPublic({ hasEntry: false, authorGM: true }));
@@ -73,9 +90,18 @@ const scen = {
   rapid: { toks: [{ id: "MB", x: 700, y: 400 }], hits: [7, 6, 5, 4, 3].map((to, i) => ({ t: i * 450, id: "MB", to, snap: 380 })), wait: 1200 },
   paced: { toks: [{ id: "MB", x: 700, y: 400 }], hits: [6, 3, 0].map((to, i) => ({ t: i * 1500, id: "MB", to, snap: 600 })), wait: 1200 },
   far: { zoom: 0.14, center: { x: 600, y: 400 }, toks: SIX, hits: hitAll(SIX.map((t) => t.id)) },
-  hidden: { toks: [...SIX.slice(0, 3), { id: "HD", x: 800, y: 250, hidden: true }], hits: hitAll(["OM", "EV", "KD", "HD"]) }
+  hidden: { toks: [...SIX.slice(0, 3), { id: "HD", x: 800, y: 250, hidden: true }], hits: hitAll(["OM", "EV", "KD", "HD"]) },
+  /* CROWD2 (KA k1): three heroes (every seat reads their numbers) hit with three enemies; a pin only the GM may open just above the first
+     hero and the GM's own desk panel beside it (seat-only things) */
+  heroes: { toks: SIX.map((t, i) => ({ ...t, hero: i < 3 })), notes: [{ id: "NG", x: 550, y: 205, size: 40, pub: false }], hits: hitAll(SIX.map((t) => t.id)),
+    gmPanels: [{ sel: "#invincible-tactics-desk:not(.igd-collapsed) .igd", x: 260, y: 120, w: 190, h: 120 }] },
+  /* CROWD2 (live probe, KA k1): the group high in the view's top-left corner, under the map's VRAM meter folded at its default spot (the GM's own,
+     shown by default to the GM only): the meter took the GM's spot left of the first hero, so his "-2" shrank and slid on the GM only */
+  meter: { zoom: 1.75, center: { x: 729, y: 464 }, toks: [{ id: "OM", x: 500, y: 250, hero: true }, { id: "KD", x: 600, y: 250, hero: true }, { id: "EV", x: 500, y: 350, hero: true },
+      { id: "SO", x: 700, y: 500 }, { id: "MB", x: 800, y: 500 }, { id: "MA", x: 900, y: 500 }], hits: hitAll(["OM", "KD", "EV", "SO", "MB", "MA"]),
+    gmPanels: [{ sel: ".mm-vram", x: 96, y: 92, w: 264, h: 52 }, { sel: "#mm-vram", x: 96, y: 92, w: 264, h: 52 }] }
 };
-const runs = await Promise.all(Object.entries(scen).flatMap(([k, s]) => [GM, P1].map((st) => seat({ ...s, ...st, name: `${k}/${st.name}` }).then((r) => [k, st.name, r]))));
+const runs = await Promise.all(Object.entries(scen).flatMap(([k, s]) => [GM, P1].map((st) => seat({ ...s, ...st, panels: st.gm ? s.gmPanels : s.panels, name: `${k}/${st.name}` }).then((r) => [k, st.name, r]))));
 const S = {};
 for (const [k, who, r] of runs) (S[k] ??= {})[who] = r;
 for (const [k, v] of Object.entries(S)) ck(`R0 ${k}: both seats ran`, !!v.gm && !!v.p1);
@@ -119,6 +145,11 @@ if (ok("rapid")) {
   ck(`C16 the number keeps its side blow after blow (${dx})`, dx.length === 5 && dx.every((s) => s === 1));
   const ringHits = S.rapid.gm.frames.flatMap((f) => onRings(S.rapid.gm, [f.plays.filter((p) => !p.num && p.box).at(-1)].filter(Boolean)));
   ck(`C17 no step of the series rests on the token's ring (${ringHits})`, !ringHits.length);
+  /* CROWD2 (KA k3): the drawn strength (magnitude + the engine's series boost) of blows 2 and 3 stays under the black-and-white bound; the
+     sound gets no lead-in before the series has earned a rung */
+  const eff = im.map((x) => Math.round((x.magnitude + 0.15 * x.series) * 100) / 100);
+  ck(`C24 five 1-point blows: the 2nd and 3rd draw no black-and-white scene (drawn ${eff})`, eff.length === 5 && eff[1] < STEP_AT[1] && eff[2] < STEP_AT[1]);
+  ck(`C25 five 1-point blows: no word reaches the series' loudest form "!!" (${w.map((p) => p.text)})`, w.length === 5 && w.every((p) => !p.text.includes("!!")));
 }
 if (ok("paced")) {
   const im = S.paced.gm.impacts;
@@ -134,6 +165,25 @@ if (ok("hidden")) {
   const { gm, p1 } = S.hidden;
   ck("C22 a token the GM hid is lettered on no player's seat", !p1.plays.some((p) => p.tok === "HD"));
   ck("C23 it never joins the crowd's word: the crowd's word is the same on both seats", (() => { const c = (s) => words(s).filter((p) => p.tok !== "HD"); return sig(c(gm)) === sig(c(p1)) && c(gm).length === 1; })(), `GM ${sig(words(gm))}\n   P1 ${sig(words(p1))}`);
+}
+if (ok("heroes")) {
+  /* CROWD2: a number every seat shows (a hero's) stands at the same place and size on every seat; a pin only the GM may open does not move it
+     (nor the word of its group), nor the GM's desk beside the spot (a panel that COVERS the spot still moves it there: samepic T3) */
+  const { gm, p1 } = S.heroes, shown = (s) => nums(s).filter((p) => ["OM", "EV", "KD"].includes(p.tok));
+  ck(`C26 the heroes' numbers stand alike on both seats\n   GM ${sig(shown(gm))}\n   P1 ${sig(shown(p1))}`, shown(gm).length === 3 && sig(shown(gm)) === sig(shown(p1)));
+  ck(`C27 the crowd words stand alike on both seats\n   GM ${sig(words(gm))}\n   P1 ${sig(words(p1))}`, sig(words(gm)) === sig(words(p1)));
+}
+if (ok("meter")) {
+  /* CROWD2: the GM's VRAM meter at its default spot moves nothing on one seat only: its place is kept free on every seat */
+  const { gm, p1 } = S.meter, shown = (s) => nums(s).filter((p) => ["OM", "EV", "KD"].includes(p.tok)), m = { x: 96, y: 92, w: 264, h: 52 };
+  ck(`C28 the GM's VRAM meter moves no hero's number on the GM only
+   GM ${sig(shown(gm))}
+   P1 ${sig(shown(p1))}`, shown(gm).length === 3 && sig(shown(gm)) === sig(shown(p1)));
+  ck(`C29 nor the crowd's word
+   GM ${sig(words(gm))}
+   P1 ${sig(words(p1))}`, sig(words(gm)) === sig(words(p1)));
+  ck("C30 nothing lies under the meter on the GM's seat", !gm.plays.filter((p) => p.box).some((p) => inter(p.box, m) > 1));
+  ck(`C31 the meter's kept place pushes no word or number onto a token or its ring (${onRings(p1, p1.plays.filter((p) => p.box))})`, !onRings(p1, p1.plays.filter((p) => p.box)).length);
 }
 console.log(`sweep crowd: ${n} checks, ${failed} failed`);
 process.exit(failed ? 1 : 0);

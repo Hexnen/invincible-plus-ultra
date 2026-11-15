@@ -23,7 +23,7 @@ import { isLabel } from "../i18n/sys-labels.mjs";
 import * as Gate from "../tactics/ui/dicegate.mjs";
 import * as Moment from "../moment.mjs";
 import * as TokAnim from "../tokenanim/main.mjs";      // TOKANIM: the token's own motion
-import { standardRect, panelZones, dockZone } from "../same-picture.mjs";      // SAMEPIC: one picture for the table
+import { standardRect, panelZones, dockZone, REF_VW, REF_VH } from "../same-picture.mjs";      // SAMEPIC: one picture for the table
 import * as Clock from "../shared-clock.mjs";      // SYNC: the table's clock
 
 const MOD = "invincible-plus-ultra";
@@ -346,7 +346,7 @@ function build(ready) {
     const items = [];
     for (const { tok, looks, seed, pub, card, loss, pubNum, room } of byTok.values()) {
       const lk = P.combine(looks);
-      items.push({ key: tok.id, tok, lk, seed, lang, sev: P.SEVERITY[lk.kind] ?? 0, hasNum: !!pubNum, pub, card: !!card, loss: !!loss, room: (room ?? []).slice().sort((a, b) => (a.stat === "health" ? 0 : 1) - (b.stat === "health" ? 0 : 1)).map((n) => n.text) });
+      items.push({ key: tok.id, tok, lk, seed, lang, sev: P.SEVERITY[lk.kind] ?? 0, hasNum: !!pubNum, pub, card: !!card, loss: !!loss, ...(() => { const rs = (room ?? []).slice().sort((a, b) => (a.stat === "health" ? 0 : 1) - (b.stat === "health" ? 0 : 1)); return { room: rs.map((n) => n.text), roomStats: rs.map((n) => n.stat) }; })() });
     }
     return items;
   } catch (err) { once(err); return []; }
@@ -429,7 +429,9 @@ async function land(ids, ready) {
       if (!u.cluster) {
         const it = members[0];
         it.mode = u.mode; it.scale = u.scale; it.delay = u.delay; it.unit = u;
-        it.lk.word = it.mode === "full" ? P.wordFor(it.lk, vocab, { lang: it.lang, seed: it.seed, step: it.lk.step, streakSeed: it.streakSeed }) : null;
+        it.lk.word = it.mode === "full" ? P.wordFor(it.lk, vocab, { lang: it.lang, seed: it.seed, step: P.textStep(it.lk.step, it.lk.sstep), streakSeed: it.streakSeed }) : null;      // CROWD2: one tier over what the series earned
+        /* CROWD2: the size is the series' first word's (the shorter word's eye rule must not shrink a lengthened sound: a series never shrinks) */
+        if (it.lk.word && it.lk.step > 0) it.lk.sizeWord = P.wordFor(it.lk, vocab, { lang: it.lang, seed: it.seed, step: 0, streakSeed: it.streakSeed }) ?? null;
         if (!it.lk.word && it.mode === "full") it.mode = it.hasNum ? "number" : "none";
         if (it.mode !== "none") staged.push(it);
         continue;
@@ -439,7 +441,7 @@ async function land(ids, ready) {
       const lk = P.look({ kind: u.kind, amt: u.amt, num: null }, null, lead.lang, seed);
       const step = Math.max(...members.map((m) => m.lk.step ?? 0)), sstep = Math.max(...members.map((m) => m.lk.sstep ?? 0));
       lk.step = step; lk.sstep = sstep;
-      lk.word = u.mode === "full" ? P.wordFor(lk, vocab, { lang: lead.lang, seed, step }) : null;
+      lk.word = u.mode === "full" ? P.wordFor(lk, vocab, { lang: lead.lang, seed, step: P.textStep(step, sstep) }) : null;
       const cl = { key: `crowd:${seed}`, cluster: true, members, tok: lead.tok, lk, seed, lang: lead.lang, sev: u.sev, mode: lk.word ? "full" : "none", scale: u.scale * P.crowdK(members.length),
         delay: u.delay, unit: u, room: [], hasNum: false, pub: null, ids: members.map((m) => m.tok.id) };
       if (cl.mode === "full") staged.push(cl);
@@ -472,9 +474,17 @@ async function land(ids, ready) {
     for (const it of staged) if (it.inCluster) it.tHit = it.inCluster.tHit ?? (it.inCluster === host ? T0 : T0 + (imp ? after + it.delay : it.delay));      // a cluster strikes all its members at once
     /* SAMEPIC: shared obstacles (tokens nobody hides, the splash's block, the pins every player may open) vs this seat's own panels and pins
        (only a local guard: fitSame) */
+    /* CROWD2 (orchestrator's after-take KA k1: Omni-Man's "-2" above his token and large on the player's seat, left of it and smaller on the
+       GM's; CROWD-11): what only ONE seat has (the GM's desk and other own floating panels, a pin only the GM may open) moved that seat's word
+       or number (SAMEPIC tier 3), so a number every seat shows stood elsewhere and smaller on one seat. The owner's standard: every seat sees
+       the same picture. A pin only the GM may open no longer moves anything on any seat: it hides nothing (a word over a pin is read, the
+       pin is under the lettering), and moving the GM's word round it would be the only trace of it. What a seat's own panel really COVERS
+       still moves that seat's word or number (fitSame's slide / shrink / refit, follow's push off the panel), exactly as a smaller window
+       does: a word nobody can read on that seat is no "same picture" either; a panel beside the spot moves nothing (that was the case
+       already). SEAT_ONLY_PINS = true restores the GM's pins as a local guard */
     const pins = view.pins();
     const others = [...tokenRects(new Set(staged.flatMap((it) => it.ids ?? [it.tok.id]))), ...view.blocks(), ...view.zones(), ...pins.shared];
-    const mine = [...view.ownPanels(), ...pins.local];
+    const mine = [...view.ownPanels(), ...(SEAT_ONLY_PINS ? pins.local : [])];
     const keyOf = (it) => it.key ?? it.tok.id;
     /* CROWD: placed twice when needed: the first pass fits each unit on its own; equal blows then take the smallest of their fits (pure
        sameSize: ADVX 8, a three-target card's equal blows at 1x, 1x and 0.33x) and are placed again at that one size */
@@ -569,6 +579,15 @@ const COVER_SEL = ["#sidebar", "#hotbar", "#players", "#scene-controls", "#contr
 const PANEL_SEL = ["#ich-dock", "#invincible-turn-tray", ...CARD_SEL,
   /* FXLT2 (ADVT2 6): the map's VRAM meter and pins / filter panel, the party cards, the GM's desk (the splash's own list, splash/stage.mjs) */
   ".mm-vram", "#mm-vram", "#mm-filter", ".mm-filter", "#invincible-party li", "#invincible-tactics-desk:not(.igd-collapsed) .igd"];
+/* CROWD2: may a pin only the GM may open move a reaction on the GM's seat? No (the same picture on every seat; a pin hides nothing); a switch
+   for the owner's answer to CROWD2-1 */
+const SEAT_ONLY_PINS = false;
+/* CROWD2 (live probe, lane 5: the KA "-2" over Omni-Man shrank to 0.52 and slid left on the GM only, the crowd's word to 0.92): the map's VRAM
+   meter is the GM's own (moinen-maps client setting vramMeter, "auto" = shown to the GM), folded at its default spot under the scene controls,
+   and the GM's local guard moved what it covered. Its folded default place (as on the reference window, measured live) is now a shared zone
+   on every seat, as the party cards and the challenges' panel are: a word keeps off it everywhere, so the GM's guard finds nothing left to
+   move. A meter dragged away or unfolded still moves the word on the GM's seat only (CROWD2-6) */
+const METER_ZONE = Object.freeze({ l: 92, t: 88, r: 364, b: 148 });
 const view = {
   at: 0, cache: null,
   ok: () => !!globalThis.canvas?.stage?.toGlobal && !!canvas.app?.view?.getBoundingClientRect,
@@ -601,7 +620,9 @@ const view = {
       /* the challenges' panel moves with the sidebar (live: a word over Mauler B took 0.7 of its size on the seat whose sidebar was open) */
       const el = document.querySelector?.("#ich-dock"), d = el ? dockZone(W, H, el.getBoundingClientRect()) : null;
       if (d) zs.push(d);
-      return zs.map((z) => ({ x: z.l, y: z.t, w: z.r - z.l, h: z.b - z.t, k: P.SLOT_K.panel }));
+      const ox = W / 2 - REF_VW / 2, oy = H / 2 - REF_VH / 2;
+      zs.push({ l: ox + METER_ZONE.l, t: oy + METER_ZONE.t, r: ox + METER_ZONE.r, b: oy + METER_ZONE.b });
+      return zs.map((z) => ({ x: z.l, y: z.t, w: z.r - z.l, h: z.b - z.t, k: P.SLOT_K.panel, push: true }));      // CROWD2: follow() pushes off it on every seat
     } catch { return []; }
   },
   /* this seat's own floating panels (the GM's desk, the party cards, the map's meters): a word is never hidden under them, but they move it
@@ -693,8 +714,11 @@ function planOf(L, it) {
      word is the same on every seat, the number is the seat's (before, a reader's seat had the number alone where another seat had the word) */
   const nums = it.mode === "silent" ? [] : (isCaptioned(tok.id) ? lk.numbers.filter((n) => n.stat !== "health") : lk.numbers).slice(0, 2);
   /* a blow of a series stands a little bigger each step it has EARNED (CROWD: pure seriesStep, capped by the series' sum) */
-  const grow = 1 + P.STREAK.grow * Math.min(P.STREAK.max, lk.sstep ?? lk.step ?? 0);
-  let cap = word ? P.targetPx(lk.kind, lk.amt, lk.word, tokPx, vh(), vw(), user * it.scale * grow) : 0;
+  /* CROWD2: half of the growth for the rhythm (every blow of a series a little bigger), half for the rungs the damage earned (pure seriesGrow) */
+  const grow = P.seriesGrow(lk.step ?? 0, lk.sstep ?? lk.step ?? 0);
+  /* CROWD2: the growth applies to the size the series' first word stood at (after the legible floor, which swallowed a small growth: a -1's
+     word stands at the floor), never over the cap */
+  let cap = word ? Math.min(vh() * P.SIZE_RULE.capVh, P.targetPx(lk.kind, lk.amt, lk.sizeWord ?? lk.word, tokPx, vh(), vw(), user * it.scale) * grow) : 0;
   /* CROWD (ADVX 17): a cluster's word is never under the crowd floor (far out the crowd reads as one event, not a heap of specks) */
   if (word && it.cluster) cap = Math.min(vh() * P.SIZE_RULE.capVh, Math.max(cap, P.crowdFloor(vh()) * user));
   const numCap = (word ? cap * P.SIZE_RULE.numK : P.basePx(tokPx, vh()) * P.SIZE_RULE.crowdNumK * 1.1 * user * it.scale);
@@ -705,11 +729,15 @@ function planOf(L, it) {
   /* PRIV: room for the numbers a reader's seat letters (it.room), so the word stands alike on every seat; this seat's own numbers fill it */
   /* (the room stays when the map's director captions this token's damage on this seat: whether it does differs per seat, seen live on lane 5,
      where the player's knock-down word stood bigger and elsewhere than the GM's) */
-  const room = word && (it.room?.length ?? 0) > nums.length ? it.room.slice(0, 2) : nums.map((n) => n.text);
+  /* CROWD2 (CROWD-11: a player's own number stood elsewhere than the GM's copy): the room is ALWAYS the reader's (not this seat's numbers
+     when it has as many: a told number may have other digits), and each number takes the place of ITS track in that room (numIdx), so a seat
+     that shows only the Resolve number puts it where every other seat has the Resolve number, not in the Health number's place */
+  const room = word && (it.room?.length ?? 0) ? it.room.slice(0, 2) : nums.map((n) => n.text);
   const gArgs = word ? { cap, aspect, nums: room, numCap, side: lk.side, up: (rising ? 0.6 : 0.4) + (lk.mood === "powerup" ? 0.6 : 0), down: lk.motion.in === "drop" ? 0.3 : 0.2 } : null;
   /* a number alone (a cluster's member, a crowd over the cap) holds the room of the numbers a reader's seat letters, as a word does (PRIV):
      the box every seat places is the same whatever numbers this seat may show (CROWD: a later unit's side must not depend on it) */
-  const numRoom = !word && (it.room?.length ?? 0) > nums.length ? it.room.slice(0, 2) : nums.map((n) => n.text);
+  const numRoom = !word && (it.room?.length ?? 0) ? it.room.slice(0, 2) : nums.map((n) => n.text);
+  const numIdx = nums.map((n, i) => { const j = (it.roomStats ?? []).slice(0, 2).indexOf(n.stat); return j >= 0 ? j : Math.min(i, Math.max(0, (word ? room : numRoom).length - 1)); });
   let g = word ? P.group(gArgs)
     : P.group({ cap: numCap, aspect: 0, nums: numRoom, numCap, side: 0, up: 0.25, down: 0.15 });
   const z0 = view.ok() ? view.zoom() : 1;
@@ -724,7 +752,7 @@ function planOf(L, it) {
     o.scale = scaleFor(L, n.text, o, numCap);
     return o;
   });
-  const plan = { tokRect, tokPx, box: { w: g.w, h: g.h }, g, gArgs, z0, cap, numCap, nums, wordOpts, numOpts, slot: "above", rect: () => rectOf(it) };
+  const plan = { tokRect, tokPx, box: { w: g.w, h: g.h }, g, gArgs, z0, cap, numCap, nums, numIdx, wordOpts, numOpts, slot: "above", rect: () => rectOf(it) };
   /* CROWD (ADVX 8: "THWUP!UP!": two words placed on letter-count estimates, then each re-fitted alone on its drawn box against the others'
      stale estimates): the word's drawn box is asked of the engine BEFORE it is placed (L.planFor: the same plan the word will play, with the
      table's options, reduced motion off, so every seat plans one box), so the whole moment is laid out once on real boxes and stays put */
@@ -851,7 +879,7 @@ function play(L, it, queued = false) {
       h.stat = n.stat; h._s0 = o.scale; plan.numH[Math.min(i, plan.g.nums.length - 1)] = h; hs.push(h); entry.nums.push(h); settle();
     };
     /* the numbers come once the word has struck (review 13), on the shared clock: NUM_AFTER the blow's instant */
-    plan.nums.forEach((n, i) => playNum(n, plan.numOpts[i], i));
+    plan.nums.forEach((n, i) => playNum(n, plan.numOpts[i], plan.numIdx?.[i] ?? i));      // CROWD2: each number in its track's place
     /* ALIGN: the impact after the word and its numbers, so it can keep them readable (engine 1.9.1 `keep`) and land on the word's contact
        as the engine reads it (`blowAt: L.contactAt(word)`) */
     if (it.impact) { const mem = it.cluster ? it.members.flatMap((m) => playing.get(m.tok.id)?.nums ?? []) : []; const ih = impactOf(L, it, it.impTok ?? tok, tHit, red, word, [word, ...entry.nums, ...mem]); if (ih) hs.push(ih); }
@@ -896,7 +924,8 @@ function impactOf(L, it, tok, tHit, red, word = null, keep = []) {
     /* ALIGN: a blow of a series is the engine's series too (pure withSeries: grown inside its rung) */
     /* CROWD: the step the series EARNED (pure seriesStep: capped by its sum); a cluster's impact is its heaviest member's blow */
     const by = it.impIt ?? it;
-    const spec = { ...P.withSeries(imp, by.lk?.sstep ?? by.lk?.step ?? 0), subject: tok, seed: `${by.seed}|impact`, blowAt };
+    /* CROWD2: the series' rhythm (its raw step) builds INSIDE the rung its damage earned (withSeries caps it under the next strength bound) */
+    const spec = { ...P.withSeries(imp, by.lk?.step ?? 0), subject: tok, seed: `${by.seed}|impact`, blowAt };
     /* ALIGN (engine 1.9.1 `keep`): the word and its numbers are world words IN the scene under the impact's overlay: they stay readable
        through every drawing (a hole cut round them, followed while they move); only handles that are up and alive are passed */
     const kept = keep.filter((h) => h && h.alive !== false && !h.off);
