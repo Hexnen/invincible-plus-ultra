@@ -542,6 +542,15 @@ export function frameWorld(q, f, c = { x: 0, y: 0 }) {
   return { x: f.x + (q.x - (Number(c?.x) || 0)) / f.scale, y: f.y + (q.y - (Number(c?.y) || 0)) / f.scale };
 }
 /** a view a moment may be planned on: { x, y, scale } with finite numbers and a zoom > 0, else null */
+/* KOSAME: the view a moment is laid out on, with its tokens' centre `c` (world) in the middle (the stage's position), at the base view's zoom,
+   when `c` stands inside CENTRE_IN of the window around the middle of the base view (W x H); else the base view itself */
+export const CENTRE_IN = 0.3;
+export function centredFrame(base, c, pos, W, H, inner = CENTRE_IN) {
+  const f = cleanFrame(base);
+  if (!f || !c || !Number.isFinite(c.x) || !Number.isFinite(c.y)) return f;
+  const q = frameScreen(c, f, pos), px = Number(pos?.x) || 0, py = Number(pos?.y) || 0;
+  return Math.abs(q.x - px) <= inner * (Number(W) || 0) && Math.abs(q.y - py) <= inner * (Number(H) || 0) ? { x: c.x, y: c.y, scale: f.scale } : f;
+}
 export function cleanFrame(v) {
   if (!v || typeof v !== "object") return null;
   const x = Number(v.x), y = Number(v.y), scale = Number(v.scale);

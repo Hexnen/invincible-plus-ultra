@@ -475,7 +475,7 @@ async function land(ids, ready) {
     if (!items.length) return;
     /* KOSAME: the whole moment is laid out on one view (planFrame: the user's own while the action camera is away), set only while this
        runs synchronously (cleared before every await and before the words are started) */
-    const fr = planFrame();
+    const fr = planFrame(items);
     view.frame = fr;
     /* CROWD (ADVX 14: a token under the open sidebar or mostly off the view got no reaction at all): every token this seat sees is lettered;
        one not on this seat's view gets its word at the view's edge nearest to it (follow, pure offPanel) */
@@ -846,6 +846,17 @@ const view = {
   blocks() {
     const out = [];
     try { const blocks = []; Hooks.callAll(REACT_HOOK, { phase: "place", blocks }); for (const b of blocks) if (b && b.r > b.l && b.b > b.t) out.push({ x: b.l, y: b.t, w: b.r - b.l, h: b.b - b.t, k: P.SLOT_K.panel }); } catch { /* no splash */ }
+    /* KOSAME (seen live: the GM's block and the player's stood ~200-500 px apart on the same moment): a map moment's block is its scene block
+       projected on this seat's LIVE view (the action camera's). A moment laid out on another view (planFrame) takes it through the scene
+       into that view, as its token is */
+    if (this.frame && out.length) {
+      const v = this.rect(), was = this.frame;
+      return out.map((q) => {
+        const a = canvas.stage.toLocal({ x: q.x - v.ox, y: q.y - v.oy }), c = canvas.stage.toLocal({ x: q.x + q.w - v.ox, y: q.y + q.h - v.oy });
+        const A = P.frameScreen(a, was, canvas.stage.position), C = P.frameScreen(c, was, canvas.stage.position);
+        return { ...q, x: v.ox + A.x, y: v.oy + A.y, w: C.x - A.x, h: C.y - A.y };
+      });
+    }
     return out;
   },
   /* SAMEPIC: the corner panels' shared zones (same-picture.mjs PANEL_ZONES: the party cards, as on the reference window), the same on
@@ -930,13 +941,28 @@ const view = {
 /* KOSAME (pure frameScreen): the view a moment is laid out on. While the map's action camera is away from the user's view (moinen-maps
    directorStage.status().home: where it goes back to) that view, not the camera's view of this instant (seats had the same view and still got
    another size and side: the camera went to the blow on one seat and not on the other, or was halfway). Else the live view. */
-function planFrame() {
+function planFrame(items = []) {
+  let base = null;
   try {
     const mm = game.modules?.get?.("moinen-maps");
-    const home = mm?.active ? P.cleanFrame(mm.api?.directorStage?.status?.()?.home) : null;
-    if (home) return home;
+    base = mm?.active ? P.cleanFrame(mm.api?.directorStage?.status?.()?.home) : null;
   } catch (err) { once(err); }
-  return null;
+  base ??= liveFrame();
+  /* KOSAME (seen live on lane 5, both seats panned alike before the attack: the director then moved the GM's own view to keep the acting
+     token in sight, ~190 screen px, and the word took another side there): the users' own views may differ by the map's design (each seat's
+     follow mode). A moment whose tokens stand well inside this seat's view is laid out with them in the middle of the view (pure
+     centredFrame, at this seat's zoom), the same on every such seat; follow() still keeps the drawn word inside this seat's live view and
+     off its panels. A moment near this seat's edge keeps this seat's view (its word goes inward). */
+  try {
+    const pts = [];
+    for (const it of items) for (const t of it.cluster ? (it.members ?? []).map((m) => m.tok) : [it.tok]) { const c = t && !t.destroyed ? t.center : null; if (c && Number.isFinite(c.x) && Number.isFinite(c.y)) pts.push(c); }
+    if (base && pts.length) {
+      const c = { x: pts.reduce((s, q) => s + q.x, 0) / pts.length, y: pts.reduce((s, q) => s + q.y, 0) / pts.length };
+      const v = view.rect();
+      return P.centredFrame(base, c, canvas.stage.position, v.r - v.l, v.b - v.t);
+    }
+  } catch (err) { once(err); }
+  return base;
 }
 /* the live view as a frame (a plan remembers what it was laid out on: measure() fits the drawn word in the same view) */
 const liveFrame = () => { try { const s = canvas.stage; return s?.pivot && s?.scale ? P.cleanFrame({ x: s.pivot.x, y: s.pivot.y, scale: s.scale.x }) : null; } catch { return null; } };

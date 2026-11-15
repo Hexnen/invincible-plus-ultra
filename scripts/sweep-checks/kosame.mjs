@@ -8,6 +8,7 @@ import "../tokenreact/impact-node-prime.mjs";      // the vendored engine's impa
 //   F  the frame maths: frameScreen / frameWorld are the stage's own transform (screen = position + (p - pivot) * scale) and its inverse.
 //   V  two seats, each in its own process: one at home, one with the camera away (another place, another zoom) and `home` told: the same
 //      word, seed, size and place once the camera is home again. The camera away and NO home told: the size or place differs (the check sees).
+//      A seat whose OWN view is elsewhere (the director's follow moved it; the token well inside the view): the same (centredFrame).
 //   E  a fight event's instant: anchored on the fight's state write (its server stamp, heard on every seat just before the event), not on
 //      each seat's arrival. eventAnchor's cases, and two seats in their own processes, the player's delivery 150 ms late: the same instant.
 // V and E fail on tactics-integrated-152 (V: size/place differ; E: the instants ~150 ms apart).
@@ -31,6 +32,9 @@ if (!CHILD) {
   ck("F frameScreen is the stage's transform (position + (p - pivot) * scale)", ok);
   ck("F frameWorld is its inverse", rt);
   ck("F frameScreen centres the frame's pivot on the stage's position", (() => { const q = P.frameScreen({ x: fr.x, y: fr.y }, fr, c); return q.x === c.x && q.y === c.y; })());
+  ck("F centredFrame: tokens well inside the view -> centred on them at the view's zoom", JSON.stringify(P.centredFrame(fr, { x: 1950, y: 1500 }, c, 1600, 900)) === JSON.stringify({ x: 1950, y: 1500, scale: 0.6 }));
+  ck("F centredFrame: tokens near the view's edge -> the view itself", JSON.stringify(P.centredFrame(fr, { x: fr.x + 900, y: fr.y }, c, 1600, 900)) === JSON.stringify(fr));
+  ck("F centredFrame: no view -> null", P.centredFrame(null, { x: 1, y: 1 }, c, 1600, 900) === null);
   ck("F cleanFrame keeps a sane frame", JSON.stringify(P.cleanFrame({ x: 1, y: 2, scale: 0.5, extra: 1 })) === JSON.stringify({ x: 1, y: 2, scale: 0.5 }));
   ck("F cleanFrame drops no frame / a broken one / zero scale", [null, undefined, 7, {}, { x: 1, y: 2 }, { x: "a", y: 2, scale: 1 }, { x: 1, y: 2, scale: 0 }, { x: 1, y: 2, scale: -1 }].every((v) => P.cleanFrame(v) === null));
   /* the event's anchor */
@@ -117,13 +121,22 @@ async function seat(role, scen, W) {
   if (scen === "view") {
     /* the user's own view: the struck token in the middle at 0.6. GM: at home. Player: the camera framed elsewhere, closer (0.45 / 0.8) */
     const home = { x: 3150, y: 990, scale: 0.6 };
+    /* the roll splash's map moment while the moment is laid out: its SCENE block (live, fight 1 of take a1: most of the user's view),
+       projected on each seat's live view as the splash does (stage.mjs blocks: toClient). It is gone by the time the places are compared
+       (a block still standing pushes the drawn word on each seat by where it is on that screen) */
+    let splash = true;
+    const wb = { l: home.x + (96 - VW / 2) / home.scale, t: home.y + (54 - VH / 2) / home.scale, r: home.x + (1067 - VW / 2) / home.scale, b: home.y + (732 - VH / 2) / home.scale };
+    Hooks.on("invincible-plus-ultra.tokenReact", (q) => { if (splash && q?.phase === "place" && Array.isArray(q.blocks)) { const a = st.toGlobal({ x: wb.l, y: wb.t }), c = st.toGlobal({ x: wb.r, y: wb.b }); q.blocks.push({ l: a.x, t: a.y, r: c.x, b: c.y }); } });
+    setTimeout(() => { splash = false; }, W - Date.now() + 1100);
     if (role === "gm") look(home.x, home.y, home.scale);
+    else if (role === "shifted") look(home.x + 72, home.y + 323, home.scale);      // another own view, the same zoom (live: the GM's follow)
     else { look(2700, 1300, role === "away-out" ? 0.45 : 0.8); cam.home = role === "nohome" ? null : { ...home }; }
     await at(W);
     hit(W); ev();
     await sleep(1400);
     /* the camera comes home: the word follows the live view; now both seats look at the same place */
-    look(home.x, home.y, home.scale); cam.home = null;
+    if (role !== "shifted") look(home.x, home.y, home.scale);
+    cam.home = null;
     await sleep(60);
     const w = plays.filter((p) => !isNum(p.text));
     return { words: w.map((p) => { const a = p.o.at?.(); return { text: p.text, seed: p.o.seed, scale: p.o.scale, at: a ? [a.x, a.y] : null }; }) };
@@ -158,13 +171,14 @@ if (CHILD) {
   });
   /* V: the seats run at the same time (the same wall clock); W leaves the processes time to load */
   const W = Date.now() + 1500;
-  const [gm, away, out, noh] = await Promise.all([one("gm", "view", W), one("away", "view", W), one("away-out", "view", W), one("nohome", "view", W)]);
+  const [gm, away, out, noh, sh] = await Promise.all([one("gm", "view", W), one("away", "view", W), one("away-out", "view", W), one("nohome", "view", W), one("shifted", "view", W)]);
   const same = (a, b) => a.words.length === 1 && b.words.length === 1 && a.words[0].text === b.words[0].text && a.words[0].seed === b.words[0].seed
     && Math.abs(a.words[0].scale / b.words[0].scale - 1) < 0.005 && a.words[0].at && b.words[0].at && Math.hypot(a.words[0].at[0] - b.words[0].at[0], a.words[0].at[1] - b.words[0].at[1]) < 1;
   const fmt = (x) => x.words.map((w) => `${w.text} k${w.scale?.toFixed?.(3)} @${w.at?.map(Math.round)}`).join(" + ") || x.err || "none";
   ck(`V a word on each seat (GM ${fmt(gm)} / camera away ${fmt(away)})`, gm.words.length === 1 && away.words.length === 1);
   ck(`V the camera away (closer) and home told: the same word, seed, size and place as the seat at home (${fmt(gm)} / ${fmt(away)})`, same(gm, away));
   ck(`V the camera away (further out) and home told: the same (${fmt(gm)} / ${fmt(out)})`, same(gm, out));
+  ck(`V the user's own view elsewhere (the token ~190 px off the middle, the same zoom): the same word, seed, size and place (${fmt(gm)} / ${fmt(sh)})`, same(gm, sh));
   ck(`V the camera away and NO home told: the size or the place differs (the check sees the case: ${fmt(gm)} / ${fmt(noh)})`, noh.words.length === 1 && !same(gm, noh));
   /* E: the event's instant */
   const W2 = Date.now() + 1500;
