@@ -396,7 +396,7 @@ export function zoneBadges(zoom = 1) {
   return { shared };
 }
 /* the shared frame of a map moment (scene px) */
-export function sharedFrame(hero, targets = []) {
+export function sharedFrame(hero, targets = [], star = null) {
   const C = globalThis.canvas, gs = C?.dimensions?.size ?? C?.grid?.size ?? 100;
   const zoom = Math.max(0.02, Number(C?.stage?.scale?.x) || 1);   // this view's zoom: for inspection and the seat's readability test only
   const token = docBox(hero, gs);
@@ -422,6 +422,9 @@ export function sharedFrame(hero, targets = []) {
   for (const n of C?.notes?.placeables ?? []) { try { if (docOf(n)) avoid.push(noteBox(n, gs)); } catch (e) { /* a pin without a place */ } }
   for (const q of zoneBadges(SP.REF_VH / (GRID_VH * gs)).shared) avoid.push({ ...q, w: BADGE_W });   // SPLASHCLEAR: the zone badges every seat sees (at the board's scale)
   const vh = GRID_VH * gs;
+  /* CAPSTAR: the star's cut-in on the board, as a seat at the board's reference scale draws it (its view's short side = the board height vh):
+     one scene box on every seat (the block is the board's; a seat at another zoom sees the cut-in at its own share of its view) */
+  if (star) { try { const b = docBox(star.tok, gs), s = starAvoid(star, b, Math.max(b.r - b.l, b.b - b.t), vh); if (s) avoid.push(s); } catch (e) { /* no star */ } }
   /* CRITPEAK: nothing of this seat's view sizes the block (SAMEPIC: one scene place and one scene size on every seat, whatever its zoom):
      the ranks' sizes are shares of the board height (vh). A seat zoomed so far out that the board word is a speck plays the moment on its
      screen layer instead (playLetters, LP.MAP_READ) */
@@ -493,8 +496,32 @@ export function boardInView(tok) {
   return ix * iy >= 0.5 * Math.max(1, (q.r - q.l) * (q.b - q.t));
 }
 export function standardSafe(p = null) { return SP.standardRect(window.innerWidth, window.innerHeight, p); }   // p: the client point the moment describes
-function sharedScreenAvoid(hero, full, targets = []) {
+/* CAPSTAR: the star of the moment's impact cut-in (LP.starBox), from SHARED data only: the roll's first target with a token on the scene that
+   the GM has not hidden, else the roller the blow comes from (the engine's starOf: target, else `from`), and the TABLE's strength of the impact
+   (IP.impactFor at full Effects, the engine's stepOf). Null: no impact (a miss, an engine without the cut-in), no star token. -> { tok, step, max } */
+export function starOf(ev, ctl) {
+  try {
+    const I = LE?.impact, max = Number(I?.limits?.cutMax);
+    if (!(max > 0) || !ev || ev.fail) return null;
+    const q = IP.impactFor(ev, { fx: 1 });
+    if (!q) return null;
+    const C = globalThis.canvas, get = (id) => C?.tokens?.get?.(id);
+    let tok = (ctl.targets ?? []).map(get).find((t) => t && !t.destroyed && t.document && t.document.hidden !== true) ?? null;
+    if (!tok) {
+      const f = ctl.from && typeof ctl.from === 'object' ? ctl.from : (ctl.rollerId ? get(ctl.rollerId) : null);
+      tok = f && !f.destroyed && f.document && f.document.hidden !== true ? f : null;
+    }
+    if (!tok) return null;
+    const step = typeof I.stepOf === 'function' ? I.stepOf(q.magnitude) : (q.magnitude >= 0.85 ? 3 : 1);
+    return { tok, step, max };
+  } catch (e) { return null; }
+}
+/* the star's cut-in box: c = its centre, size = its drawn size, u = the view's short side (one unit); weighed STAR_W, marked star */
+const starAvoid = (st, c, size, u) => { const b = st && c ? LP.starBox(c, size, u, st.step, st.max) : null; return b ? { ...b, w: LP.STAR_W, star: true } : null; };
+function sharedScreenAvoid(hero, full, targets = [], star = null) {
   const out = [];
+  /* CAPSTAR: on this seat's screen the engine sizes the cut-in by THIS window's short side */
+  if (star) { const q = sharedTokenBox(star.tok); const s = q && starAvoid(star, q, Math.max(q.r - q.l, q.b - q.t), Math.min(window.innerWidth, window.innerHeight)); if (s) out.push(s); }
   const C = globalThis.canvas, gs = C?.dimensions?.size ?? C?.grid?.size ?? 100;
   for (const t of C?.tokens?.placeables ?? []) {
     /* CRITPEAK (ADVX 3: the critical's caption lines across the target's face): the roll's target weighs as much as the hero, every other
@@ -514,7 +541,7 @@ function sharedScreenAvoid(hero, full, targets = []) {
    hero: the token the moment describes; full: the critical (the hero is avoided, the block stands by him). -> { frame, hero (table px) } */
 /* SPLASHSAME: the zooms (of the reference board scale) the table plans its block round the documents at */
 export const TABLE_ZOOMS = Object.freeze([1, 0.75, 0.5]);
-export function tableFrame(hero, full, targets = [], scale = 1) {
+export function tableFrame(hero, full, targets = [], scale = 1, star = null) {
   const C = globalThis.canvas, gs = C?.dimensions?.size ?? C?.grid?.size ?? 100;
   const z = SP.REF_VH / (GRID_VH * gs), hb = docBox(hero, gs), cx = SP.REF_VW / 2, cy = SP.REF_VH / 2;
   const tp = (b) => ({ ...(b.x != null ? { x: (b.x - hb.x) * z + cx, y: (b.y - hb.y) * z + cy } : {}), l: (b.l - hb.x) * z + cx, t: (b.t - hb.y) * z + cy, r: (b.r - hb.x) * z + cx, b: (b.b - hb.y) * z + cy });
@@ -540,6 +567,19 @@ export function tableFrame(hero, full, targets = [], scale = 1) {
     try { const d = docOf(t); if (!d || d.hidden || sameTok(t, hero)) continue; both(tp(grow(docBox(t, gs), 0.06 * gs)), targets.includes(t.id) ? LP.TARGET_W : LP.OTHER_W); } catch (e) { /* one token */ }
   }
   for (const n of C?.notes?.placeables ?? []) { try { if (docOf(n)) both(tp(noteBox(n, gs))); } catch (e) { /* one pin */ } }
+  /* CAPSTAR: the star's cut-in, at each zoom the table plans round: its centre where the seat at that zoom has it (moved in toward the roller as
+     atZoom moves a document), its size the engine's share of the reference window's short side (the cut-in is a share of the VIEW, not of the
+     board: at a far zoom it is as big on the screen as at a close one) */
+  if (star) {
+    try {
+      const sb = tp(docBox(star.tok, gs)), u = Math.min(SP.REF_VW, SP.REF_VH);
+      for (const r of TABLE_ZOOMS) {
+        const c = { x: cx + ((sb.l + sb.r) / 2 - cx) * r, y: cy + ((sb.t + sb.b) / 2 - cy) * r };
+        const s = starAvoid(star, c, Math.max(sb.r - sb.l, sb.b - sb.t) * r, u);
+        if (s) avoid.push({ ...s, ...(r === 1 ? { z1: true } : {}) });
+      }
+    } catch (e) { /* no star */ }
+  }
   /* SPLASHCLEAR: the zone badges are NOT the table's obstacles (each seat keeps off them, sharedScreenAvoid): live (lane 5, the Warehouse's
      corner badges, the critical at zoom 0.35) the table's least-covering block took a bystander (46 % of his box) to spare two badges,
      and a seat near the table's zoom keeps that place (SPLASHSAME-7) */
@@ -557,7 +597,7 @@ function seatOf(ctl, T, lay) {
   const loc = localScreen(lay);
   /* the roller himself is kept clear by seatPlace (his box and the table's gap, weighed as the token); the critical hero's art margin (0.15 of
      his width) is the TABLE's room when it composes the block, not a seat's: before, the screen block stood in it on the GM's seat too */
-  return { hero: T, safe: loc.safe, wide: seatWide(lay), avoid: [...sharedScreenAvoid(ctl.hero, false, ctl.targets ?? []), ...loc.avoid], own: loc.own ?? [], gap: ctl.full ? 6 : Math.max(8, Math.round(0.08 * (T.r - T.l))) };
+  return { hero: T, safe: loc.safe, wide: seatWide(lay), avoid: [...sharedScreenAvoid(ctl.hero, false, ctl.targets ?? [], ctl.star), ...loc.avoid], own: loc.own ?? [], gap: ctl.full ? 6 : Math.max(8, Math.round(0.08 * (T.r - T.l))) };
 }
 /* SPLASHCLEAR: all of this seat's free view (client px): its window inside the bars it really has (the tool column, the hotbar and players list,
    the open sidebar; not the reserve band of the standard view), for a block that finds no clean place in the band (LP.seatPlace, last moves) */
@@ -678,7 +718,7 @@ function compose(ctl, items, extra = {}) {
     items = items.map((it) => (it.wMin ? { ...it, wMin: 0 } : it));   // a copy: a block that falls back to the screen keeps its width fill
     /* the map: scene units, nothing of this seat but its view (the engine's Scale is divided out again in letterOne: the drawn size is S) */
     const g = extra.gauge && ctl.gaugeK ? { w: extra.gauge.w * ctl.gaugeK, h: extra.gauge.h * ctl.gaugeK } : extra.gauge;
-    const sf = sharedFrame(ctl.hero, ctl.targets ?? []);
+    const sf = sharedFrame(ctl.hero, ctl.targets ?? [], ctl.star);
     frame = { ...sf, scale: 1, ...extra, ...(g ? { gauge: g } : {}) };
   } else {
     /* SAMEPIC: the shared frame (see sharedScreenAvoid): reference height, the table's Scale only (the engine's own Scale is divided out
@@ -689,9 +729,9 @@ function compose(ctl, items, extra = {}) {
        off this seat's screen) the moment is this seat's own, laid out round its view as before */
     const anchor = ctl.token ?? (ctl.full ? ctl.hero : null), A = anchor ? (T ?? sharedTokenBox(anchor)) : null;
     if (A && A.x >= 0 && A.y >= 0 && A.x <= window.innerWidth && A.y <= window.innerHeight && globalThis.canvas?.ready) {
-      const tf = tableFrame(anchor, !ctl.token, ctl.targets ?? [], ctl.userScale || 1);
+      const tf = tableFrame(anchor, !ctl.token, ctl.targets ?? [], ctl.userScale || 1, ctl.star);
       frame = { ...tf.frame, ...extra, table: { hero: tf.hero, T: A } };
-    } else frame = { vh: SP.REF_VH, ref: SP.REF_VH, px: 1, scale: ctl.userScale || 1, safe: std, token: T, avoid: sharedScreenAvoid(ctl.hero, !ctl.token, ctl.targets ?? []),
+    } else frame = { vh: SP.REF_VH, ref: SP.REF_VH, px: 1, scale: ctl.userScale || 1, safe: std, token: T, avoid: sharedScreenAvoid(ctl.hero, !ctl.token, ctl.targets ?? [], ctl.star),
       gap: T ? Math.max(8, Math.round(0.08 * (T.r - T.l))) : 6, focus: { x: (std.l + std.r) / 2, y: vh * (ctl.full ? 0.47 : 0.42) }, ...extra };
   }
   let out = composeIn(ctl, items, frame), same = 'none', why = null, fit = null;  if (ctl.shared) {
@@ -1047,6 +1087,8 @@ function layoutMoment(ev, o, ctl, full) {
   /* DIRECT: an attack that landed has a way on the board, from the roller to its target (documents: the same on every seat): the result
      word grows and leans that way (laid out with it, so the block is the same on every seat) and travels it as it strikes (letterOne) */
   ctl.dir = word && !ev.fail ? splashDir(o.rollerId ?? o.from, ctl.targets) : null;
+  /* CAPSTAR: the lettering frames the impact's star (its cut-in reach is an obstacle of the table's block and of every seat's place) */
+  ctl.star = word ? starOf(ev, ctl) : null;
   if (ctl.dir) { word.dir = ctl.dir; word.dirFrom = Dir.fromOf(ctl.dir); word.rot0 = Dir.tiltOf(ctl.dir, word.rot0 ?? 0); if (!S.isReduced()) word.rotation = word.rot0; }
   const t0 = word?.delay ?? 0;
   /* the stress row and its gauge belong to the block (measured once, shown at its time) */
@@ -1585,7 +1627,8 @@ export function prepare(ev, o, slice = false, round = 0) {
     const t = performance.now();
     const mo = momentOpts(ev, o), opts = mo.full ? { ...mo.o, full: true } : mo.o;
     const ctl = { ...stageFields(opts, mo.shared), dry: true, seed: o.seed, full: mo.full, targets: IP.cleanTargets(mo.o.targets),
-      rollerId: typeof mo.o.rollerId === 'string' ? mo.o.rollerId : null };      // CALLER5: the same map cut as the play (rollerShared)
+      rollerId: typeof mo.o.rollerId === 'string' ? mo.o.rollerId : null,      // CALLER5: the same map cut as the play (rollerShared)
+      from: mo.o.from ?? null };      // CAPSTAR: the star of a cut without a target (starOf), as the play has it
     const { lay } = layoutMoment(ev, mo.o, ctl, mo.full);
     /* the struck word's contact, as letterOne will ask it (its options from the same letterOpts; kept by contactOf) */
     ctl.impactPlan = LE?.impact?.play ? IP.impactFor(ev, { fx: mo.o.fx }) : null;
