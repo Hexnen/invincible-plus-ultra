@@ -530,7 +530,7 @@ export function group({ cap, aspect, tall = null, nums = [], numCap, side = 1, u
   const ww = cap * Math.max(0.6, aspect) * (tall ? 1.04 : 1.12) + cap * (pl + pr), wh = cap * (tall ? tall * 1.04 : 1.3) + cap * (pu + pb);      // tall/aspect measured from the drawn word: a small margin only
   /* FXI-TOKEN (ADVI 5: "-15" ran under the challenge cards, "-3" onto a neighbour): Bungee digits with their cut edge and extrusion draw about
      0.8 of a cap wide, not 0.68: the group box (and so the side chosen for it) holds the whole number */
-  const nw = nums.map((t) => numCap * (0.25 + 0.8 * letters(t) + (/^[+-]/.test(t) ? 0.55 : 0)));
+  const nw = nums.map((t) => numCap * (0.25 + 0.8 * letters(t) + (/^[+-]/.test(t) ? 0.55 : 0) + 0.7 * (String(t).match(/×/g)?.length ?? 0)));      // CROWDKO: a crowd's tag "-2×9"
   const colW = nw.length ? Math.max(...nw) : 0, nh = numCap * 1.25;
   const gap = colW ? cap * 0.28 : 0;    // seen live: "BLAMM!-3" touched and read as one word; at 0.1 a cap the left-hand number still
                                         // touched (the drawn word overruns its hold box on the left, lane 8 still6); 0.28 clears both sides
@@ -539,7 +539,9 @@ export function group({ cap, aspect, tall = null, nums = [], numCap, side = 1, u
   const slot = { dx: -side * (colW ? (colW * 1.02 + gap) / 2 : 0), dy: top + wh / 2 };
   const wordC = { dx: slot.dx + cap * (pl - pr) / 2, dy: slot.dy + cap * (pu - pb) / 2 };
   const numsC = nw.map((x, i) => ({ dx: slot.dx + side * (ww / 2 + gap + colW * 0.51), dy: top + wh * 0.62 + nh * i }));
-  return { w, h, word: wordC, nums: numsC };
+  /* CROWDKO: the standing ink (the group without the motion room above and below): what a clean place keeps off tokens, pins and words */
+  const stand = { dx: 0, dy: cap * (up - down) / 2, w, h: Math.max(1, h - cap * (up + down)) };
+  return { w, h, word: wordC, nums: numsC, stand };
 }
 
 /* CALLERS2 (engine 1.9.18, L.measure standBox): the hold box the engine measures (plan._holdBox) is the word at rest. Its ink reaches past it
@@ -694,8 +696,8 @@ export function seriesStep(pub, step = 0, cum = null) {
    over the people it hit, and each struck figure its own small tag. So:
    - tokens hit in one moment that stand close together ON SCREEN (their centres within CLUSTER.linkTok token sizes or CLUSTER.linkBase
      word caps, whichever is wider: a word placed for one of them would land on the other) form a cluster (single-link), per family:
-     Health blows (hit, heavy) with Health blows, stress with stress. A knock-down, stress-out, a heal, getting up stay their own story,
-     each with its own word. A token the GM hid never joins (its word stays on the GM's seat alone, as before).
+     Health blows (hit, heavy) with Health blows, stress with stress, knock-downs with knock-downs, Resolve run out with its like (CROWDKO).
+     A heal, getting up stay their own story, each with its own word. A token the GM hid never joins (its word stays on the GM's seat alone, as before).
    - a cluster of CLUSTER.min or more gets ONE word: the heaviest member's kind, the biggest member's amount plus a little per extra member
      (CLUSTER.amtK), a little bigger with the count (CLUSTER.countK), never under CLUSTER.floorVh of the reference view (far out the crowd
      reads as one big event instead of a heap of specks); placed beside the whole cluster; seeded by its members, so every seat letters it.
@@ -705,7 +707,10 @@ export function seriesStep(pub, step = 0, cum = null) {
      size (sameSize). Over CROWD.shown units the lightest show their numbers only.
    Same on every seat with the same view: positions and sizes come from the shared layout (screen px of the reference view at this zoom). */
 export const CLUSTER = { min: 2, linkTok: 1.5, linkBase: 4.5, amtK: 0.08, countK: 0.1, countMax: 4, floorVh: 0.045 };
-export const familyOf = (kind) => (kind === "hit" || kind === "heavy" ? "health" : kind === "stress" ? "resolve" : null);
+/* CROWDKO (ADVS2 D3: eight tokens knocked down together lettered eight knock-down words that lay on each other and on the crowd): knock-downs
+   of one moment that stand close together are ONE crowd too (provisional CROWDKO-1): one big knock-down word over the fallen, each fallen token
+   lies and keeps its number; the same for Resolve run out. A knock-down never shares a word with plain blows (another story) */
+export const familyOf = (kind) => (kind === "hit" || kind === "heavy" ? "health" : kind === "stress" ? "resolve" : kind === "down" ? "down" : kind === "out" ? "out" : null);
 /** list = [{ key, kind, sev, amt, rect (screen), pub (no GM's hidden token) }], o = { vh } -> units, heaviest first (ties by key):
     [{ keys, lead, kind, amt, sev, cluster }] */
 export function crowdUnits(list, { vh = REF_VH } = {}) {

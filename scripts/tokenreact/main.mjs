@@ -16,6 +16,7 @@
        tokens always did; in a tactical fight these reactions take the numbers' place (owner.mjs).
    Never over a token this user does not see (hidden, out of sight, another scene). Every hook body is guarded: nothing here may throw. */
 import * as P from "./pure.mjs";
+import * as Lay from "./layout.mjs";      // CROWDKO: clean places for a moment's lettering
 import * as Owner from "./owner.mjs";
 import { t } from "./lang.mjs";
 import { letters } from "../letters/index.mjs";
@@ -452,7 +453,7 @@ async function land(ids, ready) {
       const cl = { key: `crowd:${seed}`, cluster: true, members, tok: lead.tok, lk, seed, lang: lead.lang, sev: u.sev, mode: lk.word ? "full" : "none", scale: u.scale * P.crowdK(members.length),
         delay: u.delay, unit: u, room: [], hasNum: false, pub: null, ids: members.map((m) => m.tok.id) };
       if (cl.mode === "full") staged.push(cl);
-      members.forEach((m, i) => { m.mode = m.lk.numbers?.length || m.room?.length ? "number" : "silent"; m.inCluster = cl; m.scale = u.scale; m.delay = u.delay; m.numDelay = P.NUM_AFTER + i * 50; staged.push(m); });
+      members.forEach((m, i) => { m.mode = m.mode0 = m.lk.numbers?.length || m.room?.length ? "number" : "silent"; m.inCluster = cl; m.scale = u.scale; m.delay = u.delay; m.numDelay = P.NUM_AFTER + i * 50; staged.push(m); });
     }
     /* WIRE1: ONE impact frame per moment, on its worst blow as the table knows it (a crowd is one event: the engine would refuse the rest
        as "busy" anyway); its strength grows with the blow's step in its series, capped by the series' sum (CROWD); in a cluster it lands on
@@ -499,8 +500,38 @@ async function land(ids, ready) {
     const keyOf = (it) => it.key ?? it.tok.id;
     /* CROWD: placed twice when needed: the first pass fits each unit on its own; equal blows then take the smallest of their fits (pure
        sameSize: ADVX 8, a three-target card's equal blows at 1x, 1x and 0.33x) and are placed again at that one size */
-    const place = (kOf = null) => {
-      const placed = [], fits = [];
+    /* CROWDKO (ADVS2 D3, D4): what the standing ink of every word and number must keep clean of. Shared (every seat has it, so every seat
+       decides alike): the tokens nobody hides, the pins every player may open, the map's zone badges, the splash's block and the corner
+       panels' zones. This seat's own: its floating panels; on the GM's seat, for lettering only the GM's seat shows (a hidden token's word,
+       an enemy's number), also the hidden tokens and the pins only the GM may open (nobody else sees that lettering, so moving it there
+       changes no other seat's picture) */
+    const staff = !!game.user?.isGM, badges = view.badges();
+    const fixed = view.ok() ? [...tokenRects(new Set()).map((r) => ({ ...r, kind: "tok" })), ...pins.shared.map((r) => ({ ...r, kind: "pin" })), ...badges.shared.map((r) => ({ ...r, kind: "pin" })),
+      ...view.blocks().map((r) => ({ ...r, kind: "panel" })), ...view.zones().map((r) => ({ ...r, kind: "panel" }))] : [];
+    const gmOnly = staff && view.ok() ? [...hiddenRects(), ...pins.local.map((r) => ({ ...r, kind: "pin" })), ...badges.local.map((r) => ({ ...r, kind: "pin" }))] : [];
+    const ownPanels = view.ok() ? view.ownPanels().map((r) => ({ ...r, kind: "panel" })) : [];
+    /* the crowd members whose numbers fold into their crowd's tag (decided on shared data: the same on every seat) */
+    let fold = new Set(), wantFold = new Set();
+    const applyFold = () => {
+      for (const cl of staged.filter((x) => x.cluster)) {
+        const inF = cl.members.filter((m) => fold.has(m.tok.id));
+        for (const m of cl.members) m.mode = fold.has(m.tok.id) ? "silent" : m.mode0 ?? m.mode;
+        const room = Lay.foldTags(inF.flatMap((m) => (m.room ?? []).map((text, j) => ({ text, stat: m.roomStats?.[j] ?? "health" }))));
+        const mineT = Lay.foldTags(inF.flatMap((m) => m.lk.numbers ?? []));
+        cl.room = room.map((t) => t.text); cl.roomStats = room.map((t) => t.stat); cl.roomOf = room.map((t) => `${t.stat}|${t.of}`);
+        /* a seat shows a tag only when it may show every number in it (a player who reads the heroes only would count "-2×3" where the crowd
+           took "-2×9"): the same text as every other seat that shows it, or nothing */
+        cl.lk.numbers = mineT.filter((t) => room.some((r) => r.of === t.of && r.stat === t.stat && r.n === t.n)).map((t) => {
+          const nl = P.numberLook(t.stat, t.of[0] === "+" ? "+" : "-", Number(t.of.slice(1)) || 0, cl.lk.amt);
+          return { ...nl, text: t.text, of: `${t.stat}|${t.of}` };
+        });
+      }
+    };
+    /* CROWD: placed twice when needed: the first pass fits each unit on its own; equal blows then take the smallest of their fits (pure
+       sameSize: ADVX 8, a three-target card's equal blows at 1x, 1x and 0.33x) and are placed again at that one size */
+    const place = (kOf = null, allowFold = true) => {
+      const placed = [], fits = [], placedS = [], placedL = [];
+      wantFold = new Set();
       for (const it of staged) {
         if (it.mode === "none") continue;
         it.plan = null;
@@ -517,23 +548,38 @@ async function land(ids, ready) {
         it.plan.keep = it.lk.step > 0 && was && P.FIT_SLOTS.includes(was) ? was : null;
         const kf = kOf?.get(keyOf(it));
         const o = { keep: it.plan.keep, ...(Number.isFinite(kf) ? { ks: [kf] } : {}) };
-        const fit = view.ok() ? P.fitSame(it.plan.tokRect, it.plan.box, view.std(it.plan.tokRect), view.safe(), it.plan.blocked, mine, o) : { slot: "above", k: 1, same: true };
+        let fit = view.ok() ? P.fitSame(it.plan.tokRect, it.plan.box, view.std(it.plan.tokRect), view.safe(), it.plan.blocked, mine, o) : { slot: "above", k: 1, same: true };
+        /* CROWDKO: the side search's choice stays when it stands clean; else a clean place is searched (layout.mjs) */
+        const dec = view.ok() ? cleanPlace(it, fit, o, kf, { fixed, gmOnly, ownPanels, placedS, placedL, allowFold }) : null;
+        if (dec?.fold && allowFold) { wantFold.add(it.tok.id); continue; }
+        if (dec?.slot) { fit = { ...fit, slot: dec.slot, k: dec.k, kShared: dec.kS, same: dec.same, moved: dec.moved }; it.plan.nudge = dec.nudge; it.plan.dirty = !dec.clean; it.plan.ck = true; it.plan.ownView = !!dec.ownView; }
         it.plan.same = fit.same; it.plan.moved = fit.moved ?? null;
-        if (Array.isArray(globalThis.__samepicFit)) globalThis.__samepicFit.push({ pass: kOf ? "plan2" : "plan", name: it.cluster ? keyOf(it) : it.tok.name, tok: it.plan.tokRect, box: it.plan.box, std: view.std(it.plan.tokRect), real: view.safe(), shared: it.plan.blocked, mine, keep: it.plan.keep, fit });
+        if (Array.isArray(globalThis.__samepicFit)) globalThis.__samepicFit.push({ pass: kOf ? "plan2" : "plan", name: it.cluster ? keyOf(it) : it.tok.name, tok: it.plan.tokRect, box: it.plan.box, std: view.std(it.plan.tokRect), real: view.safe(), shared: it.plan.blocked, mine, keep: it.plan.keep, fit, ck: dec ?? null });
         if (fit.k < 0.999) shrink(it.plan, fit.k);
         /* SAMEPIC (live, take W: a 1366 x 768 seat's local guard shrank a word to 0.84 on the letter-count estimate, 1059 px wide where the drawn
            word was 618, and the shrink stayed): what this seat's guard took off is given back once the drawn box is known (measure) */
         it.plan.kLoc = fit.same ? 1 : Math.min(1, fit.k / (fit.kShared || fit.k));
         it.plan.slot = fit.slot;
         const c = P.slotPoint(it.plan.slot, it.plan.tokRect, it.plan.box);
-        placed.push({ x: c.x - it.plan.box.w / 2, y: c.y - it.plan.box.h / 2, w: it.plan.box.w, h: it.plan.box.h, k: P.SLOT_K.word });
-        if (it.mode === "full" && it.plan.wordOpts) fits.push({ key: keyOf(it), kind: it.lk.kind, amt: it.lk.amt, k: fit.kShared ?? fit.k, cluster: !!it.cluster, n: it.members?.length ?? 1 });
+        if (dec?.slot) placed.push({ ...dec.rectS, k: P.SLOT_K.word });
+        else placed.push({ x: c.x - it.plan.box.w / 2, y: c.y - it.plan.box.h / 2, w: it.plan.box.w, h: it.plan.box.h, k: P.SLOT_K.word });
+        if (it.mode === "full" && it.plan.wordOpts) fits.push({ key: keyOf(it), kind: it.lk.kind, amt: it.lk.amt, k: dec?.slot ? dec.kS : fit.kShared ?? fit.k, cluster: !!it.cluster, n: it.members?.length ?? 1 });
       }
       return fits;
     };
-    const fits = place();
+    /* CROWDKO: a crowd member's number with no clean place by its token folds into its crowd's tag; the crowd's word then holds the tag, so the
+       moment is laid out again (a few rounds at most: each round only adds members) */
+    let fits = [];
+    for (let round = 0; round < 4; round++) {
+      applyFold();
+      fits = place();
+      const add = [...wantFold].filter((id) => !fold.has(id));
+      if (!add.length) break;
+      fold = new Set([...fold, ...add]);
+    }
+    if ([...wantFold].some((id) => !fold.has(id))) { fold = new Set([...fold, ...wantFold]); applyFold(); fits = place(null, false); }
     const same = P.sameSize(fits);
-    if (fits.some((f) => same.get(f.key) < f.k - 0.005)) place(same);
+    if (fits.some((f) => same.get(f.key) < f.k - 0.005)) place(same, false);
     const shown = staged.filter((it) => it.plan && it.mode !== "none");
     /* the roll splash (and anything else) may make room for the blow: its instant and its tokens (scratchpad letr REQUESTS FXI-TOKEN) */
     if (shown.length) try { Hooks.callAll(REACT_HOOK, { phase: "hit", at: T0, ids: [...new Set(shown.flatMap((it) => it.ids ?? [it.tok.id]))] }); } catch (err) { once(err); }
@@ -541,6 +587,69 @@ async function land(ids, ready) {
     for (const it of shown) if (!it.cluster) play(L, it);
     for (const it of shown) if (it.cluster) play(L, it);
   } catch (err) { once(err); unflight(ready); }
+}
+/* CROWDKO (ADVS2 D3, D4): the side search (pure fitSame) weighs covering against shrinking and always takes SOME side; its choice is now
+   judged where the group will really stand (layout.mjs restCentre: follow()'s pushes) against what it must keep clean of. Kept when clean
+   (no picture changes where nothing was covered); else a clean place is searched on shared data (the same on every seat); a crowd member's
+   number with none asks to fold into its crowd's tag ({ fold: true }); then this seat checks the shared place against its own view, its
+   panels and (lettering only the GM's seat shows) what only the GM sees, and searches again here only when it is not clean here.
+   -> null (keep the side search's choice) | { fold } | { slot, k, kS, nudge, same, moved, clean, rectS } */
+function cleanPlace(it, fit, o, kf, ctx) {
+  const plan = it.plan, g = plan?.g;
+  if (!g) return null;
+  const tr = plan.tokRect, std = view.std(tr), safe = view.safe(), cap = plan.cap || plan.numCap || 1;
+  const own = it.cluster ? null : tr;
+  /* a crowd's word keeps off every member; a token's word or number off every token but its own (its own ring is `own`) */
+  const base = it.cluster ? ctx.fixed : ctx.fixed.filter((q) => !(q.kind === "tok" && q.id === it.tok.id));
+  /* lettering only the GM's seat shows: a hidden token's reaction, a crowd member's number no player may read */
+  const priv = ctx.gmOnly.length > 0 && !it.cluster && (it.tok.document?.hidden === true || (it.mode === "number" && !it.hasNum));
+  const obsS = [...base, ...ctx.placedS];
+  const obsL = [...base, ...ctx.placedL, ...ctx.ownPanels, ...(priv ? ctx.gmOnly.filter((q) => q.id !== it.tok.id) : [])];
+  const panelsS = [...view.blocks(), ...view.zones()], panelsL = view.panelsCached();
+  const eb = P.edgeBox(g, plan.cap || 0, plan.reach) ?? { w: g.w, h: g.h };
+  const r = plan.reach, reach = r && plan.cap ? { dx: (g.word?.dx ?? 0) + plan.cap * (r.r - r.l) / 2, dy: (g.word?.dy ?? 0) + plan.cap * (r.d - r.u) / 2, w: plan.cap * (r.l + r.r), h: plan.cap * (r.u + r.d) } : null;
+  const sweep = reach ? base.filter((q) => q.kind === "tok") : null;
+  const minK = Math.min(1, Lay.CLEAN.minCap / cap);
+  const ks = Number.isFinite(kf) ? [kf, ...Lay.CLEAN.ks.filter((k) => k < kf - 1e-6)] : Lay.CLEAN.ks;
+  const at = (slot, k, sf, panels, obs, c0 = null, sv = std) => {
+    const box = { w: g.w * k, h: g.h * k }, e = { w: eb.w * k, h: eb.h * k }, p0 = c0 ?? P.slotPoint(slot, tr, box);
+    const c = Lay.restCentre(p0, tr, box, e, sv, sf, panels), rr = Lay.standAt(c, g, k);
+    return { slot, k, c0: p0, c, r: rr, ...Lay.covers(rr, obs, own, sf) };
+  };
+  /* a crowd's word may stand by one of its members (layout crowdSpot); its place is then kept as an offset from the crowd's box slot */
+  const mem = it.cluster ? it.members.filter((m) => m.tok && !m.tok.destroyed).map((m) => view.tokRect(m.tok)) : [];
+  const spot = (sf, panels, obs, first, sv = std) => {
+    const a = { tok: tr, own, g, eb, reach, sweep, ks, minK, std: sv, safe: sf, panels, obs, tokPx: plan.tokPx, first };
+    const q = it.cluster ? Lay.crowdSpot(a, mem) : Lay.cleanSpot(a);
+    return { ...q, r: Lay.standAt(q.c, g, q.k) };
+  };
+  const groupAt = (c, k) => ({ x: c.x - g.w * k / 2, y: c.y - g.h * k / 2, w: g.w * k, h: g.h * k });
+  const nudgeOf = (q) => { const p = P.slotPoint(q.slot, tr, { w: g.w * q.k, h: g.h * q.k }); return Math.hypot(q.c0.x - p.x, q.c0.y - p.y) < 0.5 ? null : { x: q.c0.x - p.x, y: q.c0.y - p.y }; };
+  /* 1. shared: the side search's own shared choice (fitSame's first step), clean where it stands? */
+  const a0 = P.fitSlot(tr, plan.box, std, plan.blocked, { ...o, slide: true });
+  const s0 = at(a0.slot, a0.k, std, panelsS, obsS);
+  const kept = s0.clean;
+  const S = kept ? s0 : spot(std, panelsS, obsS, null);
+  if (!S.clean && ctx.allowFold && it.inCluster?.mode === "full" && it.mode === "number") return { fold: true };
+  ctx.placedS.push({ ...S.r, kind: "word" });
+  const rectS = groupAt(S.c, S.k);
+  /* 2. this seat: the place as follow() draws it here */
+  const l0 = kept ? at(fit.slot, fit.k, safe, panelsL, obsL) : at(S.slot, S.k, safe, panelsL, obsL, S.c0);
+  if (l0.clean) {
+    ctx.placedL.push({ ...l0.r, kind: "word" });
+    return kept ? null : { slot: S.slot, k: S.k, kS: S.k, nudge: nudgeOf(S), same: true, moved: null, clean: S.clean, rectS };
+  }
+  /* lettering only this seat shows need not stay inside the shared standard view (nobody else draws it): it may use this seat's whole view
+     (plan.ownView: follow() keeps it there) */
+  const q = spot(safe, panelsL, obsL, { slot: S.slot, k: S.k });
+  const qo = !q.clean && priv ? spot(safe, panelsL, obsL, null, safe) : null;
+  if (q.clean || qo?.clean) {
+    const w = q.clean ? q : qo;
+    ctx.placedL.push({ ...w.r, kind: "word" });
+    return { slot: w.slot, k: w.k, kS: S.k, nudge: nudgeOf(w), same: false, moved: "clean", clean: true, rectS, ownView: !q.clean };
+  }
+  ctx.placedL.push({ ...l0.r, kind: "word" });
+  return kept ? null : { slot: S.slot, k: S.k, kS: S.k, nudge: nudgeOf(S), same: true, moved: null, clean: S.clean, rectS };
 }
 /* the gathered changes of a moment leave the waiting list once lettered (or failed) */
 function unflight(ready) {
@@ -561,7 +670,8 @@ function shrink(plan, f, back = false) {
   plan.cap *= f; plan.numCap *= f;
   if (plan.gArgs) plan.gArgs = { ...plan.gArgs, cap: plan.gArgs.cap * f, numCap: plan.gArgs.numCap * f };
   plan.box = { w: plan.box.w * f, h: plan.box.h * f };
-  if (plan.g) plan.g = { w: plan.g.w * f, h: plan.g.h * f, word: { dx: plan.g.word.dx * f, dy: plan.g.word.dy * f }, nums: plan.g.nums.map((q) => ({ dx: q.dx * f, dy: q.dy * f })) };
+  if (plan.g) plan.g = { w: plan.g.w * f, h: plan.g.h * f, word: { dx: plan.g.word.dx * f, dy: plan.g.word.dy * f }, nums: plan.g.nums.map((q) => ({ dx: q.dx * f, dy: q.dy * f })),
+    ...(plan.g.stand ? { stand: { dx: plan.g.stand.dx * f, dy: plan.g.stand.dy * f, w: plan.g.stand.w * f, h: plan.g.stand.h * f } } : {}) };      // CROWDKO: the standing ink too
 }
 /* one series of blows per token (pure STREAK): a loss within STREAK.ms of the last one is the next step; anything else starts over */
 /* CROWD: the series also adds up what its blows took (cum = { n, a }: points and amounts of the shared reaction, the same on every seat that
@@ -666,6 +776,26 @@ const view = {
     } catch (err) { once(err); }
     return { shared, local };
   },
+  /* CROWDKO (ADVS2 D4: an enemy's "-2" stood on a zone's numbered badge): the map's zone badges (moinen-maps), read from its public zones
+     API: a badge stands on its zone's label point at a fixed size on screen (display.mjs: radius min(19, max(8, 0.8 r zoom)) CSS px, a
+     shaped badge up to ~1.2 of that). Shown to every seat -> shared; shown to the GM only -> the GM seat's own. Badges in a zone's corner or
+     shown only under the pointer are not read (their place is not on the public API) */
+  badges() {
+    const shared = [], local = [];
+    if (!this.ok()) return { shared, local };
+    try {
+      const api = game.modules.get("moinen-maps")?.active ? game.modules.get("moinen-maps").api?.zones : null;
+      const Z = api?.zones?.(), lk = api?.look?.();
+      if (!Z?.zones?.length || !lk || lk.numbers !== "always" || lk.place === "corner" || (lk.who !== "all" && lk.who !== "gm")) return { shared, local };
+      const z = this.zoom();
+      for (const q of Z.zones) {
+        const l = q?.label; if (!l || !Number.isFinite(l.x) || !Number.isFinite(l.y)) continue;
+        const r = Math.min(19, Math.max(8, (Number(l.r) || 40) * 0.8 * z)) * 1.2, a = this.toScreen(l);
+        (lk.who === "all" ? shared : local).push({ x: a.x - r, y: a.y - r, w: 2 * r, h: 2 * r, id: `zone:${q.id}` });
+      }
+    } catch (err) { once(err); }
+    return { shared, local };
+  },
   /* SAMEPIC: the standard view: the canvas view minus Foundry's bars as the same fixed band on every seat (same-picture.mjs RESERVE) */
   std(tr = null) { const r = canvas.app.view.getBoundingClientRect(), p = tr ? { x: tr.x + tr.w / 2 - r.left, y: tr.y + tr.h / 2 - r.top } : null, s = standardRect(r.width || globalThis.innerWidth || 1600, r.height || globalThis.innerHeight || 900, p); return { l: s.l + r.left, t: s.t + r.top, r: s.r + r.left, b: s.b + r.top }; },
   zoom: () => canvas.stage.scale?.x || 1,
@@ -673,6 +803,13 @@ const view = {
   toWorld(p) { const v = this.rect(); return canvas.stage.toLocal({ x: p.x - v.ox, y: p.y - v.oy }); },
   tokRect(tok) { const a = this.toScreen({ x: tok.x, y: tok.y }), z = this.zoom(); return { x: a.x, y: a.y, w: (tok.w ?? 100) * z, h: (tok.h ?? 100) * z }; }
 };
+/* CROWDKO: the tokens hidden from the players (GM seat: kept clean of by lettering only the GM's seat shows) */
+function hiddenRects() {
+  const out = [];
+  if (!view.ok()) return out;
+  try { for (const t of canvas.tokens?.placeables ?? []) if (t.document?.hidden === true) out.push({ ...view.tokRect(t), id: t.id, kind: "tok" }); } catch (err) { once(err); }
+  return out;
+}
 /* the tokens this seat sees near the moment (their faces count against a side) */
 function tokenRects(skip) {
   if (!view.ok()) return [];
@@ -723,7 +860,9 @@ function planOf(L, it) {
   const word = it.mode === "full" || it.mode === "mark";
   /* PRIV: a "mark" (a crowd's small word for a reaction whose number not every seat may show) keeps this seat's own number beside it: the
      word is the same on every seat, the number is the seat's (before, a reader's seat had the number alone where another seat had the word) */
-  const nums = it.mode === "silent" ? [] : (isCaptioned(tok.id) ? lk.numbers.filter((n) => n.stat !== "health") : lk.numbers).slice(0, 2);
+  /* CROWDKO-2: a crowd's word holds up to FOLD.max tags of its members' folded numbers */
+  const nMax = it.cluster && it.roomOf?.length ? Lay.FOLD.max : 2;
+  const nums = it.mode === "silent" ? [] : (isCaptioned(tok.id) ? lk.numbers.filter((n) => n.stat !== "health") : lk.numbers).slice(0, nMax);
   /* a blow of a series stands a little bigger each step it has EARNED (CROWD: pure seriesStep, capped by the series' sum) */
   /* CROWD2: half of the growth for the rhythm (every blow of a series a little bigger), half for the rungs the damage earned (pure seriesGrow) */
   const grow = P.seriesGrow(lk.step ?? 0, lk.sstep ?? lk.step ?? 0);
@@ -743,12 +882,12 @@ function planOf(L, it) {
   /* CROWD2 (CROWD-11: a player's own number stood elsewhere than the GM's copy): the room is ALWAYS the reader's (not this seat's numbers
      when it has as many: a told number may have other digits), and each number takes the place of ITS track in that room (numIdx), so a seat
      that shows only the Resolve number puts it where every other seat has the Resolve number, not in the Health number's place */
-  const room = word && (it.room?.length ?? 0) ? it.room.slice(0, 2) : nums.map((n) => n.text);
+  const room = word && (it.room?.length ?? 0) ? it.room.slice(0, nMax) : nums.map((n) => n.text);
   const gArgs = word ? { cap, aspect, nums: room, numCap, side: lk.side, up: (rising ? 0.6 : 0.4) + (lk.mood === "powerup" ? 0.6 : 0), down: lk.motion.in === "drop" ? 0.3 : 0.2 } : null;
   /* a number alone (a cluster's member, a crowd over the cap) holds the room of the numbers a reader's seat letters, as a word does (PRIV):
      the box every seat places is the same whatever numbers this seat may show (CROWD: a later unit's side must not depend on it) */
   const numRoom = !word && (it.room?.length ?? 0) ? it.room.slice(0, 2) : nums.map((n) => n.text);
-  const numIdx = nums.map((n, i) => { const j = (it.roomStats ?? []).slice(0, 2).indexOf(n.stat); return j >= 0 ? j : Math.min(i, Math.max(0, (word ? room : numRoom).length - 1)); });
+  const numIdx = nums.map((n, i) => { const j = n.of && it.roomOf ? it.roomOf.slice(0, nMax).indexOf(n.of) : (it.roomStats ?? []).slice(0, 2).indexOf(n.stat); return j >= 0 ? j : Math.min(i, Math.max(0, (word ? room : numRoom).length - 1)); });
   let g = word ? P.group(gArgs)
     : P.group({ cap: numCap, aspect: 0, nums: numRoom, numCap, side: 0, up: 0.25, down: 0.15 });
   const z0 = view.ok() ? view.zoom() : 1;
@@ -810,7 +949,7 @@ function measure(plan, tok = null) {
      so a wider or taller word than estimated does not land on a neighbour, a panel or another word */
   try {
     /* FXI-TOKEN (ADVI 5): fitted again, smaller when no side is free at this size; a series keeps its side only while it still fits */
-    if (plan.blocked && tok && view.ok() && Math.abs(view.zoom() / plan.z0 - 1) < 0.02) {
+    if (plan.blocked && tok && view.ok() && !plan.ck && Math.abs(view.zoom() / plan.z0 - 1) < 0.02) {      // CROWDKO: a place the layout chose stays
       const tr0 = view.tokRect(tok), fit = P.fitSame(tr0, plan.box, view.std(tr0), view.safe(), plan.blocked, plan.mine ?? [], { keep: plan.keep ?? null });
       if (fit.k < 0.999) { shrink(plan, fit.k); regroup(); }
       plan.slot = fit.slot; plan.same = fit.same; plan.moved = fit.moved ?? null;
@@ -835,7 +974,7 @@ function follow(tok, plan, member) {
       if (h?.opts && Number.isFinite(h._s0)) h.opts.scale = h._s0 * k;
       const tr = plan.rect ? plan.rect() : view.tokRect(tok), box = { w: plan.box.w * k, h: plan.box.h * k };
       let c = P.slotPoint(plan.slot, tr, box);
-      const safe = view.safe(), std = view.std(tr);
+      const safe = view.safe(), std = plan.ownView ? safe : view.std(tr);
       /* FXLT2 (seen live on lane 5: a word pushed into the view's corner landed on the map's VRAM meter, one beside the challenge cards
          slid under them): inside the safe rect, then out of the floating panels, on the side that moves it least and stays in view.
          SAMEPIC (ADVX 13: "BAM! -2" cut by the top on the GM's seat, whole on the player's): first into the STANDARD view (the same band
@@ -843,9 +982,11 @@ function follow(tok, plan, member) {
       /* CALLERS: the view's edges keep the word's whole entrance reach (L.measure), so the engine's own keep-in-view (which moves a word by
          its reach on THIS seat) has nothing left to move; panels and neighbours keep the standing word's box */
       const eb0 = P.edgeBox(plan.g, plan.cap || 0, plan.reach), eb = eb0 ? { w: eb0.w * k, h: eb0.h * k } : box;
-      if (P.onView(tr, std) && P.onView(tr, safe)) c = P.clampInto(P.avoidRects(P.clampInto(P.clampInto(c, eb, std), eb, safe), box, view.panelsCached(), safe), eb, safe);
-      /* CROWD (ADVX 14): the token is not on THIS seat's view (off screen, under the open sidebar): off-panel, at the view's edge nearest to it */
-      else c = P.clampInto(P.avoidRects(P.offPanel(c, box, safe), box, view.panelsCached(), safe), box, safe);
+      /* CROWDKO: the clean place the layout found, as a shift from the side's own point (it scales with the map like the token) */
+      if (plan.nudge) { const zr = z / (plan.z0 || z); c = { x: c.x + plan.nudge.x * zr, y: c.y + plan.nudge.y * zr }; }
+      /* CROWD (ADVX 14): a token not on THIS seat's view (off screen, under the open sidebar): off-panel, at the view's edge nearest to it.
+         CROWDKO: one function with the layout (layout.mjs restCentre: the same pushes), so the place the layout judged is the place drawn */
+      c = Lay.restCentre(c, tr, box, eb, std, safe, view.panelsCached());
       const off = member < 0 ? plan.g.word : plan.g.nums[member];
       last = view.toWorld({ x: c.x + off.dx * k, y: c.y + off.dy * k });
       return last;
@@ -937,6 +1078,10 @@ function impactOf(L, it, tok, tHit, red, word = null, keep = []) {
   try {
     const I = L?.impact;
     if (!I?.play || !seatOf(tok).visible) return null;
+    /* CROWDKO (ADVS2 D8: a knock-down outside both seats' views still flashed the whole view): the impact is the accent of a blow THIS seat
+       sees happen; a token outside this seat's view gets none here (its word still letters at the view's edge). Off the view is the token's
+       ring not touching the view at all (pure onView), so a seat that sees the token at its edge still gets the frame */
+    if (view.ok() && !P.onView(view.tokRect(tok), view.safe())) return null;
     const { rung, ...imp } = it.impact;
     /* ALIGN (engine 1.9.1 recipe): `blowAt` = the instant the word strikes as the ENGINE reads it (L.contactAt: the word's contact pose,
        on the 24 Hz grid in stepped motion; = tHit by construction in smooth motion), and the engine starts the impact plan.peakMs before it,

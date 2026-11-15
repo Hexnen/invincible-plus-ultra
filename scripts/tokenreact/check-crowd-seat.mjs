@@ -70,6 +70,7 @@ const fake = { version: "test", limits: { screen: 16, world: 48 }, prefs: { scal
     rec.h = h; plays.push(rec); return h;
   } };
 { const { createVocab } = await import("../letters/words.mjs"); fake.vocab = createVocab(); fake.word = fake.vocab.word; }
+if (cfg.debug) globalThis.__samepicFit = [];      // the layout's own record of every placing (CROWDKO debugging)
 globalThis.MoinenLetters = { copies: [], _engine: fake, async engine() { return this._engine; } };
 const M = await import("./main.mjs");
 M.start({ init: true, ready: true });
@@ -92,5 +93,5 @@ for (const h of cfg.hits ?? []) {
 await sleep(cfg.wait ?? 900);
 const tg = (id) => { const t = toks.find((q) => q.id === id); const a = stage.toGlobal({ x: t.x, y: t.y }); return { id, x: a.x, y: a.y, w: 100 * z, h: 100 * z }; };
 const pins = notes.map((n) => { const a = stage.toGlobal({ x: n.bounds.x, y: n.bounds.y }); return { id: n.document.id, x: a.x, y: a.y, w: n.bounds.width * z, h: n.bounds.height * z }; });
-console.log(JSON.stringify({ seat: cfg.name ?? "?", W, H, side: SIDE, plays: plays.map(snap), impacts, frames, toks: toks.map((t) => tg(t.id)), pins }));
+console.log(JSON.stringify({ seat: cfg.name ?? "?", W, H, side: SIDE, plays: plays.map(snap), impacts, frames, toks: toks.map((t) => tg(t.id)), pins, ...(cfg.debug ? { fit: globalThis.__samepicFit } : {}) }));
 process.exit(0);
