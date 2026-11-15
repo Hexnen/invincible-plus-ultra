@@ -64,6 +64,9 @@ const liveFacts = (X) => Chase.facts(X.host.facts(), () => X.state);
 const nextId = (X, p) => { X.state = { ...X.state, seq: (X.state.seq ?? 0) + 1 }; return S.idOf(X.state, p, X.state.seq); };      // H3-1: the fight's tag on every id
 const view = (X) => ({ state: X.state, facts: X.facts, entry: (inst) => C.entryFor(X.state, inst.actor, inst.action, X.facts) });
 const top = (X) => X.state.stack[X.state.stack.length - 1] ?? null;
+/* WORDPOOL (ADVX 16): what the roller's own roll is (the attack family, the kit row's power key, its name), carried to the roll's options so the
+   dice splash letters a word that fits the action (a Blast a blast, a Strike a blow); a defender's or a gate's roll carries nothing */
+const rollWhat = (X, I, who) => { try { const en = who && who === I.actor ? view(X).entry(I) : null; return en ? { what: { a: en.attack ?? null, p: en.kit?.key ?? null, n: en.name ? String(en.name).slice(0, 60) : null } } : {}; } catch { return {}; } };
 const instOf = (X, id) => X.state.stack.find((i) => i.id === id) ?? null;
 const setInst = (X, inst) => { X.state = { ...X.state, stack: X.state.stack.map((i) => (i.id === inst.id ? inst : i)) }; X.changed = true; };
 const owns = (X, cid) => X.user.staff === true || !!X.facts.c(cid)?.owners?.includes(X.user.id);
@@ -229,7 +232,7 @@ async function applyEffect(X, I, e, step) {
       const who = e.who === "hazard" ? null : X.facts.c(e.who);
       const users = rollUsers(X, who, I), mode = rollMode(e, who);
       I.rolls[e.key] = { key: e.key, who: e.who, attr: e.attr, pool: e.pool, pushed: 0, pushable: false, ...(e.secret ? { secret: 1 } : {}), req: { rid, users, at: X.host.now(), dice: e.dice, maxPush: e.maxPush, label: e.label ?? null, ...(mode ? { mode } : {}) } };
-      const res = await perform(X, tx, { t: "rollRequest", inst: I.id, key: e.key, rid, users, actorUuid: who?.actorUuid ?? null, combatant: e.who, attr: e.attr, pool: e.pool, dice: e.dice, maxPush: e.maxPush, secret: e.secret, label: e.label, ...(mode ? { mode } : {}) }, I, step);
+      const res = await perform(X, tx, { t: "rollRequest", inst: I.id, key: e.key, rid, users, actorUuid: who?.actorUuid ?? null, combatant: e.who, attr: e.attr, pool: e.pool, dice: e.dice, maxPush: e.maxPush, secret: e.secret, label: e.label, ...(mode ? { mode } : {}), ...rollWhat(X, I, e.who) }, I, step);
       if (isObj(res) && Number.isFinite(res.sixes)) { Object.assign(I.rolls[e.key], { sixes: res.sixes, ones: res.ones ?? 0, pushed: res.pushed ?? 0, pushable: !!res.pushable, messageId: res.messageId }); return true; }
       return false;
     }
@@ -1149,7 +1152,7 @@ async function gmInstOp(X, op, a) {
       I.rolls[key] = { ...rec, req: { ...rec.req, rid, users, at: X.host.now() } };
       setInst(X, I);
       X.did++;
-      await X.host.perform({ t: "rollRequest", inst: I.id, key, rid, users, actorUuid: who?.actorUuid ?? null, combatant: rec.who, attr: rec.attr, pool: rec.pool, dice: rec.req.dice, maxPush: rec.req.maxPush, secret: rec.secret, label: rec.req.label, ...(rec.req.mode ? { mode: rec.req.mode } : {}) });
+      await X.host.perform({ t: "rollRequest", inst: I.id, key, rid, users, actorUuid: who?.actorUuid ?? null, combatant: rec.who, attr: rec.attr, pool: rec.pool, dice: rec.req.dice, maxPush: rec.req.maxPush, secret: rec.secret, label: rec.req.label, ...(rec.req.mode ? { mode: rec.req.mode } : {}) , ...rollWhat(X, I, rec.who) });
       return ok({ inst: I.id });
     }
     case "skipStep": {

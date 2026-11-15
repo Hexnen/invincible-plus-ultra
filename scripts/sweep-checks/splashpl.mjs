@@ -124,7 +124,7 @@ SL.setLabels({ sfx: {} });
   const main = src("../splash/main.mjs"), st = src("../splash/stage.mjs"), lp = src("../splash/letter-plan.mjs");
   ok(/o\.sfx = Object\.fromEntries\(Object\.values\(SFX_KEYS\)\.filter\(k => has\('INSPLASH\.Word\.' \+ k\)\)/.test(main), "W: applyLabels fills LBL.sfx from INSPLASH.Word.*");
   ok(/parts\.push\(cap\(sfxWord\(ev\.word\)\)\)/.test(main), "W: the screen reader hears the word this seat shows");
-  ok(/if \(WORDS\.has\(f\.word\)\) ev\.word = f\.word;/.test(main), "W: the message flag still carries the English word (validated against the English lists)");
+  ok(/if \(WORDS\.has\(f\.word\)( && wordFits\(ev, f\.word\))?\) ev\.word = f\.word;/.test(main), "W: the message flag still carries the English word (validated against the English lists; WORDPOOL: and against the action's words at its rank)");
   ok(/function playClassic\(ev, o\) \{\s*ev = shownEv\(ev\);/.test(st), "W: the classic splash shows the seat's words");
   eq((lp.match(/text: sfxWord\(ev\.(word|prefix|wreckWord)\)/g) ?? []).length, 4, "W: the lettered plan shows the seat's word, grunt and wreck");
   ok(!/text: ev\.(word|prefix|wreckWord)\b/.test(lp), "W: no lettering of the raw English key is left");
