@@ -650,7 +650,9 @@ function tokenRects(skip) {
   /* SAMEPIC (ADVX 9): every token nobody hides, whether THIS seat's vision shows it or not (the GM sees through every wall, a player does not:
      the same blow took another side per seat). As in the map splash's shared frame: a token hidden from the players never counts */
   try { for (const t of canvas.tokens?.placeables ?? []) if (!skip.has(t.id) && t.document?.hidden !== true) out.push({ ...view.tokRect(t), id: t.id, k: P.SLOT_K.token }); } catch (err) { once(err); }
-  for (const id of skip) { const t = canvas.tokens?.get(id); if (t && view.ok()) out.push({ ...view.tokRect(t), id, k: P.SLOT_K.token }); }
+  /* CROWD (seen in the crowd check: a token the GM hid, hit with a crowd, pushed the crowd's word aside on the GM's seat only): a hidden token
+     lettered in this moment is no obstacle either (its own word still keeps off the others) */
+  for (const id of skip) { const t = canvas.tokens?.get(id); if (t && view.ok() && t.document?.hidden !== true) out.push({ ...view.tokRect(t), id, k: P.SLOT_K.token }); }
   return out;
 }
 

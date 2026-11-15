@@ -350,20 +350,26 @@ export const SLOTS = ["above", "aboveR", "aboveL", "right", "left", "below", "on
    (the challenge cards, the map's VRAM meter, the party cards) is unseen: both now cost more than sticking out of the view */
 /* FXI-TOKEN (ADVI 5: KA-WRAAAAMM!!, KA-THOOOOOM!! stood on their own token for the whole 1.3-1.5 s hold): the owner, words must not hide the
    token for long; covering the own token now costs nearly as much as covering another (was 0.6) */
-export const SLOT_K = { own: 2, token: 2.5, word: 4, panel: 8 };      // what covering costs: the own token, another token, another word, a panel
+/* CROWD (ADVX 12: words and numbers stood on other tokens): covering a neighbour reads as a word about the wrong token: it now costs more
+   than shrinking the word to about 0.74 of its size (was 2.5: a big word took a side over a whole neighbour rather than shrink); the own
+   token and another word keep their order (own >= 0.75 token, word > token, panel > word) */
+export const SLOT_K = { own: 3, token: 3.5, word: 5, panel: 8 };      // what covering costs: the own token, another token, another word, a panel
 /** the group's centre for one slot. tok = { x, y, w, h } (screen), box = { w, h } (the group with its motion room) */
 /* CROWD (ADVX 6: "the word creeps onto the token's ring"): a token's ring (the target brackets, the disposition ring, the health arc) is drawn
    up to RING of its size outside its box. The slots above used to sink 12-20 % of the token's height INTO its box, so a word at rest stood
-   on the ring for its whole hold. Now the whole group (the word and its motion room) stands clear of the ring; only a word's entrance
-   (a drop, an overshoot) may pass over it for a few frames. The own token's cost (fitSlot) counts the ring too. */
-export const RING = 0.1;
+   on the ring for its whole hold. Now a word at rest clears the ring; only its motion room (the group box's margin under the word, about
+   DOWN_ROOM of the group's height) reaches over it, so only an entrance (a drop, an overshoot) passes it for a few frames. The own token's
+   cost (fitSlot) counts the ring too, on the group without that motion room (restOf): a word above its token pays nothing for its entrance. */
+export const RING = 0.1, DOWN_ROOM = 0.1;
+const ABOVE = new Set(["above", "aboveR", "aboveL"]);
+export const restOf = (slot, r) => (ABOVE.has(slot) ? { ...r, h: r.h * (1 - DOWN_ROOM) } : r);
 export const ringRect = (tok) => ({ x: tok.x - tok.w * RING, y: tok.y - tok.h * RING, w: tok.w * (1 + 2 * RING), h: tok.h * (1 + 2 * RING) });
 export function slotPoint(slot, tok, box, gap = 4) {
   const cx = tok.x + tok.w / 2, cy = tok.y + tok.h / 2, ry = tok.h * RING, rx = tok.w * RING;
   switch (slot) {
-    case "above": return { x: cx, y: tok.y - ry - gap - box.h / 2 };
-    case "aboveR": return { x: tok.x + tok.w * 0.75 + box.w * 0.25, y: tok.y - ry - gap - box.h / 2 };
-    case "aboveL": return { x: tok.x + tok.w * 0.25 - box.w * 0.25, y: tok.y - ry - gap - box.h / 2 };
+    case "above": return { x: cx, y: tok.y - ry - gap - box.h / 2 + box.h * DOWN_ROOM };
+    case "aboveR": return { x: tok.x + tok.w * 0.75 + box.w * 0.25, y: tok.y - ry - gap - box.h / 2 + box.h * DOWN_ROOM };
+    case "aboveL": return { x: tok.x + tok.w * 0.25 - box.w * 0.25, y: tok.y - ry - gap - box.h / 2 + box.h * DOWN_ROOM };
     case "right": return { x: tok.x + tok.w + rx + gap + box.w / 2, y: cy - tok.h * 0.1 };
     case "left": return { x: tok.x - rx - gap - box.w / 2, y: cy - tok.h * 0.1 };
     case "on": return { x: cx, y: cy - tok.h * 0.12 };
@@ -395,8 +401,9 @@ export function fitSlot(tok, box, safe, blocked = [], { prefer = 0, keep = null,
       const r = rectAt(slotPoint(slot, tok, b), b);
       let s = i * 0.04 * b.w * b.h + (1 - k) * A * FIT.shrinkK;      // the order is the preference: above unless it costs; then size
       if (prefer && ((prefer > 0 && slot === "aboveL") || (prefer < 0 && slot === "aboveR"))) s += 0.02 * b.w * b.h;
-      if (keep && slot === keep) s -= FIT.keepBonus * A;
-      for (const q of [own, ...blocked]) s += inter(r, q) * (q.k ?? 1);
+      if (keep && slot === keep) s -= FIT.keepBonus * A + 1e-3;      // CROWD: the kept side also wins a tie
+      s += inter(restOf(slot, r), own) * own.k;
+      for (const q of blocked) s += inter(r, q) * (q.k ?? 1);
       if (safe) s += outside(r, safe) * 6;
       if (s < best.score) best = { slot, k, score: s };
     });
@@ -419,7 +426,7 @@ export function fitSame(tok, box, std, real, shared = [], local = [], o = {}) {
      size are kept when sliding the group (the same pushes follow() makes every frame: into the view, off this seat's own panels) clears
      this seat's limits without covering more; then the same side a little smaller (each step slid too); only then a full refit here. */
   const lim = real ?? std, A = b.w * b.h;
-  const cover = (q) => [{ ...ringRect(tok), k: SLOT_K.own }, ...shared].reduce((s, z) => s + inter(q, z) * (z.k ?? 1), 0);
+  const cover = (q) => inter(restOf(a.slot, q), ringRect(tok)) * SLOT_K.own + shared.reduce((s, z) => s + inter(q, z) * (z.k ?? 1), 0);
   const base = cover(r);
   /* follow() pushes a word only while its token is on the standard view (onView); off it the word stands at its raw slot, so no slide here */
   if (std && onView(tok, std)) for (const f of SAME_SHRINK) {
