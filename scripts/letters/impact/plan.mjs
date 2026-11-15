@@ -8,13 +8,18 @@ export const INK = "#0b0b10", PAPER = "#fffdf2";
 
 /* ---------- the limits (stated in impact/README.md "Safety") ---------- */
 export const LIMITS = {
-  maxTicks: 12,          // an impact never lasts longer than this (500 ms), whatever a caller lists
+  /* IMPACT4 (1.9.21, the owner: «jeden rzut i animacja na kilka minut»: an impact is a rare show the whole table watches): the strongest
+     rungs are a short hand-animated cut of up to a second. Not a photosensitivity limit (those are the flash, area and red rows below,
+     unchanged): a longer cut holds drawings and moves ink, it adds no flash */
+  maxTicks: 24,          // an impact never lasts longer than this (1000 ms; 1.9.20: 12 = 500 ms), whatever a caller lists
   maxFrameTicks: 4,      // one drawing stays at most this long
-  maxStopTicks: 4,       // hit-stop (the scene held still) per impact, in ticks (167 ms)
+  maxStopTicks: 8,       // hit-stop (the scene held still) per impact, in ticks (333 ms; 1.9.20: 4)
   fullPerImpact: 2,      // photosafe: FLASH drawings per impact (full-field frames AND drawings that change the scene's brightness)
   fullPerSec: 2,         // photosafe: flash drawings per rolling second on this client, counted in the SAME log as the words' flash frames
   windowMs: 1000,
   localArea: 0.2,        // the gentle variant (and a local change of the scene) stays inside a panel of at most this share of the viewport
+  figArea: 0.025,        // IMPACT3: the figures' own art may change brightness (negative, posterised, inked) only while all of them together
+                         // cover at most this share of the view (WCAG 2.3.1's small safe area is 21 824 px of 1024 x 768 = 2.78 %)
   redArea: 0.01,         // photosafe: saturated red covers at most this share of any drawing (WCAG 2.3.1 "red flash")
   punchMax: 0.022,       // the frame punch moves the scene by at most this share of the viewport (and never past its own zoom margin)
   chromaMax: 0.012,      // chromatic split: plate offset as a share of the viewport's short side
@@ -79,6 +84,10 @@ export const FRAMES = {
   shatter: { full: false, cls: "scene", back: "bw",     local: true, pl: "Pęknięcia i odłamki", en: "Cracks and shards" },
   chroma:  { full: false, cls: "scene", back: "chroma", pl: "Rozszczepienie barw", en: "Chromatic split" },
   ring:    { full: false, cls: "scene", back: null,     pl: "Pierścień uderzenia", en: "Shock ring" },
+  /* IMPACT3 (1.9.20): the figures themselves in the impact frame (their own art inverted / posterised / inked / in its own colours,
+     a rim of light on their true outline, flares thrown off the contact, the struck one's knock-back echoes); the scene untouched */
+  fig:     { full: false, cls: "scene", back: null,     pl: "Postacie w klatce uderzenia", en: "The figures in the impact frame" },
+  cracks:  { full: false, cls: "scene", back: null,     pl: "Pęknięcia (bez zmiany sceny)", en: "Cracks (the scene untouched)" },
   fade:    { full: false, cls: "scene", back: null,     pl: "Ślad (ostatnia klatka)", en: "Residue (last drawing)" },
   rest:    { full: false, cls: "scene", back: null,     pl: "Pauza (nic)", en: "A beat of nothing" }
 };
@@ -87,70 +96,115 @@ export const FRAME_IDS = Object.keys(FRAMES);
 export const isFlash = (f) => !!f && (!!f.full || f.back === "bw" || f.back === "bwinv" || f.back === "split");
 /* which flash drawing is kept first when the guard allows fewer (and which drawing is an impact's peak) */
 const KEEP = { slam: 6, shadow: 5, tear: 5, window: 4, swap: 3, glare: 2, ink: 1.5, shatter: 1 };
-const PEAK = { ...KEEP, pop: 0.8, chroma: 0.6, dots: 0.5, splat: 0.5, smear: 0.5, rip: 0.5, ring: 0.4, lines: 0.1, fade: 0, rest: -1 };
+const PEAK = { ...KEEP, pop: 0.8, chroma: 0.6, dots: 0.5, splat: 0.5, smear: 0.5, rip: 0.5, ring: 0.4, fig: 0.45, cracks: 0.45, lines: 0.1, fade: 0, rest: -1 };
 
-/* ---------- kinds of impact: SIX strengths each (step 0..5, stepOf). A step = [type, ticks, flags]: s = hit-stop, p = frame punch,
-   q = half a punch. The ladder the owner asked for (a scratch, a solid hit, a heavy hit, a knock-down, a critical must each look
-   different and escalate): steps 0-1 never change the scene and keep the struck figure in sight (a small star at its rim), step 2
-   turns a panel round it hard black and white, steps 3-5 are the full-field frames, longer and more of them as the blow grows. ---------- */
-const S = (type, ticks = 1, flags = "") => ({ type, ticks, stop: flags.includes("s"), punch: flags.includes("p") ? 1 : flags.includes("q") ? 0.5 : 0 });
+/* ---------- IMPACT3 (1.9.20): the figures take part ----------
+   Each drawing may carry `fig`, what happens to the FIGURES (the struck token, the attacker a `from` names, the tokens `also` names) at
+   their own place, size and turn on the screen, drawn from their own art: never a box round them, never enlarged.
+     r = rim: a rim of light on the figure's true outline (lit on the side the blow comes from) and an ink line round it; the art untouched
+     i = the art's colour negative, with the rim
+     p = the art posterised to three flat tones (ink, the accent, paper), with the rim
+     k = the art inked hard black and white, with the rim
+     o = the art in its own colours, with the rim (over a negative or black-and-white scene the figure stands out in colour)
+   i / p / k change the brightness of the figure's own area only. Together they stay under LIMITS.figArea of the view on every drawing
+   (draw.mjs figTreat: over it a seat draws the rim only); the gentle variant and reduced motion get the rim only (safety). */
+export const FIG = { r: "rim", i: "inv", p: "post", k: "ink", o: "orig", n: "hueneg", d: "duo", h: "hue" };
+export const FIG_BRIGHT = new Set(["i", "p", "k"]);
+/* IMPACT4 (1.9.21): treatments that change the COLOUR of a figure's art but hold every pixel's relative luminance (WCAG 2.3.1 measures a
+   flash in relative luminance: a change of under a tenth is none), so they need no share of the figures' area and read on a token of any
+   size at any zoom: the art "moves ink, not luminance".
+     n = hue negative: every colour turned to its opposite hue at its own luminance (a blue square goes orange, white stays white)
+     d = duotone: the art in the impact's two accents by its own light and dark, each pixel at its own luminance
+     h = hue cycle: every colour turned by a seeded angle (another per drawing), at its own luminance
+   A bright treatment over the area cap becomes its held twin (i -> n, p / k -> d) instead of a bare rim, plus a slice of the true one cut
+   along the blow with the area that is left (draw.mjs figTreat). */
+export const FIG_HELD = new Set(["n", "d", "h"]);
+export const FIG_TWIN = { i: "n", p: "d", k: "d" };
+
+/* ---------- kinds of impact: SIX strengths each (step 0..5, stepOf). A step = [type, ticks, flags, fig]: s = hit-stop, p = frame punch,
+   q = half a punch, b = a kick BACK against the blow (the frame recoils: with the punch before it the frame shakes); fig = what the
+   figures do in that drawing (FIG above). The ladder the owner asked for (a scratch, a solid hit, a heavy hit, a knock-down, a critical
+   must each look different and escalate): steps 0-1 never change the scene and keep the struck figure in sight (a small star at its rim,
+   the figure itself flipped to its negative for a tick), step 2 turns a panel round it hard black and white with the figure in its own
+   colours on it, steps 3-5 are the full-field frames.
+   IMPACT3 (1.9.20, the owner after watching them in play: «bardziej jak sakuga MAD ... odwrócenia kolorów na tokenach, akcent na ich
+   krawędziach, więcej efektów, dynamiczniej»): every rung from 3 up is cut like a hand-animated impact: a lead-in tick (speed lines, the
+   figures inked), the contact (a black frame with the figure, then the scene's negative with the figures standing out in their own
+   colours), the hit-stop HELD on the figures while their palette jumps (negative, posterised) on ones with the frame shaking (punch,
+   kick back), then the release on twos (colour split, halftone, ring, residue) with the rims dying out. Each ladder is designed inside
+   the guard: at most two flash drawings per impact, so nothing the table sees is thinned at random. ---------- */
+const S = (type, ticks = 1, flags = "", fig = "") => {
+  const s = { type, ticks, stop: flags.includes("s"), punch: flags.includes("p") ? 1 : flags.includes("q") ? 0.5 : flags.includes("b") ? 0.7 : 0 };
+  if ( flags.includes("b") ) s.kick = -1;
+  if ( fig && FIG[fig] ) s.fig = fig;
+  /* IMPACT4: Z / z = the figures POP (drawn bigger at their own place, stretched along the blow): the contact of a hand-drawn impact */
+  if ( flags.includes("Z") ) s.z = 1.55; else if ( flags.includes("z") ) s.z = 1.25;
+  return s;
+};
+/* IMPACT4 (1.9.21) ladders: steps 0-2 as short as before (the scene untouched in 0-1; a token's palette flips and the figure pops), steps 3-5
+   cut like a hand-animated impact of 13 / 16-18 / 21-24 ticks: anticipation (speed lines, the figures inked, their hue flipped), the contact
+   (the black frame with the struck figure ENLARGED in its own colour negative; the scene's negative with the figures popped in their own
+   colours: the two flash drawings), the hold (hit-stop up to 8 ticks) with the figures shaking and their palette jumping on ones (negative,
+   posterised, hue cycle, duotone: the bright ones where the area allows, else their luminance-held twins), the release on twos (colour split,
+   cracks, halftone, rings: ink only), the settle (the figure back in its own colours, rims dying). Every ladder lists at most two flash
+   drawings, so the guard never thins a lone impact. */
 export const KINDS = {
   hit: { tone: "hero", pl: "Cios", en: "Hit", steps: [
-    [S("pop", 1, "q"), S("fade")],
-    [S("pop", 1, "q"), S("splat"), S("fade")],
-    [S("ink", 1, "p"), S("pop"), S("dots"), S("fade")],
-    [S("shadow", 2, "s"), S("slam", 1, "p"), S("dots", 2), S("fade")],
-    [S("lines"), S("shadow", 2, "s"), S("glare"), S("slam", 1, "p"), S("dots", 2), S("fade")],
-    [S("lines"), S("shadow", 2, "s"), S("glare"), S("slam", 2, "p"), S("dots", 2), S("ring"), S("fade")] ] },
+    [S("pop", 1, "qz", "n"), S("fade", 1, "", "r")],
+    [S("pop", 1, "qz", "i"), S("fig", 1, "", "n"), S("splat"), S("fade", 1, "", "r")],
+    [S("ink", 1, "pZ", "o"), S("fig", 1, "z", "i"), S("fig", 1, "bz", "p"), S("fig", 1, "", "h"), S("dots", 1, "", "r"), S("fade")],
+    [S("lines", 1, "", "k"), S("shadow", 2, "s"), S("slam", 1, "pZ", "o"), S("fig", 1, "sZ", "i"), S("fig", 1, "sbz", "p"), S("fig", 1, "", "h"), S("dots", 1, "", "n"), S("ring", 1, "", "d"), S("fade", 2, "", "r")],
+    [S("lines", 1, "", "k"), S("smear", 1, "", "n"), S("shadow", 2, "s"), S("slam", 1, "pZ", "o"), S("fig", 1, "sZ", "i"), S("fig", 1, "sbz", "p"), S("fig", 1, "spz", "h"), S("chroma", 1, "b", "i"), S("cracks", 2, "", "d"), S("dots", 2, "", "p"), S("ring", 2, "", "n"), S("fade", 2, "", "r")],
+    [S("lines", 1, "", "k"), S("lines", 1, "", "n"), S("shadow", 2, "s"), S("slam", 1, "pZ", "o"), S("fig", 1, "sZ", "i"), S("fig", 1, "sbZ", "p"), S("fig", 1, "spz", "h"), S("fig", 1, "sbz", "i"), S("fig", 1, "s", "d"), S("chroma", 1, "p", "i"), S("cracks", 2, "b", "p"), S("dots", 2, "", "h"), S("ring", 2, "", "n"), S("fig", 2, "", "o"), S("splat", 1, "", "d"), S("fade", 2, "", "r"), S("fade", 2, "", "r")] ] },
   heavy: { tone: "fire", pl: "Ciężki cios", en: "Heavy blow", steps: [
-    [S("pop", 1, "q"), S("splat"), S("fade")],
-    [S("pop", 1, "p"), S("splat"), S("ring"), S("fade")],
-    [S("ink", 1, "p"), S("pop"), S("shatter"), S("fade")],
-    [S("shadow", 2, "s"), S("slam", 1, "p"), S("shatter", 2), S("ring"), S("fade")],
-    [S("lines"), S("shadow", 2, "s"), S("swap"), S("slam", 2, "p"), S("shatter", 2), S("ring"), S("fade")],
-    [S("lines"), S("shadow", 2, "s"), S("swap"), S("slam", 2, "p"), S("shatter", 2), S("ring", 2), S("fade")] ] },
+    [S("pop", 1, "qz", "n"), S("splat"), S("fade", 1, "", "r")],
+    [S("pop", 1, "pz", "i"), S("fig", 1, "", "n"), S("splat"), S("ring"), S("fade")],
+    [S("ink", 1, "pZ", "o"), S("fig", 1, "z", "i"), S("shatter", 1, "bz", "p"), S("fig", 1, "", "h"), S("ring", 1, "", "r"), S("fade")],
+    [S("lines", 1, "", "k"), S("shadow", 2, "s"), S("slam", 1, "pZ", "o"), S("fig", 1, "sZ", "i"), S("fig", 1, "sb", "p"), S("cracks", 2, "", "h"), S("ring", 1, "", "d"), S("fade", 2, "", "r")],
+    [S("lines", 1, "", "k"), S("shadow", 2, "s"), S("slam", 2, "pZ", "o"), S("fig", 1, "sZ", "i"), S("fig", 1, "sbz", "p"), S("fig", 1, "sp", "n"), S("cracks", 1, "b", "i"), S("ring", 2, "", "d"), S("cracks", 2, "", "h"), S("dots", 1, "", "p"), S("fade", 2, "", "r")],
+    [S("lines", 1, "", "k"), S("smear", 1, "", "n"), S("shadow", 2, "s"), S("slam", 1, "pZ", "o"), S("fig", 1, "sZ", "i"), S("fig", 1, "sbZ", "p"), S("fig", 1, "spz", "h"), S("fig", 1, "sbz", "i"), S("fig", 1, "s", "d"), S("cracks", 1, "p", "i"), S("ring", 2, "", "p"), S("cracks", 2, "b", "h"), S("dots", 2, "", "n"), S("ring", 2, "", "r"), S("splat", 1, "", "d"), S("fade", 2, "", "r"), S("fade", 2)] ] },
   crit: { tone: "hero", pl: "Trafienie krytyczne", en: "Critical", steps: [
-    [S("ink", 1, "p"), S("pop"), S("dots"), S("fade")],
-    [S("lines"), S("ink", 1, "p"), S("pop"), S("dots"), S("fade")],
-    [S("lines"), S("slam", 1, "p"), S("dots", 2), S("fade")],
-    [S("lines"), S("shadow", 2, "s"), S("slam", 2, "p"), S("chroma"), S("dots", 2), S("fade")],
-    [S("lines"), S("shadow", 2, "s"), S("swap"), S("slam", 2, "p"), S("chroma"), S("dots", 2), S("fade")],
-    [S("lines"), S("window"), S("shadow", 2, "s"), S("swap"), S("slam", 2, "p"), S("chroma"), S("dots", 2), S("fade")] ] },
+    [S("ink", 1, "pz", "o"), S("fig", 1, "z", "i"), S("dots", 1, "", "n"), S("fade")],
+    [S("lines", 1, "", "r"), S("ink", 1, "pZ", "o"), S("fig", 1, "z", "i"), S("fig", 1, "", "h"), S("dots", 1, "", "p"), S("fade")],
+    [S("lines", 1, "", "r"), S("slam", 1, "pZ", "o"), S("fig", 2, "bz", "i"), S("fig", 1, "", "h"), S("dots", 1, "", "p"), S("fade", 1, "", "r")],
+    [S("lines", 1, "", "k"), S("shadow", 2, "s"), S("slam", 1, "pZ", "o"), S("fig", 1, "sZ", "i"), S("fig", 1, "sb", "h"), S("chroma", 1, "b", "p"), S("dots", 1, "", "n"), S("ring", 1, "", "d"), S("fade", 2, "", "r")],
+    [S("lines", 1, "", "k"), S("lines", 1, "", "n"), S("shadow", 2, "s"), S("slam", 1, "pZ", "o"), S("fig", 1, "sZ", "i"), S("fig", 1, "sbZ", "p"), S("fig", 1, "spz", "h"), S("chroma", 1, "p", "i"), S("dots", 2, "", "p"), S("ring", 2, "", "d"), S("fig", 1, "", "o"), S("splat", 1, "", "n"), S("fade", 2, "", "r"), S("fade")],
+    [S("lines", 1, "", "k"), S("lines", 1, "", "n"), S("window", 2, "s", "o"), S("slam", 1, "pZ", "o"), S("fig", 1, "sZ", "i"), S("fig", 1, "sbZ", "p"), S("fig", 1, "spZ", "h"), S("fig", 1, "sbz", "i"), S("fig", 1, "s", "d"), S("chroma", 1, "p", "i"), S("fig", 1, "qz", "o"), S("dots", 1, "", "p"), S("cracks", 1, "b", "h"), S("ring", 2, "", "n"), S("dots", 1, "", "d"), S("splat", 1, "", "i"), S("fig", 2, "", "o"), S("fade", 2, "", "r"), S("fade", 2)] ] },
   blast: { tone: "fire", pl: "Wybuch", en: "Blast", steps: [
-    [S("pop", 1, "q"), S("ring"), S("fade")],
-    [S("pop", 1, "p"), S("ring"), S("dots"), S("fade")],
-    [S("ink", 1, "p"), S("ring"), S("shatter"), S("fade")],
-    [S("glare"), S("slam", 1, "p"), S("shatter", 2), S("ring"), S("fade")],
-    [S("window"), S("glare"), S("slam", 2, "p"), S("shatter", 2), S("ring"), S("chroma"), S("fade")],
-    [S("window"), S("glare"), S("slam", 2, "p"), S("shatter", 2), S("ring", 2), S("chroma"), S("fade")] ] },
+    [S("pop", 1, "qz", "n"), S("ring"), S("fade")],
+    [S("pop", 1, "p", "i"), S("ring", 1, "", "n"), S("dots"), S("fade")],
+    [S("ink", 1, "pZ", "o"), S("ring", 1, "", "i"), S("shatter", 1, "b"), S("fig", 1, "", "h"), S("fade", 1, "", "r")],
+    [S("glare"), S("slam", 1, "pZ", "o"), S("fig", 1, "sZ", "i"), S("fig", 1, "sb", "p"), S("cracks", 2, "b", "h"), S("ring", 2, "", "d"), S("fade", 2, "", "r"), S("fade")],
+    [S("window"), S("slam", 2, "pZ", "o"), S("fig", 1, "sZ", "i"), S("fig", 1, "sbz", "p"), S("cracks", 1, "b", "h"), S("ring", 2, "", "r"), S("chroma", 1, "", "n"), S("dots", 2, "", "d"), S("ring", 2), S("fade", 2)],
+    [S("lines", 1, "", "k"), S("window", 2, "s"), S("slam", 1, "pZ", "o"), S("fig", 1, "sZ", "i"), S("fig", 1, "sbZ", "p"), S("fig", 1, "spz", "h"), S("cracks", 1, "", "i"), S("ring", 2, "", "r"), S("chroma", 1, "", "n"), S("cracks", 2, "b", "d"), S("ring", 2, "", "h"), S("dots", 2, "", "p"), S("splat"), S("fade", 2, "", "r"), S("fade", 2)] ] },
   slash: { tone: "blood", pl: "Cięcie", en: "Slash", steps: [
-    [S("smear"), S("splat")],
-    [S("smear"), S("rip", 1, "q"), S("splat"), S("fade")],
-    [S("smear"), S("rip", 1, "p"), S("splat", 2), S("fade")],
-    [S("smear"), S("tear", 2, "sp"), S("splat"), S("fade")],
-    [S("lines"), S("shadow"), S("tear", 2, "sp"), S("chroma"), S("splat", 2), S("fade")],
-    [S("lines"), S("shadow", 2, "s"), S("tear", 2, "p"), S("chroma"), S("splat", 2), S("fade")] ] },
+    [S("smear", 1, "", "n"), S("splat")],
+    [S("smear", 1, "", "i"), S("rip", 1, "q", "r"), S("splat"), S("fade")],
+    [S("smear", 1, "", "i"), S("rip", 1, "pz", "p"), S("fig", 1, "b", "o"), S("fig", 1, "", "h"), S("splat", 2, "", "r"), S("fade")],
+    [S("smear", 1, "", "k"), S("tear", 2, "spZ", "o"), S("fig", 2, "sz", "i"), S("fig", 1, "", "h"), S("splat", 1, "b", "p"), S("rip", 1, "", "n"), S("splat", 1, "", "d"), S("fade", 2, "", "r")],
+    [S("smear", 1, "", "n"), S("lines", 1, "", "k"), S("shadow", 1, "s"), S("tear", 2, "spZ", "o"), S("fig", 1, "sZ", "i"), S("fig", 1, "sbz", "h"), S("chroma", 1, "b", "p"), S("splat", 2, "", "n"), S("rip", 1, "", "d"), S("splat", 2), S("fade", 2, "", "r")],
+    [S("lines", 1, "", "k"), S("smear", 1, "", "n"), S("shadow", 2, "s"), S("tear", 2, "pZ", "o"), S("fig", 1, "sZ", "i"), S("fig", 1, "sbZ", "p"), S("fig", 1, "spz", "h"), S("fig", 1, "sbz", "i"), S("chroma", 1, "", "d"), S("splat", 2, "", "r"), S("rip", 1, "", "n"), S("splat", 2, "", "p"), S("fig", 2, "", "o"), S("fade", 2, "", "r"), S("fade", 2)] ] },
   landing: { tone: "dust", pl: "Lądowanie / uderzenie z góry", en: "Landing / strike from above", steps: [
-    [S("pop", 1, "q"), S("ring")],
-    [S("lines"), S("pop", 1, "p"), S("ring"), S("fade")],
-    [S("lines"), S("ink", 1, "p"), S("ring"), S("shatter"), S("fade")],
-    [S("lines"), S("slam", 1, "p"), S("ring"), S("shatter", 2), S("fade")],
-    [S("window"), S("slam", 2, "p"), S("shatter", 2), S("ring"), S("dots"), S("fade")],
-    [S("lines"), S("window"), S("slam", 2, "p"), S("shatter", 2), S("ring", 2), S("dots"), S("fade")] ] },
+    [S("pop", 1, "qz", "n"), S("ring")],
+    [S("lines"), S("pop", 1, "p", "i"), S("ring", 1, "", "n"), S("fade")],
+    [S("lines"), S("ink", 1, "pZ", "o"), S("ring", 1, "", "i"), S("cracks", 1, "b", "h"), S("fade", 1, "", "r")],
+    [S("lines", 1, "", "k"), S("slam", 1, "pZ", "o"), S("fig", 1, "sZ", "i"), S("fig", 1, "s", "h"), S("ring"), S("cracks", 2, "b", "p"), S("ring", 1, "", "d"), S("dots", 1, "", "n"), S("fade", 2, "", "r")],
+    [S("window"), S("slam", 2, "pZ", "o"), S("fig", 1, "sZ", "i"), S("fig", 1, "sbz", "h"), S("cracks", 2, "b", "p"), S("ring", 1, "", "r"), S("dots", 1, "", "i"), S("ring", 2, "", "n"), S("cracks", 2, "", "d"), S("fade", 2)],
+    [S("lines", 1, "", "k"), S("window", 1, "s"), S("slam", 2, "pZ", "o"), S("fig", 1, "sZ", "i"), S("fig", 1, "sbZ", "p"), S("fig", 1, "spz", "h"), S("cracks", 1, "", "n"), S("ring", 2, "", "r"), S("dots", 1, "", "d"), S("cracks", 2, "b", "i"), S("ring", 2, "", "h"), S("dots", 2), S("fade", 2, "", "r"), S("fade", 2)] ] },
   ko: { tone: "blood", pl: "Powalenie", en: "Knock-out", steps: [
-    [S("ink", 1, "p"), S("pop"), S("splat"), S("fade")],
-    [S("ink", 1, "p"), S("pop"), S("splat", 2), S("fade")],
-    [S("lines"), S("ink", 1, "p"), S("pop"), S("splat", 2), S("fade")],
-    [S("shadow", 3, "s"), S("slam", 1, "p"), S("splat", 2), S("fade")],
-    [S("lines"), S("shadow", 3, "s"), S("slam", 2, "p"), S("chroma"), S("splat", 2), S("fade")],
-    [S("lines"), S("shadow", 3, "s"), S("swap"), S("slam", 2, "p"), S("chroma"), S("splat", 2), S("fade")] ] },
+    [S("ink", 1, "pz", "o"), S("pop", 1, "z", "i"), S("splat"), S("fade")],
+    [S("ink", 1, "pZ", "o"), S("pop", 1, "z", "i"), S("fig", 1, "", "h"), S("splat", 2, "", "p"), S("fade")],
+    [S("lines", 1, "", "r"), S("ink", 1, "pZ", "o"), S("fig", 1, "z", "i"), S("fig", 1, "", "h"), S("splat", 2, "b", "p"), S("fade", 1, "", "r")],
+    [S("shadow", 3, "s"), S("slam", 1, "pZ", "o"), S("fig", 1, "sZ", "i"), S("fig", 1, "s", "h"), S("splat", 2, "b", "p"), S("fig", 1, "", "n"), S("fade", 2, "", "r")],
+    [S("lines", 1, "", "k"), S("shadow", 3, "s"), S("slam", 1, "pZ", "o"), S("fig", 1, "sZ", "i"), S("fig", 1, "sbz", "h"), S("chroma", 1, "b", "p"), S("splat", 2, "", "i"), S("fig", 2, "", "d"), S("splat", 1, "", "n"), S("fade", 2, "", "r"), S("fade", 2)],
+    [S("lines", 1, "", "k"), S("lines", 1, "", "n"), S("shadow", 3, "s"), S("slam", 1, "pZ", "o"), S("fig", 1, "sZ", "i"), S("fig", 1, "sbZ", "p"), S("fig", 1, "spz", "h"), S("fig", 1, "sbz", "i"), S("chroma", 1, "", "d"), S("splat", 2, "", "p"), S("fig", 2, "", "h"), S("splat", 2, "", "n"), S("fig", 2, "", "o"), S("splat", 1), S("fade", 2, "", "r"), S("fade", 2, "", "r")] ] },
   shock: { tone: "volt", pl: "Wyładowanie / energia", en: "Shock / energy", steps: [
-    [S("chroma"), S("pop")],
-    [S("chroma"), S("pop", 1, "q"), S("ring"), S("fade")],
-    [S("chroma"), S("ink", 1, "q"), S("ring"), S("fade")],
-    [S("chroma"), S("slam", 1, "p"), S("chroma"), S("ring"), S("fade")],
-    [S("lines"), S("glare"), S("slam", 2, "p"), S("chroma"), S("ring"), S("dots"), S("fade")],
-    [S("lines"), S("glare"), S("slam", 2, "p"), S("chroma", 2), S("ring"), S("dots"), S("fade")] ] },
+    [S("chroma", 1, "", "n"), S("pop")],
+    [S("chroma"), S("pop", 1, "qz", "i"), S("ring", 1, "", "r"), S("fade")],
+    [S("chroma", 1, "", "i"), S("ink", 1, "qZ", "o"), S("ring", 1, "", "p"), S("fig", 1, "", "h"), S("fade", 1, "", "r")],
+    [S("chroma", 1, "", "k"), S("slam", 1, "pZ", "o"), S("fig", 1, "sZ", "i"), S("fig", 1, "s", "h"), S("chroma", 1, "b", "p"), S("ring", 1, "", "n"), S("dots", 2, "", "d"), S("fade", 2, "", "r")],
+    [S("lines", 1, "", "k"), S("glare"), S("slam", 2, "pZ", "o"), S("fig", 1, "sZ", "i"), S("fig", 1, "sbz", "h"), S("chroma", 1, "b", "p"), S("ring", 1, "", "r"), S("dots", 2, "", "n"), S("chroma", 1, "", "d"), S("ring", 2), S("fade", 2)],
+    [S("lines", 1, "", "k"), S("glare", 1, "s"), S("slam", 2, "pZ", "o"), S("fig", 1, "sZ", "i"), S("fig", 1, "sbZ", "p"), S("fig", 1, "spz", "h"), S("chroma", 2, "", "i"), S("ring", 1, "", "r"), S("fig", 1, "", "n"), S("chroma", 1, "b", "d"), S("dots", 2, "", "h"), S("ring", 2, "", "n"), S("dots"), S("fade", 2, "", "r"), S("fade", 2)] ] },
   word: { tone: "hero", pl: "Pod napisem", en: "Behind a word", steps: [
     [S("lines"), S("fade")],
     [S("lines", 2), S("fade")],
@@ -202,10 +256,28 @@ export function planImpact(spec = {}) {
   const K = KINDS[kind];
   let steps;
   if ( Array.isArray(spec.frames) && spec.frames.length ) {
-    steps = spec.frames.map((f) => (typeof f === "string" ? S(f) : { type: f?.type, ticks: f?.ticks ?? 1, stop: !!f?.stop, punch: f?.punch === true ? 1 : Number(f?.punch) || 0 }))
+    steps = spec.frames.map((f) => (typeof f === "string" ? S(f) : { type: f?.type, ticks: f?.ticks ?? 1, stop: !!f?.stop, punch: f?.punch === true ? 1 : Number(f?.punch) || 0,
+      ...(f?.kick < 0 ? { kick: -1 } : {}), ...(typeof f?.fig === "string" && FIG[f.fig] ? { fig: f.fig } : {}), ...(Number(f?.z) > 1 ? { z: Math.min(1.8, Number(f.z)) } : {}) }))
       .filter((f) => Object.hasOwn(FRAMES, f.type));
+    /* IMPACT3: a caller's own sequence without any `fig` gets the figures' part by the same rule as the kinds: the rim before the blow,
+       the figure in its own colours on the blow, then its negative, posterised, and the rim dying out (callers may set `fig` per drawing) */
+    if ( steps.length && !steps.some((f) => f.fig) ) autoFigs(steps);
   } else steps = K.steps[step].map((s) => ({ ...s }));
   if ( !steps.length ) steps = [S("pop")];
+  /* IMPACT3: the figures' palette differs from blow to blow (seeded, the same on every seat): every other seed jumps posterised first,
+     negative second */
+  const seedN = spec.seed == null ? 1 : (typeof spec.seed === "number" ? spec.seed >>> 0 : hash(spec.seed));
+  if ( (seedN >>> 5) & 1 ) for ( const s of steps ) if ( s.fig === "i" ) s.fig = "p"; else if ( s.fig === "p" ) s.fig = "i";
+  /* IMPACT4: more from blow to blow (seeded, every seat alike): the held palettes swap (hue cycle <-> duotone), and on the long cuts (a kind's
+     steps 3-5) the release after the hold is played in another order */
+  if ( (seedN >>> 6) & 1 ) for ( const s of steps ) if ( s.fig === "h" ) s.fig = "d"; else if ( s.fig === "d" ) s.fig = "h";
+  if ( !spec.frames && step >= 3 && (seedN >>> 9) & 1 ) {
+    const last = steps.reduce((a, s, i) => (s.stop ? i : a), -1), rel = steps.slice(last + 1, steps.length - 2);
+    if ( last >= 0 && rel.length >= 2 ) steps.splice(last + 1, rel.length, ...rel.slice(1), rel[0]);
+  }
+  /* a caller can only lower the figures' part: figures: false = none, "rim" = the rims only */
+  if ( spec.figures === false ) for ( const s of steps ) delete s.fig;
+  else if ( spec.figures === "rim" ) for ( const s of steps ) if ( s.fig ) { s.fig = "r"; delete s.z; }
   /* the limits: each drawing, the hit-stop, the whole impact */
   let total = 0, stops = 0;
   const frames = [];
@@ -218,12 +290,18 @@ export function planImpact(spec = {}) {
     if ( stop ) { if ( stops + ticks > LIMITS.maxStopTicks ) stop = false; else stops += ticks; }
     const def = FRAMES[s.type];
     const punch = spec.punch === false ? 0 : clamp((s.punch || 0) * (Number.isFinite(spec.punch) ? spec.punch : 1), 0, 1.5);
-    frames.push({ type: s.type, ticks, stop, punch, seed: R.seed(), full: def.full, cls: def.cls, back: def.back, local: !!def.local });
+    const fr = { type: s.type, ticks, stop, punch, seed: R.seed(), full: def.full, cls: def.cls, back: def.back, local: !!def.local };
+    if ( s.fig ) fr.fig = s.fig;
+    if ( s.fig && s.z > 1 ) fr.z = s.z;
+    if ( s.kick < 0 && punch > 0 ) fr.kick = -1;
+    frames.push(fr);
     total += ticks;
   }
   const t = Array.isArray(spec.colors) && spec.colors.length ? { a: String(spec.colors[0]), b: String(spec.colors[1] ?? spec.colors[0]) } : (TONES[spec.tone] ?? TONES[K.tone]);
   const dir = Number.isFinite(spec.dir) ? (spec.dir * Math.PI) / 180 : null;
-  const plan = { kind, tier, step, magnitude, seed, dir, tone: { a: t.a, b: t.b }, frames, ticks: total, ms: total * TICK, mode: "full" };
+  const plan = { kind, tier, step, magnitude, seed, dir, tone: { a: t.a, b: t.b }, frames, ticks: total, ms: total * TICK, mode: "full",
+    /* IMPACT3: which accent lights the figures' rims (seeded: the same on every seat) */
+    rimTone: (seed >>> 7) & 1 ? "b" : "a" };
   /* FIN-ENGINE: when the blow itself shows, ms after the impact's start (the lead-ins before it: lines, a black frame); a caller that knows
      the instant of the blow passes it as `blowAt` and the impact starts peakMs earlier */
   plan.peakMs = peakOf(plan).tick * TICK;
@@ -242,6 +320,13 @@ export function peakOf(plan) {
   return { index: best, tick: bestAt };
 }
 
+/* IMPACT3: the figures' part for a caller's own sequence (steps = [{ type, ticks, ... }], changed in place) */
+function autoFigs(steps) {
+  let pk = steps.findIndex((s) => (PEAK[s.type] ?? 0) >= 0.8);
+  if ( pk < 0 ) { pk = 0; steps.forEach((s, i) => { if ( (PEAK[s.type] ?? 0) > (PEAK[steps[pk].type] ?? 0) ) pk = i; }); }
+  const after = ["i", "p"];
+  steps.forEach((s, i) => { if ( s.type === "rest" ) return; s.fig = i < pk ? "r" : i === pk ? "o" : after[i - pk - 1] ?? "r"; });
+}
 /* ---------- what this client may see ----------
    prefs = the engine's preferences (prefs.mjs: enabled, motion, flashes, photosafe) + impact ("full" | "local" | "off")
    env   = { osReduced, callerReduced, callerGentle, flashLog (the engine's shared log of flash times, ms), now, t0 }
@@ -272,16 +357,18 @@ export function safety(plan, prefs = {}, env = {}) {
     const ticks = Math.min(LIMITS.maxFrameTicks, Math.max(2, plan.ticks - pk.tick));
     const lead = Math.max(0, Math.min(pk.tick, LIMITS.maxTicks - ticks));
     const seed = plan.frames[pk.index]?.seed ?? plan.seed;
+    const rim = plan.frames.some((f) => f.fig);   // IMPACT3: the still drawing keeps the figures' rim (no change of their art)
     plan.frames = [];
     if ( lead > 0 ) plan.frames.push({ type: "rest", ticks: lead, stop: false, punch: 0, seed, full: false, cls: "scene", back: null, local: false });
-    plan.frames.push({ type: "pop", ticks, stop: false, punch: 0, seed, full: false, cls: "scene", back: null, local: false, still: true });
+    plan.frames.push({ type: "pop", ticks, stop: false, punch: 0, seed, full: false, cls: "scene", back: null, local: false, still: true, ...(rim ? { fig: "r" } : {}) });
     plan.ticks = lead + ticks; plan.ms = plan.ticks * TICK;
     return plan;
   }
   /* ENGTABLE (1.9.16): the guard is always on; a `photosafe: false` (no setting carries one any more) changes nothing */
   if ( mode === "local" ) {
     const gentle = prefs.motion === "gentle";
-    for ( const f of plan.frames ) { if ( f.full ) toSafe(f); f.stop = false; if ( gentle ) f.punch = 0; else f.punch *= 0.5; if ( f.back === "chroma" && gentle ) f.back = null; }
+    /* IMPACT3: the gentle variant (also a photosensitive seat): the figures keep their rim only, their art never changes brightness */
+    for ( const f of plan.frames ) { if ( f.full ) toSafe(f); f.stop = false; if ( gentle ) f.punch = 0; else f.punch *= 0.5; if ( f.back === "chroma" && gentle ) f.back = null; if ( f.fig ) f.fig = "r"; delete f.z; if ( !f.punch ) delete f.kick; }
   }
   /* the guard: flash drawings (full-field frames AND drawings that change the scene's brightness, even inside a panel) are rationed,
      per impact and per rolling second (shared with the words' flash frames) */
@@ -318,7 +405,8 @@ export function frameAt(plan, t) {
 export function punchAt(plan, i, tickInFrame = 0) {
   const f = plan.frames[i];
   if ( !f || !(f.punch > 0) ) return null;
-  const k = clamp(f.punch, 0, 1.5) / 1.5 * (0.45 + 0.55 * plan.magnitude / 2) * (tickInFrame === 0 ? 1 : tickInFrame === 1 ? -0.45 : 0.2);
+  /* IMPACT3: a drawing with kick -1 recoils AGAINST the blow (after a punch along it the frame shakes) */
+  const k = clamp(f.punch, 0, 1.5) / 1.5 * (0.45 + 0.55 * plan.magnitude / 2) * (tickInFrame === 0 ? 1 : tickInFrame === 1 ? -0.45 : 0.2) * (f.kick < 0 ? -1 : 1);
   const amp = LIMITS.punchMax * k;
   const a = plan.dir ?? ((f.seed % 360) * Math.PI) / 180;
   return { x: Math.cos(a) * amp, y: Math.sin(a) * amp, s: 1 + Math.abs(amp) * 2.4 };

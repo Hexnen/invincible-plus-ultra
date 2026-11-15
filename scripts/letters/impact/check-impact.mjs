@@ -164,7 +164,8 @@ export async function run(ok) {
       const q = punchAt(p, i, k);
       if ( !p.frames[i].punch ) { ok(q === null, "impact: a drawing without punch moves"); continue; }
       ok(Math.hypot(q.x, q.y) <= LIMITS.punchMax + 1e-9 && q.s >= 1 && (q.s - 1) / 2 >= Math.hypot(q.x, q.y) - 1e-9, `impact: punch ${i}/${k} beyond the limit or past its zoom margin`);
-      if ( k === 0 ) ok(q.x > 0 && Math.abs(q.y) < 1e-9, "impact: the first kick goes along the blow");
+      /* IMPACT3: a drawing marked kick -1 recoils AGAINST the blow (the frame shakes); every other punch still kicks along it first */
+      if ( k === 0 ) ok((p.frames[i].kick < 0 ? q.x < 0 : q.x > 0) && Math.abs(q.y) < 1e-9, "impact: the first kick goes along the blow (a kick back against it)");
     }
     ok(p.frames.some((f) => f.punch > 0) && p.frames.some((f) => f.stop), "impact: a critical punches and holds");
   }
@@ -360,6 +361,8 @@ export async function run(ok) {
     ok(r.status === 0, `impact life: ${(r.stdout ?? "").trim().split("\n").at(-1)} ${r.stderr ? r.stderr.slice(0, 400) : ""}`);
     /* 10. KEEPBOX: seats with different frame timing, clocks, delays and private words draw the same pictures from the same calls */
     await (await import("./check-seats.mjs")).run(ok);
+    /* 11. IMPACT3: the figures take part (ladders, safety of every new effect, seats, settings, cost) */
+    await (await import("./check-figures.mjs")).run(ok);
   }
 }
 
@@ -422,7 +425,7 @@ async function life(ok) {
   /* KEEPBOX: the cut is a TIME (the stronger one's start), carried out by the cut one's own frame loop on the next display frame */
   await E.tick(16);
   ok(c.alive && !a.alive && (await a.finished) === "replaced", "impact life: a stronger one takes over");
-  await E.tick(700);
+  await E.tick(c.plan.ms + 100);   // IMPACT4: the strongest hit lasts up to a second now (was a fixed 700 ms, longer than the old 500 ms limit)
   ok(!c.alive && kids() === 0 && liveCv() === 0, "impact life: clean after a take-over");
 
   /* a shared start: nothing before startAt, the same drawing at the same instant, late = not shown */
@@ -447,7 +450,7 @@ async function life(ok) {
   stops = 0; await E.tick(400);
   ok(!h.alive && stops === 0 && board.style.translate === "1px 2px", "impact life: reduced motion never holds or shoves"); P.motion = "full";
   /* KEEPBOX: one at a time reads the FULL plan's window on every seat (a reduced seat's still drawing ends earlier, its window does not) */
-  await E.tick(200);
+  await E.tick(LIMITS.maxTicks * TICK);   // IMPACT4: the reduced critical's window is the full plan's (up to a second now; was 200 ms after a 400 ms wait)
   P.flashes = false; h = I.play({ kind: "crit", magnitude: 2, seed: 9 });
   ok(h.mode === "local" && h.plan.frames.every((f) => !f.full && !f.stop) && h.env.local.r <= localRadius(innerWidth, innerHeight) + 1e-6, "impact life: flashes off = the gentle variant in its panel");
   await E.tick(700); P.flashes = true;
