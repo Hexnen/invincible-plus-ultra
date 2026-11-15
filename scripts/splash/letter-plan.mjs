@@ -622,9 +622,18 @@ const SIDE_COST = { above: 0, below: 0.15, right: 0.3, left: 0.35 };
 /* CRITPEAK: what a hit weighs (blockHits: area x w): the token the block describes and the roll's targets 50, other tokens 10 (heavy),
    a panel 20 (stage.mjs UI_WEIGHT), a map pin 1 (it may give way when nothing else can) */
 export const TOKEN_W = 50, TARGET_W = 50, OTHER_W = 10;
+/* CRITLATE: the place a block of one size finds in one frame is the same every time it is asked (composeMoment asks it again for every
+   shrink step and split it retries: on a crowded critical 2881 place() calls, 969 different). Kept by the frame's CONTENT (its frame objects
+   are made anew for each try) and the block's size and footprint; a bounded memo */
+const FRAME_KEY = new WeakMap(), PLACE_MEMO = new Map(), PLACE_MAX = 4000;
+const frameKey = (f) => { let k = FRAME_KEY.get(f); if (k === undefined) { try { k = JSON.stringify(f); } catch (e) { k = null; } FRAME_KEY.set(f, k); } return k; };
 function place(out, frame, far = false) {
   const safe = frame.safe, r = out.rect, bw = r.r - r.l, bh = r.b - r.t;
   const T = frame.token, avoid = frame.avoid ?? [];
+  const ft0 = out.foot ?? null, pk = `${bw}|${bh}|${far ? 1 : 0}|${ft0 ? `${ft0.l}|${ft0.t}|${ft0.r}|${ft0.b}` : '-'}`;
+  const fk = frameKey(frame), mk = fk == null ? null : fk + '#' + pk;
+  const hit0 = mk == null ? null : PLACE_MEMO.get(mk);
+  if (hit0) return placeAt(out, r, hit0);
   const at = (l, t) => ({ l, t, r: l + bw, b: t + bh });
   const inSafe = (l, t) => [clamp(l, safe.l, Math.max(safe.l, safe.r - bw)), clamp(t, safe.t, Math.max(safe.t, safe.b - bh))];
   let best = null, side = 'focus';
@@ -676,12 +685,15 @@ function place(out, frame, far = false) {
     for (const dy of [0, -0.12, 0.12, -0.24, 0.24, -0.36, 0.36]) for (const dx of [0, -0.15, 0.15, -0.3, 0.3, -0.45, 0.45]) consider('focus', frame.focus.x - bw / 2 + dx * W, frame.focus.y - bh / 2 + dy * H, 0);
     if (far && best.hit > 0.5) for (let gy = 0; gy <= 12; gy++) for (let gx = 0; gx <= 12; gx++) consider('focus', safe.l + gx / 12 * (W - bw), safe.t + gy / 12 * (H - bh), 0.5);
   }
-  side = best.s;
+  if (mk != null) { PLACE_MEMO.set(mk, best); if (PLACE_MEMO.size > PLACE_MAX) PLACE_MEMO.delete(PLACE_MEMO.keys().next().value); }
+  placeAt(out, r, best);
+}
+function placeAt(out, r, best) {
   const dx = best.l - r.l, dy = best.t - r.t;
   for (const it of out.items) { it.x = Math.round(it.x + dx); it.y = Math.round(it.y + dy); }
   if (out.gauge) { out.gauge.x = Math.round(out.gauge.x + dx); out.gauge.y = Math.round(out.gauge.y + dy); }
   out.rect = { l: r.l + dx, t: r.t + dy, r: r.r + dx, b: r.b + dy };
-  out.side = side;
+  out.side = best.s;
   out.hit = best.hit;
   out.heavy = best.heavy;
 }

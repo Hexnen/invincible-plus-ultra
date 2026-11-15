@@ -613,6 +613,7 @@ function composeIn(ctl, items, frame) {
     layoutStats.reused++;
     return copyLayout(kept.out);
   }
+  if (prepDeadline != null && performance.now() > prepDeadline) throw PREP_YIELD;   // CRITLATE: a sliced prepare goes on in its next slot
   const t0 = performance.now();
   const anchored = !!frame.token;
   let side = 'above', out = null;
@@ -1339,10 +1340,16 @@ function stageFields(opts, shared) {
 }
 /* CRITLATE: lay a moment out AHEAD of its instant (main.mjs: while the dice roll, and again once the table's instant is known), with the
    very options play() will get: the measuring and the layout are kept by their input (composeIn, measureItems), so play() at the instant
-   only takes them. Nothing is drawn, logged or ended here. -> the ms it took, or null (nothing to lay out) */
-export function prepare(ev, o) {
+   only takes them. Nothing is drawn, logged or ended here. `slice` (while the dice roll: live, one prepare of a crowded critical held the
+   page 0.25-0.5 s and the dice stood still): the work is cut between the layouts it makes, each slice in its own idle slot of the page
+   (a later slice finds the earlier layouts kept and goes on from there). -> the ms the first slice took, or null (nothing to lay out) */
+export const PREP_SLICE_MS = 12;
+const PREP_YIELD = { yield: true };
+let prepDeadline = null;
+export function prepare(ev, o, slice = false, round = 0) {
   try {
     if (!lettersOn() || !o?.seed) return null;
+    prepDeadline = slice ? performance.now() + PREP_SLICE_MS : null;
     const t = performance.now();
     const mo = momentOpts(ev, o), opts = mo.full ? { ...mo.o, full: true } : mo.o;
     const ctl = { ...stageFields(opts, mo.shared), dry: true, seed: o.seed, full: mo.full, targets: IP.cleanTargets(mo.o.targets) };
@@ -1362,7 +1369,14 @@ export function prepare(ev, o) {
       }
     }
     return performance.now() - t;
-  } catch (e) { return null; }
+  } catch (e) {
+    if (e === PREP_YIELD && round < 40) {
+      const again = () => prepare(ev, o, true, round + 1);
+      if (typeof globalThis.requestIdleCallback === 'function') globalThis.requestIdleCallback(again, { timeout: 120 }); else setTimeout(again, 0);
+      return 0;
+    }
+    return null;
+  } finally { prepDeadline = null; }
 }
 /* tworzy scenę; opts: { token (Token|null), scale } */
 function openStage(opts, shared = false) {

@@ -14,7 +14,10 @@
      L3  no task inside the hit (from the moment's instant to the impact's end) is longer than one 60 Hz frame;
      L4  the SAME picture: every call (text, options, start, size, place) and every impact spec equal with and without the layout ahead;
      L5  an input that changed after the layout ahead (the roller moved, the view panned) is laid out afresh: equal to a play without it;
-     L6  the kept layout is a copy: a play that moves its parts (a seat's own guard) does not change the next play of the same moment.
+     L6  the kept layout is a copy: a play that moves its parts (a seat's own guard) does not change the next play of the same moment;
+     L7  the layout ahead while the dice roll is cut into slices (live: one prepare of a crowded critical held the page 0.25-0.5 s, the dice
+         stood still): no slice makes more than one fresh layout, the slices end before the instant, and the play then takes them all
+         (no fresh layout at the instant, the same calls as a play laid out in one go).
    The page, the canvas and the engine are fakes (critfix.mjs's), on a virtual clock; the impact's plan is the real one. */
 import { ok, eq, done, summary } from "../tactics/testkit.mjs";
 import * as SL from "../splash/logic.mjs";
@@ -82,7 +85,7 @@ function scene({ tokens, zoom = 1, pan = { x: 0, y: 0 } }) {
 const AT = 5000;   // the moment's instant on this page's clock (the dice rolled from 1000)
 let runN = 0;
 /* one seat: (prepare while the dice roll) -> play at the instant -> every timer in order. Each task's length is what the engine cost it */
-async function seat({ layer = "screen", e, board, targets = [], cost = 20, ahead = true, change = null, twice = false, W = 1600, H = 900 }) {
+async function seat({ layer = "screen", e, board, targets = [], cost = 20, ahead = true, change = null, twice = false, W = 1600, H = 900, slice = false }) {
   clock = 1000;
   { let r = 777; Math.random = () => ((r = (r * 1103515245 + 12345) % 2147483648) / 2147483648); }
   globalThis.document = fakeDom(W, H);
@@ -100,7 +103,13 @@ async function seat({ layer = "screen", e, board, targets = [], cost = 20, ahead
   const hero = () => canvas.tokens.get("HERO000000000000");
   const opts = () => ({ token: hero(), from: hero(), targets, scale: 1, hold: 1, fx: 1, fullFrom: 0.7, seed: "CL-" + (e.word ?? "x"), momentId: "CL", resolve: () => ({ now: 5, max: 8 }), backdrop: false });
   const tasks = [];
-  if (ahead) { const t = clock; const r = Stage.prepare?.(e, opts()); tasks.push({ at: t, ms: clock - t, what: "prepare" }); ok(!Stage.prepare || r != null, "prepare lays the moment out"); }
+  if (ahead) { const t = clock, f = Stage.layoutStats?.fresh ?? 0; const r = Stage.prepare?.(e, opts(), slice); tasks.push({ at: t, ms: clock - t, what: "prepare", fresh: (Stage.layoutStats?.fresh ?? 0) - f }); ok(!Stage.prepare || r != null, "prepare lays the moment out"); }
+  if (slice) {   // the idle slots while the dice roll: the prepare's next slices
+    let x;
+    while ((x = timers.filter((q) => !q.done && q.at < AT - 200).sort((a, b) => a.at - b.at || a.i - b.i)[0])) {
+      x.done = true; clock = Math.max(clock, x.at) + 1; const s0 = clock, f = Stage.layoutStats.fresh; x.f(); tasks.push({ at: s0, ms: clock - s0, what: "prepare", fresh: Stage.layoutStats.fresh - f });
+    }
+  }
   if (change) change();
   clock = Math.max(clock, AT);
   const stats0 = { ...(Stage.layoutStats ?? {}) };
@@ -172,6 +181,17 @@ for (const layer of ["screen", "overlay"]) {
     const p0 = await seat({ layer, e, board: { ...BOARDS.crowd, pan: { x: -120, y: 40 } }, targets, ahead: false });
     eq(panned.log.map(strip), p0.log.map(strip), "L5 screen: the view panned after the layout ahead: laid out afresh");
   }
+}
+/* L7: the layout ahead in slices */
+for (const layer of ["screen", "overlay"]) for (const [bn, board] of Object.entries(BOARDS)) {
+  const e = KINDS.critical, targets = [T0.id];
+  const s = await seat({ layer, e, board, targets, slice: true });
+  const n = await seat({ layer, e, board, targets, ahead: false });
+  const pre = s.tasks.filter((x) => x.what === "prepare");
+  ok(pre.every((x) => x.fresh <= 1), `L7 ${layer} ${bn}: no slice of the layout ahead makes more than one layout (${pre.map((x) => x.fresh).join(",")})`);
+  ok(pre.every((x) => x.at + x.ms < AT), `L7 ${layer} ${bn}: the slices end before the instant`);
+  ok(s.stats1.fresh === s.stats0.fresh, `L7 ${layer} ${bn}: the play takes every sliced layout (fresh ${s.stats0.fresh}->${s.stats1.fresh})`);
+  eq(s.log.map(strip), n.log.map(strip), `L7 ${layer} ${bn}: the same calls as a play laid out in one go`);
 }
 /* L6: the kept layout is handed out as a copy */
 {

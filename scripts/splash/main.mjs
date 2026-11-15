@@ -518,7 +518,7 @@ function prepareAhead(message, rd, when = 'now') {
     try {
       if (!game.messages.has(message.id) || document.visibilityState === 'hidden' || !visibleToMe(message)) return;
       const ev = eventFor(message, readRoll(message) ?? rd);
-      const ms = Stage.prepare(ev, stageOpts(message, ev, ev.stress ? resolveReader(message, ev) : null));
+      const ms = Stage.prepare(ev, stageOpts(message, ev, ev.stress ? resolveReader(message, ev) : null), when === 'idle');
       dbg('ułożone zawczasu (' + when + '):', ms == null ? '-' : Math.round(ms) + ' ms');
     } catch (e) { /* the moment lays itself out at its instant, as before */ }
   };
