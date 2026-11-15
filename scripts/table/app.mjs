@@ -83,7 +83,7 @@ function tabHtml(tab, gm, vals, active) {
   }).join("");
   /* UNMIRROR-1: an older engine copy runs on this page: its options are each screen's own there (said once, above the rows) */
   const old = tab.id === "letters" && D.engineMode(L) === "old" ? `<p class="ipt-note" role="note"><i class="fa-solid fa-triangle-exclamation" inert></i><span>${esc(t("IPT.Engine.old", { version: L?.version ?? "?" }))}</span></p>` : "";
-  const preview = tab.id === "letters" || tab.id === "splash";
+  const preview = tab.id === "letters" || tab.id === "splash" || tab.id === "gore";
   const foot = gm || preview ? `<footer class="ipt-foot">
       ${preview ? `<button type="button" data-action="preview" data-tab-id="${tab.id}" data-tooltip="${esc(t("IPT.PreviewHint"))}"><i class="fa-solid fa-play" inert></i> ${esc(t("IPT.Preview"))}</button>` : ""}
       ${gm ? `<button type="button" data-action="defaults" data-tab-id="${tab.id}" data-tooltip="${esc(t("IPT.DefaultsHint"))}"><i class="fa-solid fa-rotate-left" inert></i> ${esc(t("IPT.Defaults"))}</button>` : ""}
@@ -210,6 +210,7 @@ function appClass() {
     static async #preview(_ev, btn) {
       const tab = btn?.dataset?.tabId;
       try {
+        if (tab === "gore") { (game.modules.get(MOD)?.api?.gore ?? globalThis.PlusUltraGore)?.preview?.(); return; }
         if (tab === "splash") { const api = game.modules.get(MOD)?.api?.splash ?? globalThis.invincibleSplash; api?.preview?.({ n: 5, sixes: 3, action: "slugfest" }); return; }
         const { letters } = await import("../letters/index.mjs");
         const L = await letters();

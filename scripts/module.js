@@ -1844,6 +1844,12 @@ import("./tokenanim/main.mjs")
   .then((anim) => anim.start({ ...SPLASH_PHASES }))
   .catch((err) => console.warn(`${MODULE_ID} | token animations not loaded (everything else is unaffected)`, err));
 
+/* GORE (scripts/gore/): pixel-art blood splashing onto the screen when a character loses Health, glass cracks when it loses Resolve to an
+   attack; the table's options (tab "Blood and cracks" of the Comic effects window), api.gore. Same mechanism and recorded phases as above. */
+import("./gore/main.mjs")
+  .then((gore) => gore.start({ ...SPLASH_PHASES }))
+  .catch((err) => console.warn(`${MODULE_ID} | blood and cracks not loaded (everything else is unaffected)`, err));
+
 /* TABLE SETTINGS (scripts/table/, GMALL): the owner, 2026-11-15, «wszystko mg wybiera dla stołu»: one window for every option of the
    lettering, the roll splash, the token reactions and their animations, chosen by the GM for the table (players read-only), and the
    mirror of the table's lettering preferences into each seat's engine. Same mechanism and recorded phases as the blocks above. */

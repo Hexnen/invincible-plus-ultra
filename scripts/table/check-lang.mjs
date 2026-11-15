@@ -23,7 +23,7 @@ for (const f of ["main.mjs", "app.mjs"]) {
 const MOD_CHOICES = {
   "splash.layer": [...SCREEN_LAYERS, ...WORLD_LAYERS], "splash.placement": ["token", "screen"], "splash.effects": ["full", "reduced", "off"],
   "splash.motion": ["auto", "full", "reduced"], "reactions.size": ["small", "normal", "large"], "reactions.layer": ["overlay", "weather", "tokens", "ground", "top"],
-  "lang.splash": ["en", "pl"], "lang.reactions": ["en", "pl"]
+  "lang.splash": ["en", "pl"], "lang.reactions": ["en", "pl"], "gore.seats": ["all", "owners"]
 };
 for (const tab of TABS) {
   used.add(`IPT.Tab.${tab.id}`);
