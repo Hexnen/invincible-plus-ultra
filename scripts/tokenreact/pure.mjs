@@ -518,6 +518,35 @@ export function clampInto(p, box, safe) {
   const fit = (v, half, lo, hi) => (hi - lo < half * 2 ? (lo + hi) / 2 : Math.max(lo + half, Math.min(hi - half, v)));
   return { x: fit(p.x, box.w / 2, safe.l, safe.r), y: fit(p.y, box.h / 2, safe.t, safe.b) };
 }
+/* KOSAME (live, lane 5, ten real fights on two seats that had the SAME view: the word, its seed, its instant and the impact were the same
+   on both, but the word's size differed by up to 32 % and its place by up to 390 scene px in 8 of 10): the action camera of a fight takes
+   each seat's view to the blow on its own (its dice, its own look: away on one seat, in place on the other, the kill's slow push), and the
+   reaction was laid out on the view of THAT instant. A moment is now planned on the view the user had (the camera's home, the map's stage
+   status) while the camera is away; the drawn word follows the live view as before.
+   A view = { x, y, scale } (the stage's pivot, a scene point, and its zoom); c = the stage's position (the screen point of the pivot). */
+/** a scene point -> the canvas point it has in the view `f` */
+/* KOSAME: a fight event's instant on the table's clock: the stamp of the fight's state write heard just before it (the same on every seat),
+   when there is one no older than EVENT_STAMP_MS and not in the future; else null (the caller then takes this seat's arrival) */
+export const EVENT_STAMP_MS = 2000;
+export function eventAnchor(stamp, now, maxAge = EVENT_STAMP_MS) {
+  const srv = Number(stamp?.srv), at = Number(stamp?.at);
+  if (!Number.isFinite(srv) || !Number.isFinite(at) || !Number.isFinite(now)) return null;
+  if (now - at > maxAge || now - at < 0 || srv > now) return null;
+  return srv;
+}
+export function frameScreen(p, f, c = { x: 0, y: 0 }) {
+  return { x: (Number(c?.x) || 0) + (p.x - f.x) * f.scale, y: (Number(c?.y) || 0) + (p.y - f.y) * f.scale };
+}
+/** a canvas point in the view `f` -> its scene point */
+export function frameWorld(q, f, c = { x: 0, y: 0 }) {
+  return { x: f.x + (q.x - (Number(c?.x) || 0)) / f.scale, y: f.y + (q.y - (Number(c?.y) || 0)) / f.scale };
+}
+/** a view a moment may be planned on: { x, y, scale } with finite numbers and a zoom > 0, else null */
+export function cleanFrame(v) {
+  if (!v || typeof v !== "object") return null;
+  const x = Number(v.x), y = Number(v.y), scale = Number(v.scale);
+  return Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(scale) && scale > 0 ? { x, y, scale } : null;
+}
 /** the safe rect: the canvas view minus whatever hugs one of its edges (the sidebar, the hotbar and the chat input, the scene bar, the
     controls) and minus the director's letterbox bars, with a small margin. view = { l, t, r, b }; covers = [{ x, y, w, h }] */
 export function safeRect(view, covers = [], margin = 8) {

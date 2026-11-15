@@ -202,7 +202,9 @@ function told(tok, stat, add) {
   if (add.src) e.src = add.src;
   if (add.dtype) e.dtype = add.dtype;
   if (add.doubled) e.doubled = true;
-  if (!add.isCard) shared(e, Clock.serverNow(), QUIET.event);      // SYNC: a fight's event as it reached this seat (a card does not move the blow)
+  /* SYNC: a fight's event on the table's clock (a card does not move the blow). KOSAME: the stamp of the fight's state write that carried it
+     (the same on every seat; the event's key starts with its combat's id), else this seat's arrival */
+  if (!add.isCard) { const srv = add.key ? eventStamp(String(add.key).split("|")[0]) : null; shared(e, Number.isFinite(srv) ? srv : Clock.serverNow(), QUIET.event); }
   if (isPending(e)) arm(e, QUIET.event);
 }
 /* SYNC (ADVX 5: token-hit impact frames ran about two film frames apart either way): the blow's instant was "this seat's now + HIT_LEAD"
@@ -242,6 +244,18 @@ function markPush(actor) {
   lastPush.set(actor.id, Date.now());
   for (const e of pending.values()) if (e.actorId === actor.id && e.stat === "resolve" && !e.tactics && e.to !== null && e.from !== null && e.to < e.from) e.cause = "push";
 }
+
+/* KOSAME (seen live, two seats, a real fight: the event's instant was each seat's own arrival, a few to some tens of ms apart, and more on a
+   far server): the GM's executor writes the fight's state (an update of the Combat, its server stamp the same on every seat) and only then
+   publishes the events of that step, so on every seat the write is heard first (GM 0-1 ms, player 3-19 ms before the event). An event is
+   anchored on the latest write of its fight heard within EVENT_STAMP_MS; else (no write heard, an old one) on its arrival, as before */
+const fightStamps = new Map();   // combat id -> { srv (the write's server stamp on the table's clock), at (when this seat heard it) }
+function noteFight(combat, changes, options) {
+  if (!combat?.id || !changes?.flags) return;
+  fightStamps.set(combat.id, { srv: srvStamp(options), at: Clock.serverNow() });
+  if (fightStamps.size > 20) fightStamps.delete(fightStamps.keys().next().value);
+}
+function eventStamp(combatId) { return P.eventAnchor(fightStamps.get(combatId), Clock.serverNow()); }
 
 /* the tactical fight's public events: damage (taken, toStress) and broken */
 function onEvent(ev) {
@@ -459,6 +473,10 @@ async function land(ids, ready) {
     unflight(ready);
     items = build(ready);
     if (!items.length) return;
+    /* KOSAME: the whole moment is laid out on one view (planFrame: the user's own while the action camera is away), set only while this
+       runs synchronously (cleared before every await and before the words are started) */
+    const fr = planFrame();
+    view.frame = fr;
     /* CROWD (ADVX 14: a token under the open sidebar or mostly off the view got no reaction at all): every token this seat sees is lettered;
        one not on this seat's view gets its word at the view's edge nearest to it (follow, pure offPanel) */
     /* the words from the engine's vocabulary (FXLT2, ADVT2 1), a blow of a series one step of one growing sound (ADVT2 5); CROWD (ADVX 6): the
@@ -555,8 +573,10 @@ async function land(ids, ready) {
     /* SYNC: the table's instant (sharedHit) when there is one; this seat can only be later (it never strikes in the past, MIN_PREP) */
     /* CALLERS2 (manual 6a: a seat that reloaded a moment ago may hold a clock ~280 ms off): before the shared instant is put on this page's
        clock, wait for a good clock, at most until the instant itself is near (this seat then strikes with the others, not its error late) */
+    view.frame = null;      // KOSAME: no laid-out frame across an await (another moment's words follow the live view meanwhile)
     { const dues = (ready ?? []).map((e) => e?.due0).filter(Number.isFinite);
       if (dues.length && !Clock.good()) await Clock.settle(Math.max(0, Math.max(...dues) + P.HIT_LEAD + SHARED_SLACK - Clock.serverNow() - MIN_PREP - 20)); }
+    view.frame = fr;
     const T0s = sharedHit(ready, performance.now(), Clock.toPage, P.HIT_LEAD);
     const T0 = Math.max(Number.isFinite(T0s) ? T0s : performance.now() + P.HIT_LEAD, performance.now() + MIN_PREP, storyEnd || 0);
     let after = 0;
@@ -665,12 +685,14 @@ async function land(ids, ready) {
     const same = P.sameSize(fits);
     if (fits.some((f) => same.get(f.key) < f.k - 0.005)) place(same, false);
     const shown = staged.filter((it) => it.plan && it.mode !== "none");
+    view.frame = null;      // KOSAME: the words follow the live view
     /* the roll splash (and anything else) may make room for the blow: its instant and its tokens (scratchpad letr REQUESTS FXI-TOKEN) */
     if (shown.length) try { Hooks.callAll(REACT_HOOK, { phase: "hit", at: T0, ids: [...new Set(shown.flatMap((it) => it.ids ?? [it.tok.id]))] }); } catch (err) { once(err); }
     /* a cluster's members (their numbers, their motion) first, its word last: the word's impact keeps the numbers readable (engine `keep`) */
     for (const it of shown) if (!it.cluster) play(L, it);
     for (const it of shown) if (it.cluster) play(L, it);
   } catch (err) { once(err); unflight(ready); }
+  finally { view.frame = null; }
 }
 /* CROWDKO (ADVS2 D3, D4): the side search (pure fitSame) weighs covering against shrinking and always takes SOME side; its choice is now
    judged where the group will really stand (layout.mjs restCentre: follow()'s pushes) against what it must keep clean of. Kept when clean
@@ -780,8 +802,9 @@ function streakOf(id, kind, seed, n = 0, a = null) {
    state); read whole they cut the view or pushed the word on one seat only (KA-THOOM!! smaller on the player with the sidebar open). Only
    what is drawn there counts: a chat card popped up, the party's cards */
 const CARD_SEL = ["#chat-notifications .chat-log > li", "#chat-notifications .chat-message"];
+const BARS_SEL = ".mm-cin > div";      // the map's cinematic letterbox bars (the action camera's shot)
 const COVER_SEL = ["#sidebar", "#hotbar", "#players", "#scene-controls", "#controls", "#scene-navigation", "#navigation", ...CARD_SEL, "#chat-message",
-  "#ui-bottom #chat-form", "#invincible-tactics-dock", "#invincible-combat-bar", ".mm-cin > div"];
+  "#ui-bottom #chat-form", "#invincible-tactics-dock", "#invincible-combat-bar", BARS_SEL];
 /* floating panels that do not hug an edge (cutting the view by them would waste half of it): a side that lands on one costs like a
    token's face, so the word takes another side (seen in the FXLT recording: a fall's "BĘC!" ran under the challenge cards) */
 const PANEL_SEL = ["#ich-dock", "#invincible-turn-tray", ...CARD_SEL,
@@ -804,14 +827,17 @@ const view = {
   rect() { const r = canvas.app.view.getBoundingClientRect(); return { l: Math.max(0, r.left), t: Math.max(0, r.top), r: Math.min(globalThis.innerWidth ?? r.right, r.right), b: Math.min(globalThis.innerHeight ?? r.bottom, r.bottom), ox: r.left, oy: r.top }; },
   /* the safe rect, measured at most every 100 ms (the letterbox bars slide in over ~0.4 s) */
   safe() {
-    const t = Date.now();
-    if (this.cache && t - this.at < 100) return this.cache;
+    /* KOSAME: a moment planned on the user's own view (planFrame) does not count the action camera's letterbox bars (they come and go with
+       the shot, on each seat at its own instant); follow() still keeps the drawn word out from under them, live */
+    const t = Date.now(), home = !!this.frame;
+    if (home ? this.cacheH && t - this.atH < 100 : this.cache && t - this.at < 100) return home ? this.cacheH : this.cache;
     const v = this.rect(), covers = [];
-    for (const sel of COVER_SEL) for (const el of document.querySelectorAll?.(sel) ?? []) {
+    for (const sel of COVER_SEL) for (const el of home && sel === BARS_SEL ? [] : document.querySelectorAll?.(sel) ?? []) {
       try { const r = el.getBoundingClientRect(); if (r.width > 0 && r.height > 0 && getComputedStyle?.(el)?.visibility !== "hidden") covers.push({ x: r.left, y: r.top, w: r.width, h: r.height }); } catch { /* skip */ }
     }
-    this.at = t; this.cache = P.safeRect(v, covers);
-    return this.cache;
+    const s = P.safeRect(v, covers);
+    if (home) { this.atH = t; this.cacheH = s; } else { this.at = t; this.cache = s; }
+    return s;
   },
   panelsCached() { const t = Date.now(); if (!this.pc || t - this.pat > 250) { this.pc = this.panels(); this.pat = t; } return this.pc; },
   panels() { return [...this.blocks(), ...this.zones(), ...this.ownPanels()]; },      // SAMEPIC: the shared zones too, so every seat's follow clamps alike
@@ -894,11 +920,32 @@ const view = {
   },
   /* SAMEPIC: the standard view: the canvas view minus Foundry's bars as the same fixed band on every seat (same-picture.mjs RESERVE) */
   std(tr = null) { const r = canvas.app.view.getBoundingClientRect(), p = tr ? { x: tr.x + tr.w / 2 - r.left, y: tr.y + tr.h / 2 - r.top } : null, s = standardRect(r.width || globalThis.innerWidth || 1600, r.height || globalThis.innerHeight || 900, p); return { l: s.l + r.left, t: s.t + r.top, r: s.r + r.left, b: s.b + r.top }; },
-  zoom: () => canvas.stage.scale?.x || 1,
-  toScreen(p) { const v = this.rect(), g = canvas.stage.toGlobal(p); return { x: v.ox + g.x, y: v.oy + g.y }; },
-  toWorld(p) { const v = this.rect(); return canvas.stage.toLocal({ x: p.x - v.ox, y: p.y - v.oy }); },
+  /* KOSAME: the view a moment is PLANNED on (null = the live one). See planFrame */
+  frame: null,
+  zoom: () => view.frame?.scale ?? (canvas.stage.scale?.x || 1),
+  toScreen(p) { const v = this.rect(); if (this.frame) { const q = P.frameScreen(p, this.frame, canvas.stage.position); return { x: v.ox + q.x, y: v.oy + q.y }; } const g = canvas.stage.toGlobal(p); return { x: v.ox + g.x, y: v.oy + g.y }; },
+  toWorld(p) { const v = this.rect(); if (this.frame) return P.frameWorld({ x: p.x - v.ox, y: p.y - v.oy }, this.frame, canvas.stage.position); return canvas.stage.toLocal({ x: p.x - v.ox, y: p.y - v.oy }); },
   tokRect(tok) { const a = this.toScreen({ x: tok.x, y: tok.y }), z = this.zoom(); return { x: a.x, y: a.y, w: (tok.w ?? 100) * z, h: (tok.h ?? 100) * z }; }
 };
+/* KOSAME (pure frameScreen): the view a moment is laid out on. While the map's action camera is away from the user's view (moinen-maps
+   directorStage.status().home: where it goes back to) that view, not the camera's view of this instant (seats had the same view and still got
+   another size and side: the camera went to the blow on one seat and not on the other, or was halfway). Else the live view. */
+function planFrame() {
+  try {
+    const mm = game.modules?.get?.("moinen-maps");
+    const home = mm?.active ? P.cleanFrame(mm.api?.directorStage?.status?.()?.home) : null;
+    if (home) return home;
+  } catch (err) { once(err); }
+  return null;
+}
+/* the live view as a frame (a plan remembers what it was laid out on: measure() fits the drawn word in the same view) */
+const liveFrame = () => { try { const s = canvas.stage; return s?.pivot && s?.scale ? P.cleanFrame({ x: s.pivot.x, y: s.pivot.y, scale: s.scale.x }) : null; } catch { return null; } };
+/* run fn laid out on the view f (null: the live view); never left set across an await */
+function inFrame(f, fn) {
+  const was = view.frame;
+  view.frame = f ?? null;
+  try { return fn(); } finally { view.frame = was; }
+}
 /* CROWDKO: the tokens hidden from the players (GM seat: kept clean of by lettering only the GM's seat shows) */
 function hiddenRects() {
   const out = [];
@@ -998,7 +1045,8 @@ function planOf(L, it) {
     o.scale = scaleFor(L, n.text, o, numCap);
     return o;
   });
-  const plan = { tokRect, tokPx, box: { w: g.w, h: g.h }, g, gArgs, z0, cap, numCap, nums, numIdx, wordOpts, numOpts, text: word ? lk.word : null, slot: "above", rect: () => rectOf(it) };
+  const plan = { tokRect, tokPx, box: { w: g.w, h: g.h }, g, gArgs, z0, cap, numCap, nums, numIdx, wordOpts, numOpts, text: word ? lk.word : null, slot: "above", rect: () => rectOf(it),
+    frame: view.frame ?? liveFrame() };      // KOSAME: the view it was laid out on (measure fits the drawn word in it)
   /* CROWD (ADVX 8: "THWUP!UP!": two words placed on letter-count estimates, then each re-fitted alone on its drawn box against the others'
      stale estimates): the word's drawn box is asked of the engine BEFORE it is placed (L.planFor: the same plan the word will play, with the
      table's options, reduced motion off, so every seat plans one box), so the whole moment is laid out once on real boxes and stays put */
@@ -1045,13 +1093,15 @@ function measure(plan, tok = null) {
      so a wider or taller word than estimated does not land on a neighbour, a panel or another word */
   try {
     /* FXI-TOKEN (ADVI 5): fitted again, smaller when no side is free at this size; a series keeps its side only while it still fits */
-    if (plan.blocked && tok && view.ok() && !plan.ck && Math.abs(view.zoom() / plan.z0 - 1) < 0.02) {      // CROWDKO: a place the layout chose stays
+    /* KOSAME: fitted again on the view the moment was laid out on (plan.frame), not on this instant's (the action camera may be on its way
+       on one seat and not on another); a plan without one (no stage to read) keeps the old rule: only while the zoom is the planned one */
+    if (plan.blocked && tok && view.ok() && !plan.ck && (plan.frame || Math.abs(view.zoom() / plan.z0 - 1) < 0.02)) inFrame(plan.frame, () => {      // CROWDKO: a place the layout chose stays
       const tr0 = view.tokRect(tok), fit = P.fitSame(tr0, plan.box, view.std(tr0), view.safe(), plan.blocked, plan.mine ?? [], { keep: plan.keep ?? null });
       if (fit.k < 0.999) { shrink(plan, fit.k); regroup(); }
       plan.slot = fit.slot; plan.same = fit.same; plan.moved = fit.moved ?? null;
       /* SAMEPIC: a live probe may collect the inputs of each fit (set globalThis.__samepicFit = [] in a console); nothing is kept otherwise */
       if (Array.isArray(globalThis.__samepicFit)) globalThis.__samepicFit.push({ pass: "drawn", name: tok.name, tok: tr0, box: plan.box, std: view.std(tr0), real: view.safe(), shared: plan.blocked, mine: plan.mine ?? [], keep: plan.keep ?? null, fit });
-    }
+    });
   } catch (err) { once(err); }
 }
 function follow(tok, plan, member) {
@@ -1286,6 +1336,7 @@ function registerHooks() {
   /* SYNC: every stamped change this seat hears teaches the table's clock the server's epoch (shared-clock noteEpoch) */
   for (const k of ["updateActor", "updateToken", "updateCombat", "updateScene", "updateUser"]) Hooks.on(k, (_d, _c, options) => { try { Clock.noteEpoch(options?.modifiedTime); } catch { /* a courtesy */ } });
   Hooks.on("createChatMessage", (m) => { try { Clock.noteEpoch(m?._stats?.createdTime); } catch { /* a courtesy */ } });
+  Hooks.on("updateCombat", (c, changes, options) => { try { noteFight(c, changes, options); } catch (err) { once(err); } });      // KOSAME
   Hooks.on("updateActor", (actor, changes, options) => {
     try {
       const d = changes?.system?.derived ?? foundry.utils.getProperty(foundry.utils.expandObject(changes ?? {}), "system.derived");
