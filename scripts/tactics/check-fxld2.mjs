@@ -203,7 +203,12 @@ async function seat({ W, H, ui = {}, layer, zoom, pan, k = 1, e, name, tokens, n
     }
     /* CRITPEAK: the critical keeps its rank (its word at least 0.17 of the board height) and so, in this corner (the roller at the scene's
        top edge, neighbours left and below), stands up to a square and a quarter off the roller: still beside it, not two tokens away */
-    ok(A.calls.length > 0 && near <= (name === "crit" ? 125 : 60) && bad.length === 0, `N2/N3 map crowded ${name}: the block stands by the roller and keeps off the neighbours and the pin (nearest ${Math.round(near)} scene px; ${bad})`);
+    /* MAPSEAT (provisional MAPSEAT-3): when the board window round the roller holds no place where the block lies on nobody, the block is
+       sought in the wider shared window and must stand TOGETHER (its caption no farther from its word than the taller part: live, The
+       Warehouse, a split put them 3900 scene px apart, on no seat's view). On this crowded board that place is 3.5 squares off the roller,
+       where before the word stood 1.25 squares off and its caption far away. Then up to 4 squares (gs 100) */
+    const wideUsed = !!A.ctl.board?.wide;
+    ok(A.calls.length > 0 && near <= (name === "crit" ? (wideUsed ? 400 : 125) : 60) && bad.length === 0,`N2/N3 map crowded ${name}: the block stands by the roller and keeps off the neighbours and the pin (nearest ${Math.round(near)} scene px; ${bad})`);
   }
 }
 

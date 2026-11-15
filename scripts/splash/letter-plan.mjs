@@ -326,6 +326,9 @@ export function composeMoment(items, frame, measure = estimateBox) {
   /* clean: nothing covered but a pin's speck (a pin weighs 1, a token 10 or 50: HIT_EPS of the frame's height squared is a few px of a
      token's rim at most) */
   const clean = (o) => o.hit <= HIT_EPS * vh * vh;
+  /* MAPSEAT: in the wide window a split block counts only while its two parts stand together: the gap between the head and the caption no
+     more than SPLIT_GAP of the taller part's height (live, The Warehouse crowd: the caption 3900 scene px from its word, on no seat's view) */
+  const tog = (o) => !frame.together || !splitApart(o);
   const whole = (far, list = items) => {
     const seen = new Set();
     for (const [f, stack] of tries) {
@@ -334,7 +337,7 @@ export function composeMoment(items, frame, measure = estimateBox) {
       if (seen.has(sig)) continue;   // every part at its floor already: the same block again
       seen.add(sig);
       place(o, frame, far);
-      if (clean(o) && (far || byT(o))) return o;
+      if (clean(o) && tog(o) && (far || byT(o))) return o;
       keep(o);
     }
     return null;
@@ -370,7 +373,7 @@ export function composeMoment(items, frame, measure = estimateBox) {
       }
       const r = { l: Math.min(a.rect.l, b.rect.l), t: Math.min(a.rect.t, b.rect.t), r: Math.max(a.rect.r, b.rect.r), b: Math.max(a.rect.b, b.rect.b) };
       const o = { items: [...a.items, ...b.items], rect: r, parts: [a.rect, b.rect], gauge: b.gauge ?? a.gauge, f, side: a.side, hit: a.hit + b.hit, heavy: (a.heavy ?? 0) + (b.heavy ?? 0), split: true };
-      if (clean(o) && (far || (byT(a) && byT(b)))) return o;
+      if (clean(o) && tog(o) && (far || (byT(a) && byT(b)))) return o;
       keep(o);   // the least covering of all, when nothing is clean
     }
     return null;
@@ -384,13 +387,21 @@ export function composeMoment(items, frame, measure = estimateBox) {
      block: it is sought again in the WIDER shared window (frame.wide, the same on every seat) before it lies on anyone. A seat whose view
      does not show that place plays the moment on its screen layer (same-picture.mjs mapSeat) */
   if (frame.wide && best && coverMax(best, frame) > RIM_OK) {
-    const o = composeMoment(items, { ...frame, safe: frame.wide, wide: null }, measure);
-    if (o && coverMax(o, frame) < coverMax(best, frame)) return o;
+    const o = composeMoment(items, { ...frame, safe: frame.wide, wide: null, together: true, boardWin: frame.safe }, measure);
+    /* only a block that still stands together (splitApart; the inner pass may hand back its least-covering split, apart or not) */
+    if (o && !splitApart(o) && coverMax(o, frame) < coverMax(best, frame)) { o.wide = true; return o; }
   }
   return best;
 }
 /* MAPSEAT: a block that touches a token's box by at most RIM_OK of it (its rim, a few px of the art's edge) does not lie on it */
 export const RIM_OK = 0.02;
+/* MAPSEAT: a split block whose head and caption stand more than SPLIT_GAP of the taller part's height apart (provisional MAPSEAT-3) */
+export const SPLIT_GAP = 1;
+export function splitApart(o) {
+  if (!o?.parts) return false;
+  const [a, b] = o.parts, gx = Math.max(0, a.l - b.r, b.l - a.r), gy = Math.max(0, a.t - b.b, b.t - a.b);
+  return Math.hypot(gx, gy) > SPLIT_GAP * Math.max(a.b - a.t, b.b - b.t);
+}
 /* the largest share of any token's box (the frame's token and every token obstacle) the block's parts cover */
 export function coverMax(o, frame) {
   const boxes = [frame.token, ...(frame.avoid ?? []).filter((a) => (a.w ?? 1) >= OTHER_W)].filter(Boolean);

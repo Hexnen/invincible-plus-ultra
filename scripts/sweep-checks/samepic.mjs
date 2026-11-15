@@ -114,7 +114,7 @@ async function seat(o) {
     });
     const log = Stage.sameLog().at(-1);
     Stage.clearAll(); Stage.setLayer("screen"); S.setReduced(false);
-    return { drawn, moved: log?.moved ?? "?", W, H, split: !!ctl?.layout?.split };
+    return { drawn, moved: log?.moved ?? "?", W, H, split: !!ctl?.layout?.split, rule: ctl?.seatRule ?? null };
   } finally { globalThis.setTimeout = st; globalThis.clearTimeout = ct; delete globalThis.canvas; delete globalThis.game; }
 }
 const sig = (s) => s.drawn.map((d) => `${d.role}:${d.text}@${d.x},${d.y}/${d.S}`).join(" | ");
@@ -186,7 +186,12 @@ for (const layer of ["tokens", "overlay"]) for (const [name, e] of Object.entrie
   const [a, b, c, d] = [await run(GM), await run(P1), await run(P2), await run(P3)];
   ok(a.drawn.length > 0 && a.drawn.every((d) => d.world) && sig(a) === sig(b) && sig(b) === sig(d), `S3 map ${layer} ${name}: three seats draw the block at one scene place and size\n   GM ${sig(a)}\n   P1 ${sig(b)}\n   P3 ${sig(d)}`);
   /* the hero near the top: as in S2 the small window may lay the same words out again (SAMEPIC-1) */
-  ok(smallOk(c, b, { x: 1250, y: 430 }, true), `S3 map ${layer} ${name}: the 1366x768 seat only shifts or shrinks it in place (${c.moved}, k ${kOf(c, b)})\n   P2 ${sig(c)}`);
+  /* MAPSEAT: a seat no longer shifts or shrinks a copy of the board block (that made the GM's block smaller than the player's): it shows the
+     table's block unchanged where its view holds it, else it plays the moment on its screen layer, whole in its window (same-picture.mjs
+     mapSeat). The 1366x768 seat at this view holds the ordinary blocks; the critical's block (bigger than its view) goes to its screen */
+  ok(c.rule === "ok" ? sig(c) === sig(b) : (c.drawn.length === b.drawn.length && c.drawn.every((d, i) => !d.world && d.role === b.drawn[i].role && d.text === b.drawn[i].text) && inWin(c, 1)),
+    `S3 map ${layer} ${name}: the 1366x768 seat shows the table's block unchanged, or the same words wholly on its screen (rule ${c.rule}, ${c.moved}, k ${kOf(c, b)})\n   P2 ${sig(c)}\n   P1 ${sig(b)}`);
+  if (name !== "crit") ok(c.rule === "ok", `S3 map ${layer} ${name}: the 1366x768 seat's view holds the ordinary block (rule ${c.rule})`);
   ok(inWin(a) && inWin(b), `S3 map ${layer} ${name}: whole in the view of both 1600x900 seats`);
 }
 

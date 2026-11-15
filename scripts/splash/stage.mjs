@@ -489,6 +489,9 @@ const meet = (a, b) => ({ l: Math.max(a.l, b.l), t: Math.max(a.t, b.t), r: Math.
 /* the last moments' layouts on this seat (for the checks and the live log): shared, or moved here and how */
 const SAME_LOG = [];
 export const sameLog = () => SAME_LOG.slice();
+/* MAPSEAT: per map moment, this seat's rule (ok / cut / speck), the table's board block and this seat's view (scene px), the parts' px */
+const SEAT_LOG = [];
+export const seatLog = () => SEAT_LOG.slice();
 function logSame(row) { SAME_LOG.push(row); if (SAME_LOG.length > 20) SAME_LOG.shift(); }
 /* compose: measure, lay out, and (when the block had to go below or beside the token) measure again with the sound coming from there */
 function compose(ctl, items, extra = {}) {
@@ -807,7 +810,12 @@ function playLetters(ev, o) {
      (a part a speck at its zoom, or outside what its view shows of the board), the moment on its screen layer. Never a copy of the board
      block moved or shrunk for this seat (before: shrunk in place into a close view, moved off the GM's own panels, compared by cover) */
   const seatRule = ctl.shared ? SP.mapSeat([lay.rect], lay.fit, lay.items.map((it) => ({ px: it.S * zoomNow, word: it.role === 'word' || it.role === 'pre' })), LP.MAP_READ) : null;
-  if (ctl.shared) { ctl.seatRule = seatRule; ctl.board = lay; }   // (kept for inspection: the table's board block, also on a seat that plays it on its screen)
+  if (ctl.shared) {
+    ctl.seatRule = seatRule; ctl.board = lay;   // (kept for inspection: the table's board block, also on a seat that plays it on its screen)
+    const R = (q) => q && { l: Math.round(q.l), t: Math.round(q.t), r: Math.round(q.r), b: Math.round(q.b) };
+    SEAT_LOG.push({ id: ctl.momentId ?? ctl.seed, seat: seatRule, board: R(lay.rect), view: R(lay.fit), px: lay.items.map((it) => Math.round(it.S * zoomNow * 10) / 10) });
+    if (SEAT_LOG.length > 20) SEAT_LOG.shift();
+  }
   const mustScreen = ctl.shared && seatRule !== 'ok';
   if (mustScreen) {
     const big = seatRule !== 'speck', mw = lay.items.find((it) => it.role === 'word');

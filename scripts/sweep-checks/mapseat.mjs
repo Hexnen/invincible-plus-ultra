@@ -97,10 +97,14 @@ const note = (id, x, y) => ({ id, visible: true, document: { id, x, y, iconSize:
 const BOARDS = {
   empty: { nb: [], pin: null },
   crowd: { nb: [[-1.2, -1.1], [0.3, 1.4]], pin: [1.1, -1.2] },
-  warehouse: { nb: [[1.05, 0], [0, 1.05]], pin: null, tgt: [1.05, 1.5] }
+  warehouse: { nb: [[1.05, 0], [0, 1.05]], pin: null, tgt: [1.05, 1.5] },
+  /* The Warehouse as it stands on lane 5 (2026-11-15, in squares from Omni-Man at 2100,350, one square under the scene's top): the live
+     MAPSEAT take, where the wide window split the critical's head and caption 3900 scene px apart */
+  live: { at: [2100, 350], nb: [[0, 1], [1, 3], [3, 3], [5, 5], [3, 2], [7, 5], [7, 6], [-4, 2], [1, 0]], pin: null, tgt: [0, 3] }
 };
 const board = (kind, hx = 2800, hy = 1700) => {
   const B = BOARDS[kind], tg = B.tgt ?? [1.3, 0.2];
+  if (B.at) [hx, hy] = B.at;
   const hero = tok("HEROaaaaaaaaaaaa", hx, hy), target = tok("TARGETaaaaaaaaaa", hx + tg[0] * GS, hy + tg[1] * GS);
   return { hero, target, tokens: [hero, target, ...B.nb.map(([dx, dy], i) => tok("NB" + i, hx + dx * GS, hy + dy * GS))], notes: B.pin ? [note("PIN", hx + B.pin[0] * GS, hy + B.pin[1] * GS)] : [] };
 };
@@ -147,7 +151,7 @@ async function seat(o) {
     Stage.clearAll(); Stage.setLayer("screen");
     const left = Object.values(document.els).filter((x) => x.className.includes("ins-yield")).map((x) => x.sel);
     const sb = (tk) => ({ l: tk.document.x, t: tk.document.y, r: tk.document.x + GS, b: tk.document.y + GS });
-    const brd = ctl?.board ? { items: ctl.board.items.map((i) => ({ role: i.role, S: i.S, l: i.x - i.w / 2, t: i.y - i.h / 2, r: i.x + i.w / 2, b: i.y + i.h / 2 })), hero: sb(b.hero), target: sb(b.target), others: b.tokens.filter((x) => !/^(HERO|TARGET)/.test(x.id)).map(sb) } : null;
+    const brd = ctl?.board ? { items: ctl.board.items.map((i) => ({ role: i.role, S: i.S, l: i.x - i.w / 2, t: i.y - i.h / 2, r: i.x + i.w / 2, b: i.y + i.h / 2 })), hero: sb(b.hero), target: sb(b.target), others: b.tokens.filter((x) => !/^(HERO|TARGET)/.test(x.id)).map(sb), parts: ctl.board.parts ?? null, wide: !!ctl.board.wide } : null;
     return { drawn, board: brd, rule, moved: log?.moved, W, H, zoom, hero: box(b.hero), target: box(b.target), others: b.tokens.filter((x) => !/^(HERO|TARGET)/.test(x.id)).map(box), yielded: yieldedMid, left };
   } finally { globalThis.setTimeout = st; globalThis.clearTimeout = ct; delete globalThis.canvas; delete globalThis.game; }
 }
@@ -210,7 +214,7 @@ for (const [kind, e] of Object.entries(KINDS()).filter(([k]) => ["strong", "crit
 /* ================================================================ M4 the critical on a crowded board lies on no token (CRITPEAK-9), stays the peak.
    Measured on the BOARD block itself (scene px against the tokens' documents): what every seat that shows the map sees. A seat whose view
    does not hold that place plays the moment on its screen layer by the rule (M3) */
-for (const bd of ["crowd", "warehouse"]) {
+for (const bd of ["crowd", "warehouse", "live"]) {
   const res = {};
   for (const [kind, e] of Object.entries(KINDS())) res[kind] = await seat({ ...P1, W: 1600, H: 900, zoom: 0.45, off: { x: 0.4, y: 0 }, name: `m4-${bd}-${kind}`, e, full: kind === "critical", bd });
   const c = res.critical, B = c.board;
@@ -218,6 +222,14 @@ for (const bd of ["crowd", "warehouse"]) {
   for (const [nm, q] of B ? [["roller", B.hero], ["target", B.target], ...B.others.map((x, i) => ["bystander " + i, x])] : []) {
     const cov = B.items.reduce((s, d) => s + ov(d, q), 0) / area(q);
     ok(cov <= 0.02, `M4 ${bd}: the critical's board block lies on no ${nm} (${Math.round(cov * 100)} % of its box)`);
+  }
+  /* the block stands together: a split block's caption no farther from its head than the taller part (live, The Warehouse crowd: a
+     wide-window split put the critical's caption 3900 scene px from its word, on no seat's view; letter-plan.mjs splitApart) */
+  for (const [kind, r] of Object.entries(res)) {
+    const q = r.board;
+    if (!q?.parts || !q.wide) continue;   // (a split inside the board window frames the struck pair: CRITPEAK-4, any gap)
+    const [a, b] = q.parts, gap = Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, a.t - b.b, b.t - a.b)), hh = Math.max(a.b - a.t, b.b - b.t);
+    ok(gap <= hh + 1, `M4 ${bd} ${kind}: the split board block stands together (head to caption ${Math.round(gap)} scene px, taller part ${Math.round(hh)})`);
   }
   const W = (k) => res[k].board?.items.find((d) => d.role === "word")?.S ?? 0;
   ok(W("critical") >= 1.15 * W("strong") && W("strong") >= 1.15 * W("ordinary"), `M4 ${bd}: the critical is the peak on the board (${W("critical")} > ${W("strong")} > ${W("ordinary")})`);
