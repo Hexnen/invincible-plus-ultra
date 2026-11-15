@@ -65,11 +65,20 @@ const T = P.TICK_MS;
   ck("the splash ARRIVES on its first tick (drawn at once, at full alpha: no fade-in)", count(f0) > 200 && count(f0, (a, i) => a[i + 3] >= R.ALPHA[0] * P.CENTRE.alpha - 1) === count(f0));
   const fs = shot([it], R.SETTLE + 50);
   ck("after the hit the blood lets the table read through it (settled alpha lower than the arrival's)", count(fs) > 0 && count(fs, (a, i) => a[i + 3] > Math.round(R.ALPHA[0] * R.SEE)) === 0);
-  ck("smear -> squash -> settle: the first three ticks are three different drawings", sha(f0) !== sha(f1) && sha(f1) !== sha(f2));
-  /* the smear is stretched along its way: the second moment along dir beats the one across it */
-  const mom = (rgba) => { let sx = 0, sy = 0, c = 0; const pts = []; for (let i = 0; i < rgba.length; i += 4) if (rgba[i + 3]) { const p = i / 4, x = p % g.w, y = (p / g.w) | 0; pts.push([x, y]); sx += x; sy += y; c++; } sx /= c; sy /= c; let a = 0, b = 0; const dx = Math.cos(0.3), dy = Math.sin(0.3); for (const [x, y] of pts) { const u = (x - sx) * dx + (y - sy) * dy, v = -(x - sx) * dy + (y - sy) * dx; a += u * u; b += v * v; } return a / Math.max(1, b); };
-  ck(`the first tick is a smear along the blood's way (${mom(f0).toFixed(2)} : 1)`, mom(f0) > 1.8);
-  ck("the spatter keeps landing after the hit (ticks 2 -> 8 add blood)", count(f8) > count(f2) && count(f4) > count(f1));
+  ck("burst -> squash -> settle: the first three ticks are three different drawings", sha(f0) !== sha(f1) && sha(f1) !== sha(f2));
+  /* GORE2: tick 0 is a BURST shooting the way the blood flies (no glob in flight): its ink lies ahead of the hit along dir */
+  const ahead = (rgba, p) => { let u = 0, c = 0; for (let i = 0; i < rgba.length; i += 4) if (rgba[i + 3]) { const q = i / 4, x = q % g.w + 0.5, y = ((q / g.w) | 0) + 0.5; u += (x - p.cx) * p.dx + (y - p.cy) * p.dy; c++; } return u / Math.max(1, c) / p.R; };
+  ck(`the first tick is a burst shooting the way it flies (ink ${ahead(f0, it.plan).toFixed(2)} R ahead of the hit)`, ahead(f0, it.plan) > 0.35);
+  const frames = [1, 2, 3, 4, 5].map((k) => sha(shot([it], k * T)));
+  ck("the spatter keeps landing after the hit (ticks 1..5 all differ: drops fly in and land by distance)", new Set(frames).size === frames.length && count(f8) > count(f1));
+  /* GORE2 (the owner: «potrzebuję też kropel bo na razie to jest bardziej jakby ktoś napluł»): DROPS, not one glob */
+  const parts = (rgba) => { const seen = new Uint8Array(g.w * g.h); let n = 0; const st = []; for (let i = 0; i < g.w * g.h; i++) { if (seen[i] || !rgba[i * 4 + 3]) continue; n++; st.push(i); seen[i] = 1; while (st.length) { const q = st.pop(), x = q % g.w, y = (q / g.w) | 0; for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const X = x + ox, Y = y + oy; if (X < 0 || Y < 0 || X >= g.w || Y >= g.h) continue; const k = Y * g.w + X; if (!seen[k] && rgba[k * 4 + 3]) { seen[k] = 1; st.push(k); } } } } return n; };
+  const outside = (rgba, p, k) => count(rgba, (a, i) => { const q = i / 4; return Math.hypot(q % g.w + 0.5 - p.cx, ((q / g.w) | 0) + 0.5 - p.cy) > k * p.R; });
+  for (const sv of [0.35, 0.65, 1]) {
+    const q = { plan: P.bloodPlan(g, { strength: sv, seed: `drops${sv}`, dir: 2 }), t0: 0 };
+    const fq = shot([q], 600), np = parts(fq), share = outside(fq, q.plan, 1.25) / count(fq);
+    ck(`strength ${sv}: blood splashed in drops (${np} separate drops/spots, ${(share * 100).toFixed(0)} % of the ink outside the body)`, np >= (sv < 0.5 ? 18 : 30) && share >= 0.3);
+  }
   const low = (rgba) => { let m = 0; for (let i = 0; i < rgba.length; i += 4) if (rgba[i + 3]) m = Math.max(m, (i / 4 / g.w) | 0); return m; };
   const it2 = mk({ seed: "drip", dir: Math.PI * 1.5, at: { fx: 0.2, fy: 0.25 } });
   ck("drips run DOWN the glass (the lowest blood moves down between 0.4 s and 3 s)", low(shot([it2], 3000)) > low(shot([it2], 400)) + 4);
@@ -79,7 +88,27 @@ const T = P.TICK_MS;
   ck("it dries: after its drying time every blood pixel has the dried colours", count(dried) > 0 && count(dried, (a, i) => !driedSet.has(`${a[i]},${a[i + 1]},${a[i + 2]}`)) === 0);
   const g0 = it.plan.life.gone, d0 = it.plan.life.dissolve;
   const c1 = count(shot([it], g0 + d0 * 0.2)), c2 = count(shot([it], g0 + d0 * 0.6)), c3 = count(shot([it], g0 + d0 + 50));
-  ck(`it clears by a pixel dissolve, never a fade (${c1} -> ${c2} -> ${c3} px)`, c1 > c2 && c2 > 0 && c3 === 0 && paletteOnly(shot([it], g0 + d0 * 0.5)));
+  ck(`it clears to nothing, never a fade (${c1} -> ${c2} -> ${c3} px, every pixel a palette colour)`, c1 > c2 && c2 > 0 && c3 === 0 && paletteOnly(shot([it], g0 + d0 * 0.5)));
+  /* GORE2 (the owner: «Krew bardzo słabo znika»): it CRUMBLES from the thin parts in: the drops go first, the body's heart last, no
+     screen-door holes inside what is left, a pale crumbling front, flakes falling */
+  const rest = shot([it], g0 - 50), early = shot([it], g0 + d0 * 0.3);
+  const heart = (rgba) => { const p = it.plan, i = ((p.cy | 0) * g.w + (p.cx | 0)) * 4; return rgba[i + 3] > 0; };
+  ck(`it crumbles from the thin parts in: drops first (${parts(rest)} -> ${parts(early)} spots), the body's heart still there`, parts(early) < parts(rest) * 0.6 && heart(early));
+  let ok = true, holes = 0, filled = 0, crumbs = 0, flakesLow = 0;
+  const crumb = R.PAL.dried.crumb.join(",");
+  for (let k = 0; k <= 12; k++) {
+    const fr = shot([it], g0 + 1 + k * (d0 / 12));
+    for (let y = 1; y < g.h - 1; y++) for (let x = 1; x < g.w - 1; x++) {
+      const i = (y * g.w + x) * 4;
+      if (fr[i + 3]) { filled++; if (`${fr[i]},${fr[i + 1]},${fr[i + 2]}` === crumb) crumbs++; continue; }
+      if (fr[i + 3 - 4] && fr[i + 3 + 4] && fr[i + 3 - g.w * 4] && fr[i + 3 + g.w * 4]) holes++;
+    }
+    if (!paletteOnly(fr)) ok = false;
+  }
+  ck(`no screen-door: pinholes inside the crumbling blood ${(holes / Math.max(1, filled) * 100).toFixed(2)} % (<= 1 %)`, holes / Math.max(1, filled) <= 0.01 && ok);
+  ck(`a pale crumbling front walks in (${crumbs} crust px over the clearing)`, crumbs > 200);
+  { const q = { plan: P.bloodPlan(g, { strength: 0.8, seed: "flake", dir: 0.3, at: { fx: 0.2, fy: 0.3 } }), t0: 0 }; const gq = q.plan.life.gone; let lowest = 0, base = 0; const fr = shot([q], gq - 50); for (let i = 0; i < fr.length; i += 4) if (fr[i + 3]) base = Math.max(base, (i / 4 / g.w) | 0); for (let t = gq; t < gq + q.plan.life.dissolve; t += T) { const fz = shot([q], t); for (let i = 0; i < fz.length; i += 4) if (fz[i + 3]) lowest = Math.max(lowest, (i / 4 / g.w) | 0); } flakesLow = lowest - base; }
+  ck(`flakes of crust fall off (they reach ${flakesLow} art px below the dried blood)`, flakesLow >= 3);
   ck("the same seed draws the same picture; another seed another one", sha(shot([mk()], 600)) === sha(shot([it], 600)) && sha(shot([mk({ seed: "other" })], 600)) !== sha(shot([it], 600)));
   /* the readable middle: a splash laid out by its way never lands in the middle; a splash put there is see-through */
   let mid = 0;
@@ -123,10 +152,40 @@ const T = P.TICK_MS;
   ck("a glint runs along the fresh cracks, then it is gone", glint(shot([it], 300)) > 0 && glint(shot([it], 2000)) === 0);
   ck("every crack pixel is one palette colour", [0, 3 * T, 300, 2000].every((ms) => paletteOnly(shot([it], ms))));
   const gone = it.plan.life.gone;
-  ck("they retract to nothing at the end", count(shot([it], gone - it.plan.life.retract * 0.5)) < count(shot([it], 2000)) && count(shot([it], gone + 1)) === 0);
+  ck("they are gone at the end", count(shot([it], gone + 1)) === 0);
+  /* GORE2 (the owner: «Nich pęknięcia będą dużo subtelniejsze, gdzieś w rogach np.»): a small web in a corner, see-through */
+  let inCorner = true, maxCover = 0, maxAlpha = 0;
+  const corners = new Set();
+  for (let i = 0; i < 40; i++) {
+    const p = P.crackPlan(g, { strength: (i % 5) / 4 + 0.05, seed: `corner${i}` });
+    corners.add(p.corner);
+    const [kx, ky] = P.CORNERS[p.corner], cx = kx * g.w, cy = ky * g.h, m = Math.min(g.w, g.h);
+    const fr = shot([{ plan: p, t0: 0 }], 1500);
+    let n2 = 0, sa = 0;
+    for (let j = 0; j < fr.length; j += 4) if (fr[j + 3] > 40) { n2++; sa += fr[j + 3]; const q = j / 4, x = q % g.w, y = (q / g.w) | 0; if (Math.abs(x - cx) > 0.45 * m || Math.abs(y - cy) > 0.45 * m) inCorner = false; }
+    maxCover = Math.max(maxCover, n2 / (g.w * g.h)); maxAlpha = Math.max(maxAlpha, sa / Math.max(1, n2));
+  }
+  ck(`cracks stay in a corner (all four used: ${corners.size}), within 0.45 of the short side from it`, inCorner && corners.size === 4);
+  ck(`cracks are subtle: their lines cover at most ${(maxCover * 100).toFixed(2)} % of the view (<= 1.5 %), mean alpha ${maxAlpha.toFixed(0)} (<= 175; the first version drew 215-232)`, maxCover <= 0.015 && maxAlpha <= 175);
+  /* GORE2 (the owner on the old retraction: «Tak samo pęknięcia» [słabo znikają]): the glass FALLS OUT, shard by shard, crater first */
+  const top = { plan: P.crackPlan(g, { strength: 0.8, seed: "fall", corner: 0 }), t0: 0 };
+  const b0 = P.breakAt(top.plan);
+  const lowest = (fr) => { let m = -1; for (let j = 0; j < fr.length; j += 4) if (fr[j + 3]) m = Math.max(m, (j / 4 / g.w) | 0); return m; };
+  const restLow = lowest(shot([top], b0 - T));
+  let fell = 0;
+  for (let t = b0; t < top.plan.life.gone; t += T) fell = Math.max(fell, lowest(shot([top], t)) - restLow);
+  const sh = R.shardsOf(top.plan, g.w, g.h);
+  ck(`the cracked glass falls out: ${sh.length} shards, the crushed crater first, one after another (they fall ${fell} art px below the web)`, sh.length >= 6 && sh[0].band === 0 && sh.every((x, k) => !k || x.at >= sh[k - 1].at) && fell >= 10);
+  const counts = []; for (let t = b0; t <= top.plan.life.gone; t += 2 * T) counts.push(count(shot([top], t)));
+  ck("... it thins out to nothing over the fall", count(shot([top], top.plan.life.gone)) === 0 && counts[Math.floor(counts.length / 2)] < counts[0]);
+  const stl = { plan: P.crackPlan(g, { strength: 0.8, seed: "fall", corner: 0, still: true }), t0: 0 };
+  const restSet = new Set(); { const fr = shot([stl], b0 - T); for (let j = 0; j < fr.length; j += 4) if (fr[j + 3]) restSet.add(j); }
+  let still = true; for (let t = b0; t < stl.plan.life.gone; t += T) { const fr = shot([stl], t); for (let j = 0; j < fr.length; j += 4) if (fr[j + 3] && !restSet.has(j)) still = false; }
+  ck("reduced motion: the shards just go, nothing moves", still);
   const st = { plan: P.crackPlan(g, { strength: 0.9, seed: "cr", still: true }), t0: 0 };
   ck("reduced motion: the whole crack at once, no chips, no glint", sha(shot([st], 0)) === sha(shot([st], 1500)) && st.plan.chips.length === 0);
-  ck("a broken Resolve (strength 1) strikes twice", P.crackPlan(g, { strength: 1, seed: "x" }).strikes.length === 2);
+  ck("a broken Resolve (strength 1) strikes twice, in the same corner", (() => { const p = P.crackPlan(g, { strength: 1, seed: "x" }); const [kx, ky] = P.CORNERS[p.corner]; return p.strikes.length === 2 && p.strikes.every((st) => Math.abs(st.x - kx * g.w) < g.w / 2 && Math.abs(st.y - ky * g.h) < g.h / 2); })());
+  ck("the corner comes from the seed: every seat the same", P.crackPlan(g, { seed: "same" }).corner === P.crackPlan(P.grid(1366, 768, 2), { seed: "same" }).corner);
 }
 
 /* ---------------- cost ---------------- */

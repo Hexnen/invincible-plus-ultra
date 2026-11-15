@@ -8,7 +8,7 @@
      2. colour: thickness bands (dark / mid / bright, a 2x2 dither on the band edges), a dark outline where blood meets glass, a lit
         inner rim toward the top left, glints while wet; the crack classes under it; the middle of the view see-through (CENTRE).
    Cost: proportional to the drawn area (bounding boxes), not to the screen; a full 1080p glass is 640 x 360 art px. */
-import { TICK_MS, CENTRE, dripAt, crackReach, crackCut } from "./plan.mjs";
+import { TICK_MS, CENTRE, FLAKE_MS, FALL, FALL_MS, rng, dripAt, crackReach, breakAt } from "./plan.mjs";
 
 export const THR = 0.06;
 /* palettes: [r, g, b] per role; alpha per stage */
@@ -17,19 +17,20 @@ export const PAL = {
   drying: { out: [46, 6, 10],  d: [88, 12, 18], m: [122, 20, 26], b: [146, 30, 34], lit: [170, 52, 50],  spec: [170, 52, 50] },
   dried:  { out: [34, 8, 8],   d: [66, 14, 14], m: [84, 22, 20], b: [96, 28, 24],  lit: [104, 34, 30],  spec: [104, 34, 30] }
 };
+/* GORE2: the pale dry crust of the crumbling front and its flakes (every stage: a splash cut early crumbles too) */
+PAL.wet.crumb = PAL.drying.crumb = PAL.dried.crumb = [178, 94, 74];
 /* the photosensitive seat's blood: no saturated red (R / (R + G + B) < 0.7 for every colour) */
 export const PAL_SAFE = {
   wet:    { out: [44, 16, 18], d: [84, 32, 32], m: [110, 42, 40], b: [130, 54, 50], lit: [160, 88, 82], spec: [222, 196, 190] },
   drying: { out: [40, 16, 16], d: [74, 30, 28], m: [96, 38, 34], b: [110, 46, 42], lit: [124, 60, 54], spec: [124, 60, 54] },
   dried:  { out: [34, 14, 12], d: [60, 26, 22], m: [74, 32, 28], b: [84, 38, 32], lit: [90, 44, 38], spec: [90, 44, 38] }
 };
+PAL_SAFE.wet.crumb = PAL_SAFE.drying.crumb = PAL_SAFE.dried.crumb = [150, 112, 100];
 export const ALPHA = [236, 222, 196];        // wet, drying, dried: on arrival
 /* after the hit the glass lets the table read through the blood: SETTLE ms after its arrival a splash keeps SEE of its alpha */
 export const SETTLE = 450, SEE = 0.7;
-export const CRACK = { 1: [12, 18, 26, 232], 2: [222, 242, 255, 215], 3: [236, 246, 255, 236], 4: [204, 232, 252, 240], 5: [255, 255, 255, 252], 6: [230, 244, 255, 46], 7: [8, 14, 24, 52] };
-/* 4x4 ordered dither: the dissolve keeps a pixel while its threshold is above the dissolve's progress */
-const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map((v) => (v + 0.5) / 16);
-const bayer = (x, y) => BAYER[(y & 3) * 4 + (x & 3)];
+/* GORE2 («dużo subtelniejsze»): hairlines, see-through; 8 = a falling shard's lit glass */
+export const CRACK = { 1: [14, 20, 28, 168], 2: [226, 240, 252, 150], 3: [228, 240, 252, 176], 4: [208, 230, 250, 196], 5: [255, 255, 255, 236], 6: [230, 244, 255, 16], 7: [8, 14, 24, 22], 8: [226, 242, 255, 72] };
 
 export function surface(w, h) {
   return { w, h, T: new Float32Array(w * h), L: new Float32Array(w * h), S: new Uint8Array(w * h).fill(255), G: new Uint8Array(w * h), C: new Uint8Array(w * h), A: new Uint8Array(w * h).fill(1), N: new Uint8Array(w * h).fill(1),
@@ -51,7 +52,7 @@ export function render(sf, items, now) {
     const p = it.plan;
     if (p.kind === "cracks") {
       if (ms > p.life.gone) continue;
-      live++; if (ms < 1600 || ms > p.life.gone - p.life.retract - 50) moving = true;
+      live++; if (ms < 1700 || ms > breakAt(p) - 50) moving = true;
       drawCracks(ctx, p, ms);
     } else {
       const parts = [[p, ms]];
@@ -89,14 +90,45 @@ function drawBlood(ctx, p, ms, gone) {
   const still = p.still;
   const k = still ? 99 : Math.floor(ms / TICK_MS + 1e-6);
   const stage = ms < p.life.wet ? 0 : ms < p.life.dry ? 1 : 2;
-  const diss = ms > gone ? (ms - gone) / p.life.dissolve : 0;
   /* a splash whose middle lies in the readable centre of the view is see-through as a whole (one look per splash, never a seam) */
   const settled = ms >= SETTLE || still;
   const see = ((p.cx / ctx.w - 0.5) / CENTRE.rx) ** 2 + ((p.cy / ctx.h - 0.5) / CENTRE.ry) ** 2 < 1;
+  /* GORE2, clearing: the crust CRUMBLES. Each pixel's depth = its distance (art px) from the edge of the settled splash; a pixel stays
+     while its depth beats the erosion front E (+ a coarse 2x2 grain, so the edge breaks up in crumbs, never in a screen-door pattern).
+     E moves in on twos at a steady pace: mist and small drops go first, the body shrinks to its heart. A few eroded pixels become FLAKES
+     that fall off for FLAKE_MS (pure: the moment a pixel eroded follows from its depth). */
+  const dms = ms - gone, diss = dms > 0;
+  const er = diss ? erosion(p, dms, still) : null;
+  const dep = er ? depthOf(p, ctx.w) : null;
+  const raw = (x, y, t, l, gl = 0) => {
+    const i = y * ctx.w + x, sf = ctx.sf;
+    if (gl) sf.G[i] = gl;
+    if (t > sf.T[i]) { sf.T[i] = t; sf.L[i] = l; }
+    if (stage < sf.S[i]) sf.S[i] = stage;
+    if (!see) sf.A[i] = 0;
+    if (!settled) sf.N[i] = 0;
+    const b = ctx.box;
+    if (x < b.x0) b.x0 = x; if (x > b.x1) b.x1 = x; if (y < b.y0) b.y0 = y; if (y > b.y1) b.y1 = y;
+  };
   const put = (x, y, t, l = 0.45) => {
     x |= 0; y |= 0;
     if (x < 0 || y < 0 || x >= ctx.w || y >= ctx.h) return;
-    if (diss > 0 && bayer(x, y) < diss) return;
+    if (er) {
+      const n = grain(x, y);
+      const D = x >= dep.x0 && y >= dep.y0 && x < dep.x0 + dep.bw && y < dep.y0 + dep.bh ? dep.d[(y - dep.y0) * dep.bw + (x - dep.x0)] || 1 : 1;
+      if (D <= er.E + n) {
+        if (er.flakes && D >= 2 && hash2(x, y) < FLAKE_RATE) {
+          const age = er.tick - er.span * Math.min(1, Math.max(0, (D - n) / er.Emax)) ** (1 / ERODE_POW);
+          if (age >= 0 && age < FLAKE_MS) {
+            const a = age / 1000, hs = hash2(y + 7, x + 3);
+            const fx = Math.round(x + (hs - 0.5) * 40 * a), fy = Math.round(y + 1 + 0.5 * FLAKE_G * a * a);
+            if (fx >= 0 && fy >= 0 && fx < ctx.w && fy < ctx.h) { raw(fx, fy, 0.5, 0.3, 3); if (hs < 0.45 && fx + 1 < ctx.w) raw(fx + 1, fy, 0.5, 0.3, 3); }
+          }
+        }
+        return;
+      }
+      if (D <= er.E + n + CRUMB) ctx.sf.G[y * ctx.w + x] = 2;      // the crumbling front: a ring of pale dry crust walking inward
+    }
     const i = y * ctx.w + x, sf = ctx.sf;
     if (t > sf.T[i]) { sf.T[i] = t; sf.L[i] = l; }
     if (stage < sf.S[i]) sf.S[i] = stage;
@@ -122,9 +154,9 @@ function drawBlood(ctx, p, ms, gone) {
     }
     const hx = d.x + Math.round(Math.sin(yHead * 0.18 + d.wob) * 0.7);
     disc(put, hx + (d.w > 1 ? 0.5 : 0), yHead, 0.6 + 1.0 * st.swell, 0.95);
-    if (stage === 0 && st.swell >= 1) glint(ctx, hx, Math.round(yHead) - 1, false);
+    if (stage === 0 && st.swell >= 1 && !er) glint(ctx, hx, Math.round(yHead) - 1, false);
   }
-  if (stage === 0) for (const gl of p.glints) if (k >= 2) glint(ctx, gl.x, gl.y, gl.big, diss);
+  if (stage === 0 && !er) for (const gl of p.glints) if (k >= 2) glint(ctx, gl.x, gl.y, gl.big);
 }
 /* a dome's light: its normal against a light from the top left, toward the viewer (0 = away, 1 = full) */
 const LX = -0.48, LY = -0.58, LZ = 0.66;
@@ -157,8 +189,11 @@ function tickPixels(p, k, still) {
 }
 /** record a splash's drawings ahead (main.mjs calls it while the contact is still to come): its first ticks then cost a replay only */
 export function warm(p, from = 0, upTo = SETTLED) {
-  if (p.kind !== "blood") return;
-  for (const q of p.second ? [p, p.second.plan] : [p]) for (let k = from; k <= upTo; k++) tickPixels(q, k, q.still);
+  if (p.kind !== "blood") { if (upTo >= SETTLED) shardsOf(p, p.g.w, p.g.h); return; }
+  for (const q of p.second ? [p, p.second.plan] : [p]) {
+    for (let k = from; k <= upTo; k++) tickPixels(q, k, q.still);
+    if (upTo >= SETTLED) depthOf(q, q.g.w);      // GORE2: the crumble's depth map, long before it is needed
+  }
 }
 /* a standing shape drawn once into a pixel list, then replayed */
 function replay(o, put, draw) {
@@ -177,11 +212,13 @@ function shapes(p, k, still, put) {
   for (const b of p.blobs) {
     if (k < b.at) continue;
     if (b.main && k === 0) {
-      /* the SMEAR: still flying, stretched along its way, a little behind where it lands; streaks behind it */
-      blob(put, { ...b, x: b.x - dx * b.r * 0.35, y: b.y - dy * b.r * 0.35 }, 0.85, 1.6, 0.68, dx, dy, 0);
+      /* GORE2: the BURST (tick 0): a small ragged core where it hits and spray lines shooting out the way it flies, each a drop
+         in flight with its speed trail; no glob in flight (the old oval smear read as spit) */
+      blob(put, b, 0.55, 1, 1, dx, dy, 1.8, 0.9);
       for (const st of p.streaks) {
-        const ox = b.x - dy * st.off - dx * b.r * 0.6, oy = b.y + dx * st.off - dy * b.r * 0.6;
-        taper(put, ox, oy, -dx, -dy, st.len, st.w, 0.55);
+        const ux = Math.cos(st.a), uy = Math.sin(st.a);
+        const hx = b.x + ux * (st.d0 + st.len), hy = b.y + uy * (st.d0 + st.len);
+        taper(put, hx, hy, -ux, -uy, st.len, st.w * 2, 0.6);
       }
       continue;
     }
@@ -205,13 +242,23 @@ function shapes(p, k, still, put) {
     };
     if (g >= 1) replay(td, put, draw); else draw(put);
   }
-  /* satellites: stretched on the tick they land, a tail toward home */
+  /* drops: in FLIGHT the tick before they land (the head short of its spot, a thin speed trail back toward the hit), SQUASHED across
+     their way on the tick they land, then a round drop or an exclamation-mark drop (head out, tail pointing home) */
   for (const s of p.sats) {
+    const ux = Math.cos(s.a), uy = Math.sin(s.a);
+    if (!still && k === s.at - 1) {
+      const back = (s.k - 1) * p.R * 0.3;
+      const hx = s.x - ux * back, hy = s.y - uy * back;
+      disc(put, hx, hy, Math.max(0.6, s.r * 0.8), s.h);
+      taper(put, hx - ux * s.r * 0.6, hy - uy * s.r * 0.6, -ux, -uy, Math.max(3, back * 0.9), Math.max(1, s.r * 0.9), 0.5);
+      continue;
+    }
     if (k < s.at) continue;
     const land = k === s.at && !still;
     const draw = (q) => {
-      ellipse(q, s.x, s.y, s.r * s.st * (land ? 1.45 : 1), s.r * (land ? 0.85 : 1), Math.cos(s.a), Math.sin(s.a), s.h);
-      if (s.r * s.st >= 2.2) q(s.x - Math.cos(s.a) * (s.r * s.st + 1.2), s.y - Math.sin(s.a) * (s.r * s.st + 1.2), 0.3);
+      if (land) { ellipse(q, s.x, s.y, s.r * 0.8, s.r * 1.35, ux, uy, s.h); return; }
+      disc(q, s.x, s.y, s.r, s.h);
+      if (s.tail) taper(q, s.x - ux * s.r * 0.5, s.y - uy * s.r * 0.5, -ux, -uy, s.tail, s.r * 1.5, s.h * 0.8);
     };
     if (land) draw(put); else replay(s, put, draw);
   }
@@ -221,12 +268,42 @@ function shapes(p, k, still, put) {
     if (m.two) put(m.x + 1, m.y, 0.3);
   }
 }
-function glint(ctx, x, y, big, diss = 0) {
+/* the crumble's tables: erosion from E0 to EMAX (above the thickest pixel plus the grain), the grain, the flake rate and fall */
+export const CRUMB = 1.6, GRAIN = 1.2, FLAKE_RATE = 0.07, FLAKE_G = 300, ERODE_POW = 1.25;
+function erosion(p, dms, still) {
+  const q = still ? 375 : 2 * TICK_MS;                       // on twos (a reduced-motion seat: four stills)
+  const span = p.life.dissolve - (still ? 0 : FLAKE_MS);     // the erosion; the flakes of its last pixels finish by the end
+  const v = Math.min(1, Math.floor(dms / q) * q / span + (still ? 0.25 : 0));
+  const Emax = depthOf(p, p.g.w).max + GRAIN + 0.5;
+  return { E: Emax * v ** ERODE_POW, Emax, span, tick: Math.floor(dms / TICK_MS) * TICK_MS, flakes: !still };
+}
+/* each settled pixel's distance from the splash's edge (chamfer 3-4, in art px), once per plan */
+function depthOf(p, w) {
+  if (p._dep) return p._dep;
+  const c = tickPixels(p, SETTLED, p.still);
+  let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1;
+  for (const i of c.idx) { const x = i % w, y = (i / w) | 0; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (x1 < 0) return (p._dep = { x0: 0, y0: 0, bw: 0, bh: 0, d: new Uint8Array(0), max: 1 });
+  x0--; y0--; x1++; y1++;
+  const bw = x1 - x0 + 1, bh = y1 - y0 + 1, BIGD = 1e4;
+  const f = new Float32Array(bw * bh);
+  for (let j = 0; j < c.idx.length; j++) { if (c.t[j] <= THR) continue; const i = c.idx[j]; f[(((i / w) | 0) - y0) * bw + (i % w) - x0] = BIGD; }
+  const at = (x, y) => (x < 0 || y < 0 || x >= bw || y >= bh ? 0 : f[y * bw + x]);
+  for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) { const k = y * bw + x; if (f[k]) f[k] = Math.min(f[k], at(x - 1, y) + 3, at(x, y - 1) + 3, at(x - 1, y - 1) + 4, at(x + 1, y - 1) + 4); }
+  let max = 1;
+  for (let y = bh - 1; y >= 0; y--) for (let x = bw - 1; x >= 0; x--) { const k = y * bw + x; if (f[k]) { f[k] = Math.min(f[k], at(x + 1, y) + 3, at(x, y + 1) + 3, at(x + 1, y + 1) + 4, at(x - 1, y + 1) + 4); if (f[k] / 3 > max) max = f[k] / 3; } }
+  const d = new Uint8Array(bw * bh);
+  for (let k = 0; k < f.length; k++) d[k] = f[k] ? Math.min(255, Math.max(1, Math.round(f[k] / 3))) : 0;
+  return (p._dep = { x0, y0, bw, bh, d, max });
+}
+const hash2 = (x, y) => ((Math.imul(x, 73856093) ^ Math.imul(y, 19349663) ^ 0x5bd1e995) >>> 0) % 1000 / 1000;
+const grain = (x, y) => (hash2((x >> 1) + 911, (y >> 1) + 377) - 0.5) * 2 * GRAIN;
+function glint(ctx, x, y, big) {
   x |= 0; y |= 0;
   const pts = big ? [[0, 0], [1, 0], [0, 1], [2, 2]] : [[0, 0], [1, 0]];
   for (const [ox, oy] of pts) {
     const X = x + ox, Y = y + oy;
-    if (X < 0 || Y < 0 || X >= ctx.w || Y >= ctx.h || (diss > 0 && bayer(X, Y) < diss)) continue;
+    if (X < 0 || Y < 0 || X >= ctx.w || Y >= ctx.h) continue;
     ctx.sf.G[Y * ctx.w + X] = 1;
   }
 }
@@ -235,8 +312,8 @@ const LOBES = 512;
 function blob(put, b, scale, ex, ey, dx, dy, lobeK = 1, hK = 1) {
   const R = b.r * scale;
   /* the lobed rim as a table over the angle (three sines per pixel cost most of a splash's first ticks) */
-  const tab = b._lobes ??= Float32Array.from({ length: LOBES }, (_, j) => { const th = (j + 0.5) / LOBES * 2 * Math.PI - Math.PI; return b.amp[0] * Math.sin(3 * th + b.lob[0]) + b.amp[1] * Math.sin(5 * th + b.lob[1]) + b.amp[2] * Math.sin(9 * th + b.lob[2]); });
-  const rm = R * Math.max(ex, ey) * (1 + (b.amp[0] + b.amp[1] + b.amp[2]) * lobeK) + 1;
+  const tab = b._lobes ??= Float32Array.from({ length: LOBES }, (_, j) => { const th = (j + 0.5) / LOBES * 2 * Math.PI - Math.PI, fq = b.fq ?? [3, 5, 9]; let v = 0; for (let q = 0; q < fq.length; q++) v += b.amp[q] * Math.sin(fq[q] * th + b.lob[q]); return v; });
+  const rm = R * Math.max(ex, ey) * (1 + b.amp.reduce((a, c) => a + c, 0) * lobeK) + 1;
   const x0 = Math.floor(b.x - rm), x1 = Math.ceil(b.x + rm), y0 = Math.floor(b.y - rm), y1 = Math.ceil(b.y + rm);
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
     const vx = x + 0.5 - b.x, vy = y + 0.5 - b.y;
@@ -273,8 +350,13 @@ function taper(put, x, y, dx, dy, len, w, h) {
 
 /* ---------------- cracks ---------------- */
 function drawCracks(ctx, p, ms) {
+  if (ms >= breakAt(p)) { drawShards(ctx, p, ms); drawChips(ctx, p, ms); return; }
+  crackPicture(ctx, p, ms, false);
+  drawChips(ctx, p, ms);
+}
+/* the standing crack picture at ms (build: the full picture without its glint, to cut into shards) */
+function crackPicture(ctx, p, ms, build) {
   const { sf, w, h, box } = ctx;
-  const cut = crackCut(p, ms);
   const set = (x, y, c, force = false) => {
     x |= 0; y |= 0;
     if (x < 0 || y < 0 || x >= w || y >= h) return;
@@ -287,13 +369,13 @@ function drawCracks(ctx, p, ms) {
     if (x < box.x0) box.x0 = x; if (x > box.x1) box.x1 = x; if (y < box.y0) box.y0 = y; if (y > box.y1) box.y1 = y;
   };
   for (const f of p.facets ?? []) {
-    if ((ms < f.at && !p.still) || cut < f.r) continue;
+    if (!build && ms < f.at && !p.still) continue;
     f._px ??= facetPixels(f, w, h);
     for (const i of f._px) set(i % w, (i / w) | 0, f.light ? 6 : 7);
   }
-  const glintD = !p.still && ms >= 120 && ms <= 560 ? ((ms - 120) / 440) * p.maxD : -99;
+  const glintD = !build && !p.still && ms >= 120 && ms <= 560 ? ((ms - 120) / 440) * p.maxD : -99;
   for (const [li, ln] of p.lines.entries()) {
-    const lim = Math.min(crackReach(ln, ms, p.still), cut);
+    const lim = build ? Infinity : crackReach(ln, ms, p.still);
     if (!(lim > ln.pts[0][2])) continue;
     const side = li & 1 ? 1 : -1;
     for (let i = 1; i < ln.pts.length; i++) {
@@ -307,40 +389,123 @@ function drawCracks(ctx, p, ms) {
         const d = a[2] + (b[2] - a[2]) * u * f;
         const gl = Math.abs(d - glintD) < 2.5;
         set(x, y, gl ? 5 : 1, true);
-        if (ln.lvl === 0 && d < ln.wide) { set(x + 1, y, gl ? 5 : 1, true); set(x - ox, y - oy, 2); }
-        if (ox || oy) set(x + ox, y + oy, 2);
+        /* a hairline: the lit edge only beside the radials' first stretch (the crack is open there), single pixels beyond */
+        if ((ox || oy) && ln.lvl === 0 && d < p.maxD * 0.45) set(x + ox, y + oy, 2);
       });
     }
   }
   for (const c of p.craters) {
-    if (ms < c.at || cut <= c.r) continue;
+    if ((!build && ms < c.at)) continue;
     const r = c.r;
     for (let y = Math.floor(c.y - r - 1); y <= Math.ceil(c.y + r + 1); y++) for (let x = Math.floor(c.x - r - 1); x <= Math.ceil(c.x + r + 1); x++) {
       const d = Math.hypot(x + 0.5 - c.x, y + 0.5 - c.y);
       const jag = r * (0.75 + 0.35 * (((x * 73856093) ^ (y * 19349663) ^ (c.seed | 0)) >>> 0) % 100 / 100);
       if (d > jag) continue;
       const hsh = (((x * 2654435761) ^ (y * 40503)) >>> 0) % 7;
-      set(x, y, d < 1.3 ? 1 : d > jag - 1.1 ? 1 : hsh === 0 ? 1 : 3, true);
+      set(x, y, d < 1 ? 1 : d > jag - 1.1 ? 1 : hsh === 0 ? 1 : 3, true);
     }
   }
-  if (!p.still) for (const ch of p.chips) {
+}
+function drawChips(ctx, p, ms) {
+  if (p.still) return;
+  const { sf, w, h, box } = ctx;
+  for (const ch of p.chips) {
     const t = (ms - ch.at) / 1000;
-    if (t < 0 || t > 1.6) continue;
+    if (t < 0 || t > 0.9) continue;      // GORE2: a crumb drops a short way and is gone (it may not cross the view)
     const x = ch.x + ch.vx * t, y = ch.y + ch.vy * t + 0.5 * 260 * t * t;
     if (y > h + 2) continue;
     const tick = Math.floor(ms / TICK_MS / 2) + ch.spin;      // tumbling: the chip turns every other tick
-    const shape = ch.big ? [[[0, 0], [1, 0], [0, 1], [1, 1]], [[0, 0], [1, 0], [2, 0]], [[0, 0], [0, 1], [0, 2]]][tick % 3] : [[[0, 0], [1, 0]], [[0, 0], [0, 1]], [[0, 0]]][tick % 3];
-    for (const [ox, oy] of shape) set(x + ox, y + oy, 4, true);
+    const shape = ch.big ? [[[0, 0], [1, 0], [0, 1], [1, 1]], [[0, 0], [1, 0], [2, 0]], [[0, 0], [0, 1], [0, 2]]][((tick % 3) + 3) % 3] : [[[0, 0], [1, 0]], [[0, 0], [0, 1]], [[0, 0]]][((tick % 3) + 3) % 3];
+    for (const [ox, oy] of shape) {
+      const X = Math.round(x + ox), Y = Math.round(y + oy);
+      if (X < 0 || Y < 0 || X >= w || Y >= h) continue;
+      sf.C[Y * w + X] = 4;
+      if (X < box.x0) box.x0 = X; if (X > box.x1) box.x1 = X; if (Y < box.y0) box.y0 = Y; if (Y > box.y1) box.y1 = Y;
+    }
   }
 }
-/* a facet's pixels (a wedge of the crater's first ring), once */
+/* GORE2, clearing: the cracked glass FALLS OUT. The full picture is cut once into shards (a cell between two radials and two rings of
+   one strike, its lines with it; the crushed crater is band 0); from breakAt the shards drop one after another, the crater first, then
+   ring by ring outward: each falls (gravity, a little sideways away from the crater) for FALL_MS, lit as it turns, and crumbles to
+   nothing in its last third. A reduced-motion seat: each shard just goes, in the same order. */
+export const FALL_G = 560;
+export function shardsOf(p, w, h) {
+  if (p._shards) return p._shards;
+  const C = new Uint8Array(w * h), box = { x0: w, y0: h, x1: -1, y1: -1 };
+  crackPicture({ sf: { C }, box, w, h }, p, 0, true);
+  const by = new Map();
+  for (let y = Math.max(0, box.y0); y <= box.y1; y++) for (let x = Math.max(0, box.x0); x <= box.x1; x++) {
+    const i = y * w + x;
+    if (!C[i]) continue;
+    let sj = 0, best = Infinity;
+    for (const [j, st] of p.strikes.entries()) { const d = Math.hypot(x + 0.5 - st.x, y + 0.5 - st.y); if (d < best) { best = d; sj = j; } }
+    const st = p.strikes[sj];
+    const band = best < st.rc * 1.4 ? 0 : 1 + st.rhos.filter((r) => r < best).length;
+    const a = Math.atan2(y + 0.5 - st.y, x + 0.5 - st.x);
+    let sec = st.angs.filter((v) => v < a).length;
+    if (sec === st.angs.length) sec = 0;
+    const key = sj * 1000 + band * 50 + (band ? sec : 0);
+    let s = by.get(key);
+    if (!s) by.set(key, (s = { key, sj, band, px: [], cls: [], sx: 0, sy: 0 }));
+    s.px.push(i); s.cls.push(C[i]); s.sx += x; s.sy += y;
+  }
+  const r = rng(`shards|${p.seed}`);
+  const list = [...by.values()].map((s) => ({ ...s, o: s.band + r() * 0.9 }));
+  list.sort((a, b) => a.sj - b.sj || a.o - b.o);
+  const t0 = breakAt(p), n = list.length;
+  for (const [k, s] of list.entries()) {
+    const st = p.strikes[s.sj];
+    const cx = s.sx / s.px.length, cy = s.sy / s.px.length;
+    const ax = cx - st.x, ay = cy - st.y, al = Math.hypot(ax, ay) || 1;
+    Object.assign(s, { at: t0 + (n > 1 ? (k / (n - 1)) * (FALL - FALL_MS - 2 * TICK_MS) : 0), vx: (ax / al) * 22 + (r() - 0.5) * 16, vy: Math.max(0, (ay / al) * 14) + lerp(0, 12, r()),
+      px: Int32Array.from(s.px), cls: Uint8Array.from(s.cls) });
+  }
+  return (p._shards = list);
+}
+const lerp = (a, b, u) => a + (b - a) * u;
+function drawShards(ctx, p, ms) {
+  const { sf, w, h, box } = ctx;
+  const shards = shardsOf(p, w, h);
+  const tick = Math.floor(ms / TICK_MS) * TICK_MS;
+  const put = (x, y, c) => {
+    if (x < 0 || y < 0 || x >= w || y >= h) return;
+    const i = y * w + x, cur = sf.C[i];
+    if (cur && !(cur === 6 || cur === 7 || cur === 8) && c >= 6) return;
+    sf.C[i] = c;
+    if (x < box.x0) box.x0 = x; if (x > box.x1) box.x1 = x; if (y < box.y0) box.y0 = y; if (y > box.y1) box.y1 = y;
+  };
+  /* the ones still in place first, the falling ones over them */
+  for (const s of shards) {
+    if (tick >= s.at) continue;
+    for (let j = 0; j < s.px.length; j++) put(s.px[j] % w, (s.px[j] / w) | 0, s.cls[j]);
+  }
+  if (p.still) return;
+  for (const s of shards) {
+    const age = tick - s.at;
+    if (age < 0 || age >= FALL_MS) continue;
+    const a = age / 1000, dx = Math.round(s.vx * a), dy = Math.round(s.vy * a + 0.5 * FALL_G * a * a);
+    const crumble = Math.max(0, (age - FALL_MS * 0.62) / (FALL_MS * 0.38));
+    /* the loose piece catches the light: clear glass with diagonal sheen streaks that slide across it as it falls, its edges bright on
+       the first tick */
+    const sheen = Math.floor(age / TICK_MS);
+    for (let j = 0; j < s.px.length; j++) {
+      const x0 = s.px[j] % w, y0 = (s.px[j] / w) | 0, x = x0 + dx, y = y0 + dy;
+      if (crumble > 0 && ((Math.imul(x0, 73856093) ^ Math.imul(y0, 19349663)) >>> 0) % 1000 / 1000 < crumble) continue;
+      const c = s.cls[j];
+      if (c === 6 || c === 7) { if ((x0 + y0 + sheen) % 9 === 0) put(x, y, 8); continue; }
+      put(x, y, age < TICK_MS && c === 1 ? 2 : c);
+    }
+  }
+}
+/* a facet's pixels (a cell of a ring band between two radials), once */
 function facetPixels(f, w, h) {
   const out = [];
   let a1 = f.a1; while (a1 < f.a0) a1 += Math.PI * 2;
   if (a1 - f.a0 > Math.PI) return out;
+  const r0 = f.r0 ?? 0;
   for (let y = Math.max(0, Math.floor(f.y - f.r)); y <= Math.min(h - 1, Math.ceil(f.y + f.r)); y++) for (let x = Math.max(0, Math.floor(f.x - f.r)); x <= Math.min(w - 1, Math.ceil(f.x + f.r)); x++) {
-    const vx = x + 0.5 - f.x, vy = y + 0.5 - f.y;
-    if (Math.hypot(vx, vy) > f.r) continue;
+    const vx = x + 0.5 - f.x, vy = y + 0.5 - f.y, d = Math.hypot(vx, vy);
+    if (d > f.r || d < r0) continue;
     let a = Math.atan2(vy, vx); while (a < f.a0) a += Math.PI * 2;
     if (a <= a1) out.push(y * w + x);
   }
@@ -374,7 +539,9 @@ function colour(sf, b, pal) {
       const P = st === 0 ? pal.wet : st === 1 ? pal.drying : pal.dried;
       let c;
       const edge = at(x - 1, y) <= THR || at(x + 1, y) <= THR || at(x, y - 1) <= THR || at(x, y + 1) <= THR;
-      if (edge) c = P.out;
+      if (G[i] === 3) c = P.crumb;                    // a falling flake
+      else if (edge) c = P.out;
+      else if (G[i] === 2) c = P.crumb;
       else if (G[i] && st === 0) c = P.spec;
       else {
         /* light from the top left: each drop is shaded as a dome (light()), banded into the palette, a 2x2 dither where two bands meet;

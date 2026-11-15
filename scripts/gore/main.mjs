@@ -108,7 +108,7 @@ function nextChange(now) {
   let soon = 1000;
   for (const it of G.items) {
     const ms = now - it.t0, p = it.plan;
-    const marks = p.kind === "blood" ? [p.life.wet, p.life.dry, Math.min(p.life.gone, Number.isFinite(it.cutAt) ? it.cutAt - it.t0 : Infinity)] : [p.life.gone - p.life.retract];
+    const marks = p.kind === "blood" ? [p.life.wet, p.life.dry, Math.min(p.life.gone, Number.isFinite(it.cutAt) ? it.cutAt - it.t0 : Infinity)] : [P.breakAt(p)];
     for (const m of marks) if (m > ms) soon = Math.min(soon, m - ms);
   }
   return Math.max(16, soon - 10);
@@ -116,7 +116,8 @@ function nextChange(now) {
 /* a splash's drawings are recorded ahead, one tick per task (a whole knock-down splash takes ~25 ms of recording: never one long task) */
 function warmLater(it) {
   const plan = it.plan;
-  if (plan.kind !== "blood") return;
+  /* cracks: their shards are cut once, a task of its own after the strike (GORE2) */
+  if (plan.kind !== "blood") { setTimeout(() => { try { if (it.plan === plan && G.items.includes(it)) R.warm(plan); } catch (err) { once(err); } }, 400); return; }
   let k = 0;
   const step = () => {
     if (it.plan !== plan || k > R.SETTLED || !G.items.includes(it)) return;
@@ -165,7 +166,7 @@ function play(kind, o = {}) {
 function clear({ quick = false } = {}) {
   if (quick) { G.items = []; hideIfEmpty(); return; }
   const now = pnow();
-  for (const it of G.items) { if (it.kind === "blood") it.cutAt = Math.min(it.cutAt ?? Infinity, now); else it.t0 = Math.min(it.t0, now - (it.plan.life.gone - it.plan.life.retract)); }
+  for (const it of G.items) { if (it.kind === "blood") it.cutAt = Math.min(it.cutAt ?? Infinity, now); else it.t0 = Math.min(it.t0, now - P.breakAt(it.plan)); }
   kick();
 }
 
