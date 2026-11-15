@@ -140,10 +140,11 @@ for (const layer of ["screen", "overlay", "ui"]) {
 }
 /* B4: no impact on this seat */
 {
-  /* a map layer, the word and the target off this view: no impact, the backdrop enters on the word's strike */
+  /* a map layer, the word and the target off this view. CRITPEAK (SYNC M1/M2): such a seat plays the moment on its screen; nothing of it on
+     the board, and the backdrop still enters on the word's strike (after the impact on the word, as on the screen layer: B1) */
   const s = await seat({ layer: "overlay", e: crit, hero, tokens: [T], targets: [T.id], pan: { x: -3000, y: -2500 }, backdrop: true });
-  ok(s.impacts.length === 0, "B4: a map moment wholly off this view: no impact here");
-  ok(s.first && s.first.t === wordAt(s), `B4: ... the backdrop enters with the word (${s.first?.t} / ${wordAt(s)})`);
+  ok(s.impacts.every((im) => im.space !== "world"), "B4: a map moment wholly off this view: nothing of its impact on the board");
+  ok(s.first && s.first.t >= wordAt(s), `B4: ... the backdrop enters with the word or after its impact (${s.first?.t} / ${wordAt(s)})`);
   /* an engine without impact frames: the backdrop from the start, as before */
   const n = await seat({ e: crit, hero, tokens: [T], targets: [T.id], backdrop: true, impact: false });
   ok(n.states[0].bd.includes("ins-backdrop") && n.states[0].bd.includes("ins-fullrays"), `B4: an engine without impact frames: the backdrop is up from the start, as before (${n.states[0].bd})`);

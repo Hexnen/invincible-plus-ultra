@@ -103,6 +103,9 @@ function canvasWith(cx, cy, zoom = 1, pan = { x: 0, y: 0 }) {
 }
 const inside = (b, W, H, chat = 300) => b.x - b.w / 2 >= 0 && b.x + b.w / 2 <= W - chat && b.y - b.h / 2 >= 0 && b.y + b.h / 2 <= H;
 const overlap = (a, b) => Math.abs(a.x - b.x) * 2 < a.w + b.w && Math.abs(a.y - b.y) * 2 < a.h + b.h;
+/* CRITPEAK: the push grunt has left before anything else of the moment comes (letter-plan: the word waits for its exit), so it stands in
+   the word's place; two letterings never on screen together cannot overlap */
+const apart = (a, b) => a.role !== "pre" && b.role !== "pre";
 const ROLLS = () => ({ good: ev({ n: 5, sixes: 2 }), crit: ev({ n: 4, sixes: 4 }), routine: ev({ n: 1, sixes: 0 }), rare: ev({ n: 12, sixes: 0 }),
   pushed: ev({ n: 5, sixes: 2, pushed: true, newSixes: 1, rerolled: 3, stress: 2 }), pushedMiss: ev({ n: 5, sixes: 0, pushed: true, rerolled: 4, stress: 1 }),
   wreck: ev({ n: 6, sixes: 3, wreck: true }), stressed: ev({ n: 6, sixes: 2, stress: 2 }) });
@@ -138,14 +141,18 @@ for (const [W, H] of [[1366, 768], [1920, 1080]]) for (const ui of [{}, { pill: 
           else ok(PLAIN.get(tag) === sigB, `F4 ${tag}: the GM's own director pill and a chat card popped up on his seat do not move his block (SAMEPIC: the same picture as a seat without them; ${pill.top}..${card.left})`);
           for (const b of boxes) ok(!bar(b, row), `F4 ${tag}: the ${b.role} stays off the bars (the scene row on top)`);
           let clash = null;
-          for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) if (overlap(boxes[i], boxes[j])) clash = [boxes[i].role, boxes[j].role];
+          for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) if (apart(boxes[i], boxes[j]) && overlap(boxes[i], boxes[j])) clash = [boxes[i].role, boxes[j].role];
           ok(!clash, `F7 ${tag}: no two letterings of the moment overlap (${clash})`);
           const word = boxes.find((b) => b.role === "word"), sayB = boxes.find((b) => b.role === "say"), odds = boxes.find((b) => b.role === "odds");
           /* FXI-SPLASH (ADVI 11): a stacked block reads in the order it lands: word, sixes, caption. A sixes row standing between the word and
              the caption is allowed for (its own height and gap), nothing more */
           const sixB = boxes.find((b) => b.role === "six"), between = sixB && sixB.y > word.y + word.h / 2 && sayB && sixB.y < sayB.y ? sixB.h + 0.3 * word.S : 0;
+          /* CRITPEAK: a critical too big to stand whole on one side of the roller frames it: head (word, sixes) above, caption below. The
+             roller's box between them is allowed for (its height and a gap each side), nothing more */
+          const hb = { t: cy - 50, b: cy + 50, l: cx - 50, r: cx + 50 };
+          const framed = (cb) => cb.y - cb.h / 2 >= hb.b - 1 && word.y + word.h / 2 <= hb.t + 1 && word.x - word.w / 2 < hb.r && word.x + word.w / 2 > hb.l ? (hb.b - hb.t) + 0.6 * word.S : 0;
           for (const cb of [sayB, odds].filter(Boolean)) {
-            ok(Math.abs((cb.y - cb.h / 2) - (word.y + word.h / 2)) <= 0.9 * word.S + between + (sayB && cb === odds ? sayB.h + 0.3 * word.S : 0), `F4 ${tag}: the ${cb.role} sits right under the word (gap ${Math.round((cb.y - cb.h / 2) - (word.y + word.h / 2))} px, word cap ${Math.round(word.S)} px)`);
+            ok(Math.abs((cb.y - cb.h / 2) - (word.y + word.h / 2)) <= 0.9 * word.S + between + Math.max(framed(cb), sayB ? framed(sayB) : 0) + (sayB && cb === odds ? sayB.h + 0.3 * word.S : 0), `F4 ${tag}: the ${cb.role} sits right under the word (gap ${Math.round((cb.y - cb.h / 2) - (word.y + word.h / 2))} px, word cap ${Math.round(word.S)} px)`);
           }
           Stage.clearAll();
         }
@@ -264,7 +271,8 @@ for (const [name, e] of Object.entries(ROLLS())) {
     return pre && w && w.delay >= pre.delay + pre.hold + 500;
   })(), "F7: the push grunt has played its exit (up to 0.5 s) before the word comes");
   await run(1366, 768, {}, async ({ Stage, flush }) => {
-    for (const zoom of [0.5, 1, 2]) {
+    /* CRITPEAK: 0.7 (was 0.5: 50 px squares, where a board word is under LP.MAP_READ on screen and the moment plays on the screen layer) */
+    for (const zoom of [0.7, 1, 2]) {
       const { c, token } = canvasWith(500, 420, zoom, { x: 37, y: -12 });
       globalThis.canvas = c;
       const L = fakeEngine(); Stage.setLetters(L); Stage.setLayer("tokens");
@@ -273,7 +281,7 @@ for (const [name, e] of Object.entries(ROLLS())) {
       const boxes = L.calls.map((x) => drawn(x, L, zoom, (p) => c.stage.toGlobal(p)));
       ok(L.calls.length >= 5 && L.calls.every((x) => x.o.space === "world" && x.o.fit === "exact"), `F7 map zoom ${zoom}: the words are on the map with exact scene sizes`);
       let clash = null;
-      for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) if (overlap(boxes[i], boxes[j])) clash = [boxes[i].role, boxes[j].role];
+      for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) if (apart(boxes[i], boxes[j]) && overlap(boxes[i], boxes[j])) clash = [boxes[i].role, boxes[j].role];
       ok(!clash, `F7 map zoom ${zoom}: the odds no longer run into the sentence (no overlap: ${clash})`);
       Stage.setLayer("screen"); Stage.clearAll();
     }
@@ -290,7 +298,7 @@ for (const [name, e] of Object.entries(ROLLS())) {
       flush(1e9);
       const boxes = L.calls.map((x) => drawn(x, L, 1, (p) => c.stage.toGlobal(p)));
       let clash = null;
-      for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) if (overlap(boxes[i], boxes[j])) clash = [boxes[i].role, boxes[j].role];
+      for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) if (apart(boxes[i], boxes[j]) && overlap(boxes[i], boxes[j])) clash = [boxes[i].role, boxes[j].role];
       const w = boxes.find((b) => b.role === "word"), sy = boxes.find((b) => b.role === "say");
       ok(boxes.length >= 5 && !clash && w && sy && sy.y > w.y && Math.abs(sy.y - w.y) < 3 * w.h, `F7 map, a pan during the moment: the block stays one block in the scene (${clash ?? "no overlap"}, sentence under the word)`);
       Stage.setLayer("screen"); Stage.clearAll();

@@ -202,7 +202,8 @@ async function run(W, H, fn) {
       flush(40000);
       ok(!c5.lw && L5.calls.length === 0, `${W}: without the engine the classic splash plays`);
       /* the display layer: on the map = the engine's world space, scene coordinates, scene px */
-      globalThis.canvas = { ready: true, stage: { scale: { x: 0.5 }, toLocal: (q) => ({ x: q.x * 2 + 100, y: q.y * 2 + 100 }), toGlobal: (q) => q }, app: { view: { getBoundingClientRect: () => ({ left: 0, top: 0 }) } } };
+      /* CRITPEAK: at zoom 1 (was 0.5: 50 px squares, where a board word is under LP.MAP_READ on screen and the moment plays on the screen) */
+      globalThis.canvas = { ready: true, stage: { scale: { x: 1 }, toLocal: (q) => ({ x: q.x + 100, y: q.y + 100 }), toGlobal: (q) => ({ x: q.x - 100, y: q.y - 100 }) }, app: { view: { getBoundingClientRect: () => ({ left: 0, top: 0 }) } } };
       const L6 = fakeEngine(); Stage.setLetters(L6); Stage.setLayer("tokens");
       /* FXLD2: a map moment stands by the board's token (without one it has no board place and plays over the screen) */
       const tok6 = { id: "T6", x: 400, y: 300, w: 100, h: 100, center: { x: 450, y: 350 }, document: { x: 400, y: 300, width: 1, height: 1 } };

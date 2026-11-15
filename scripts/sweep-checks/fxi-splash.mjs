@@ -149,7 +149,8 @@ const peakOf = (spec) => impBlow(spec);
     ok(w && Math.hypot(w.o.at.x - c.x, w.o.at.y - c.y) > 200, `P ${layer}: the word is not by the roller's place on this screen (${JSON.stringify(w?.o.at)} vs ${JSON.stringify(c)})`);
   }
   /* the same roller on a seat that sees it (the GM): the board moment as before */
-  const g = await seat({ layer: "overlay", e: R.crit, name: "p-gm", hero, gm: true, vision: V(false), full: false });
+  /* CRITPEAK: on this seat's view (a map moment whose roller stands outside the view plays on the screen now: SYNC M1/M2, no seat saw it) */
+  const g = await seat({ layer: "overlay", e: R.crit, name: "p-gm", hero: tok("UNS", 650, 380), gm: true, vision: V(false), full: false });
   ok(g.calls.some((c) => c.o.space === "world"), "P: the GM (who sees the roller) gets the board moment");
 }
 
@@ -205,7 +206,7 @@ for (const [name, e, full] of [["crit", R.crit, true], ["crit6", R.crit6, true],
   const covers = (spec) => planImpact(spec).frames.filter((f) => IP.COVERS_WORD.includes(f.type)).map((f) => f.type);
   for (const m of [0.3, 0.5, 0.84, 1.1, 1.6, 2]) eq(covers({ kind: "crit", magnitude: m, frames: IP.mapFrames(m) }), [], `M: map frames at strength ${m} leave the word's spot clear (ADVI 6: the shadow frame hid it, the slam's star blacked it)`);
   ok(IP.mapFrames(0.5).length < IP.mapFrames(1.6).length && IP.mapFrames(1.6).some((f) => f.type === "window"), "M: the map impact still builds: more for the rarer result, the torn window for a critical");
-  const hero = tok("HERO", 1200, 900);
+  const hero = tok("HERO", 650, 380);   // CRITPEAK: on the view (was 1200, 900: under a 1600 x 900 window's bottom edge)
   const s = await seat({ layer: "overlay", e: R.crit, name: "m1", hero, full: false });
   const im = s.impacts[0], w = wordCall(s);
   ok(im && im.space === "world" && Array.isArray(im.frames) && covers(im).length === 0 && Math.abs(im.subject.x + im.subject.w / 2 - w.o.at.x) < 1, `M: on the map the impact is in scene space round the word, with drawings that keep it readable (${JSON.stringify(im?.frames)})`);
@@ -215,7 +216,9 @@ for (const [name, e, full] of [["crit", R.crit, true], ["crit6", R.crit6, true],
   { const sc = await seat({ layer: "screen", e: R.crit, name: "m0", hero, full: false }); ok(sc.impacts[0] && !("keep" in sc.impacts[0]), "M: ... on the screen layer nothing is kept (the word is above the impact)"); }
   /* the word off this seat's view (the seat looks elsewhere): no impact at the view's edge */
   const off = await seat({ layer: "overlay", e: R.crit, name: "m2", hero, full: false, pan: { x: -3000, y: -2500 } });
-  eq(off.impacts.length, 0, "M: a map word out of this seat's view gets no impact frame (it would flash at the edge for nothing)");
+  /* CRITPEAK (SYNC M1/M2: the camera on the targets, the roller off every view, a map word nobody saw): such a seat plays the moment on its
+     screen; nothing of it, the impact included, stands on the board (it would flash at the view's edge for nothing) */
+  ok(off.calls.length > 0 && off.calls.every((c) => c.o.space !== "world") && off.impacts.every((im) => im.space !== "world"), "M: a seat whose view does not hold the roller plays the moment on its screen, nothing of it on the board");
   /* the shared place under THIS seat's hotbar: laid out again inside its free view; a seat with room keeps the shared place */
   const low = tok("LOW", 900, 720);
   const sa = await seat({ layer: "overlay", e: R.crit, name: "m3", hero: low, full: false, zoom: 1, pan: { x: 0, y: 0 }, W: 1600, H: 900 });

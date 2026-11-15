@@ -87,7 +87,44 @@ const INFO_ROLES = new Set(['six', 'say', 'odds', 'stress']);
 /* cap height of each lettering, as a share of the viewport height (1366x768 and 1920x1080 alike), and its pixel floor */
 export const FLOOR = { word: 30, pre: 22, wreck: 22, six: 21, say: 21, odds: 19, stress: 19 };   // FXI-SPLASH: say 19 -> 21, odds 17 -> 19 (ADVI 11)
 
-const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+/* CRITPEAK (ADVX 2, 3, 4, 15; the owner's standard: the lettering BUILDS, a critical is the biggest, loudest thing the table sees, a
+   strong roll clearly more than an ordinary one, a pushed roll a beat of its own, readable at the sizes that really occur).
+   ONE rule for the block: each lettering has a RANK (what the roll was) and from it a nominal size (`cap`) and a floor (`min`), both as a
+   share of the reference height (same-picture.mjs REF_VH, on screen). The layout may shrink the block to make room (composeMoment), but
+   never a part below its floor, and the floors keep the ranks apart: the weakest strong roll's floor is over the biggest ordinary roll, the
+   critical's floor over the biggest strong roll (RANK_WORD). Before: the floor was applied BEFORE the layout's shrink (FLOOR * f, so no
+   floor at all), a crowded or long critical shrank below a strong roll (83 vs 81 px), the map layer capped the critical at 0.14 of its
+   board height (under an ordinary roll's word), and the map never looked at the zoom (a 16 px word at the far view). The info lines rank
+   with their word: a critical's sentence, odds and sixes are never smaller than a strong roll's (RANK_INFO). On the map the same floors
+   hold ON SCREEN (scene px = screen px / zoom) and the board size stands only while it is at most MAP_MAX over the nominal screen size. */
+export const STRONG_P = 0.1;   // the power from which a success carries a sentence (logic.mjs ODDS: NOT BAD! from 0.10): a strong roll
+export const RANK_WORD = Object.freeze({
+  ordinary: { cap: (P) => 0.078 + 0.05 * clamp(P, 0, STRONG_P), min: 0.066 },                  // ~70-75 px at 900, floor 59
+  strong: { cap: (P) => 0.108 + 0.06 * clamp((P - STRONG_P) / 0.6, 0, 1), min: 0.1 },          // ~97-151 px, floor 90 (> 75)
+  critical: { cap: (P) => 0.22 + 0.035 * clamp(P, 0, 1), min: 0.2 },                           // ~230 px, floor 180 (> 151 x MAP_MAX)
+  miss: { cap: (dF) => 0.06 + 0.025 * clamp(dF, 0, 1), min: 0.05 },                            // a miss is never louder than a success
+  soft: { cap: () => 0.06, min: 0.05 }
+});
+/* the info lines of each rank: [cap, floor] (share of the reference height); a critical's floors stand over a strong roll's caps */
+export const RANK_INFO = Object.freeze({
+  six: { ordinary: [0.042, 0.034], strong: [0.046, 0.036], critical: [0.064, 0.055] },
+  say: { strong: [0.046, 0.034], critical: [0.066, 0.056], miss: [0.04, 0.032] },
+  odds: { strong: [0.04, 0.03], critical: [0.056, 0.048], miss: [0.035, 0.029] },
+  stress: [0.044, 0.034]
+});
+/* CRITPEAK (ADVX 4): a map moment whose word (screen px at this seat's zoom) is under word, or a caption under info, is a speck on this
+   seat: it plays on the screen layer there (stage.mjs playLetters) */
+export const MAP_READ = { word: 22, info: 12 };
+/* the board's scale on a seat's view against the screen rule (GRID_VH squares x zoom over REF_VH) within which a moment stays on the map */
+export const MAP_BAND = Object.freeze([0.25, 1.25]);
+export const MAP_UP = 1.6;   // a board block too big for a close view comes to the screen at most this much bigger (stage.mjs)
+export const PRE_MIN = 0.072;  // the push grunt's floor: a beat of its own (ADVX 15: 47-53 px live)
+export const MAP_MAX = 1.15;    // on the map the board size stands while it is at most this much over the nominal screen size
+export const GAUGE_MIN = 0.9, GAUGE_MAX = 1.4;   // the Resolve gauge's scale on screen (its figures ~20-23 px at 1; ADVX 15: microscopic)
+export const rankOf = (ev, full) => (ev.fail ? (ev.softFail ? 'soft' : 'miss') : full ? 'critical' : (ev.power ?? 0) >= STRONG_P ? 'strong' : 'ordinary');
+const info = (role, rank) => { const t = RANK_INFO[role]; const v = Array.isArray(t) ? t : (t[rank] ?? t.strong ?? t.ordinary); return { cap: v[0], min: v[1] }; };
 const r1 = v => Math.round(v * 100) / 100;
 const r3 = v => Math.round(v * 1000) / 1000;
 
@@ -106,11 +143,12 @@ export function planMoment(ev, o = {}) {
     const m = moodOf(ev.prefix);
     /* FXLD2 (ADVD2 11): the grunt is a beat of its own, not a footnote: about 1.4x the old cap (live 1920 HNNNG! was ~40 px) and held
        long enough to read before the result comes */
-    const pre = add({ role: 'pre', text: sfxWord(ev.prefix), delay: 0, cap: PRE_CAP, wMax: 0.5, mood: m,
+    const pre = add({ role: 'pre', text: sfxWord(ev.prefix), delay: 0, cap: PRE_CAP, min: PRE_MIN, wMax: 0.5, mood: m,
       sound: { loud: 0.6, pitch: 0.6, long: 0.6 }, colors: ['#fff1dc', '#ffc27a', '#e07a2a'], hold: Math.round(PRE_HOLD * holdK), rotation: -4 });
     t = pre.hold + EXIT_MAX + 60;
   }
 
+  const rank = rankOf(ev, full);
   if (ev.fail) {
     const soft = !!ev.softFail, dF = clamp(o.dF ?? 0.3, 0, 1);
     const m0 = moodOf(ev.word);
@@ -118,14 +156,14 @@ export function planMoment(ev, o = {}) {
     const mood = soft ? 'tick' : (ev.pushed && WORD_MOOD[ev.word] ? m0 : 'fail');
     const loud = soft ? 0.12 : r1(0.3 + 0.45 * dF + (ev.pushed ? 0.1 : 0));
     /* FXLD2 (ADVD2 10): a routine miss is quiet but readable: the soft cap and hold were too small (NEXT! tiny on the head ring, ~1.5 s) */
-    const w = add({ role: 'word', text: sfxWord(ev.word), en: ev.word, delay: t, cap: r3(soft ? SOFT_CAP : 0.062 + 0.045 * dF + (ev.pushed ? 0.008 : 0)), wMax: soft ? 0.4 : 0.55,
+    const w = add({ role: 'word', text: sfxWord(ev.word), en: ev.word, delay: t, cap: r3(RANK_WORD[rank].cap(dF)), min: RANK_WORD[rank].min, rank, wMax: soft ? 0.4 : 0.55,
       mood, sound: { loud, pitch: soft ? -0.2 : r1(-0.45 - 0.45 * dF), sharp: MOOD_SHARP[m0] ?? 0.4, rough: soft ? 0 : r1(0.2 + 0.4 * dF) },
       colors: soft ? SOFT_COLORS : FAIL_COLORS, hold: Math.round((soft ? SOFT_HOLD : 2200 + 600 * dF) * holdK), rotation: soft ? 0 : 5 });
     /* a rare miss also says how rare: the sentence and the figure */
     if (!soft && dF > 0.3 && !ev.pushed && ev.failP) {
-      add({ role: 'say', text: say(dF > 0.6 ? 'WHAT A FLOP!' : 'UNLUCKY!'), delay: t + 330, cap: 0.04, wMax: 0.6,
+      add({ role: 'say', text: say(dF > 0.6 ? 'WHAT A FLOP!' : 'UNLUCKY!'), delay: t + 330, ...info('say', 'miss'), wMax: 0.6,
         mood: 'tick', sound: { loud: 0.35, pitch: -0.3 }, colors: MISS_SAY_COLORS, hold: Math.max(400, w.hold - 330), rotation: -3 });
-      add({ role: 'odds', text: LBL.miss(fmtOdds(Math.round(1 / ev.failP))), delay: t + 430, cap: 0.033, wMax: 0.6,
+      add({ role: 'odds', text: LBL.miss(fmtOdds(Math.round(1 / ev.failP))), delay: t + 430, ...info('odds', 'miss'), wMax: 0.6,
         mood: 'tick', sound: { loud: 0.3, pitch: 0 }, colors: ODDS_COLORS, hold: Math.max(400, w.hold - 430), rotation: -2 });
     }
   } else {
@@ -135,24 +173,24 @@ export function planMoment(ev, o = {}) {
     if (LONG.has(m)) sound.long = r1(0.45 + 0.35 * P);
     const hold = Math.round((2400 + 1600 * P) * holdK);
     const wreck = !!ev.wreckWord;
-    /* ADVD 5: the critical (full screen) is the biggest thing the table sees: about 60 % of the free width, at least as present as the
-       old jagged panel; a token-sized success grows with its rarity */
-    const cap = full ? 0.2 + 0.06 * P : 0.064 + 0.07 * P + 0.002 * Math.min(tier, 10);
-    add({ role: 'word', text: sfxWord(ev.word), en: ev.word, delay: t, cap: r3(cap), wMax: full ? (wreck ? 0.46 : 0.64) : (wreck ? 0.42 : 0.58), wMin: full ? 0.5 : 0, mood: m, sound,
+    /* ADVD 5: the critical (full screen) is the biggest thing the table sees; a token-sized success grows with its rarity. CRITPEAK: by
+       its rank (RANK_WORD), the critical up to nearly the whole free width (a long Polish word must not shrink it under a strong roll) */
+    const cap = RANK_WORD[rank].cap(P);
+    add({ role: 'word', text: sfxWord(ev.word), en: ev.word, delay: t, cap: r3(cap), min: RANK_WORD[rank].min, rank, wMax: full ? (wreck ? 0.6 : 0.92) : (wreck ? 0.46 : 0.66), wMin: full ? 0.5 : 0, mood: m, sound,
       colors: P >= 0.4 || o.npc ? powerColors(P, o.npc ? 150 : 0) : null,     // a weak success keeps its mood's own palette (variety); strong ones climb the power scale
       hold, rotation: 0, from: o.token ? 'token' : 90 });
-    if (wreck) add({ role: 'wreck', text: sfxWord(ev.wreckWord), delay: t + 520, cap: r3(cap * 0.62), wMax: 0.36,
+    if (wreck) add({ role: 'wreck', text: sfxWord(ev.wreckWord), delay: t + 520, cap: r3(cap * 0.62), min: r3(RANK_WORD[rank].min * 0.55), wMax: 0.4,
       mood: moodOf(ev.wreckWord), sound: { loud: r1(Math.min(1, loud + 0.1)), rough: 0.7 }, colors: powerColors(Math.min(1, P + 0.1), -22 + (o.npc ? 150 : 0)), hold: hold - 520, rotation: 8 });
     if (ev.sixes > 0) {
-      add({ role: 'six', text: LBL.six(ev.sixes), delay: t + 230, cap: r3((full ? 0.058 : 0.038) + 0.003 * Math.min(4, ev.sixes)), wMax: 0.3,
+      add({ role: 'six', text: LBL.six(ev.sixes), delay: t + 230, ...info('six', rank), wMax: 0.36,
         mood: 'impact', sound: { loud: r1(0.4 + 0.12 * Math.min(4, ev.sixes)), sharp: 0.75, pitch: 0.3 },
         colors: SIX_COLORS, hold: hold - 230 + 90, rotation: -7 });
     }
     const sentence = ev.tag ? say(ev.tag) : oddsText(P);
     if (sentence && ev.p != null) {
-      add({ role: 'say', text: sentence, delay: t + 360, cap: r3((full ? 0.053 : 0.043) + 0.006 * P), wMax: 0.7,   // FXI-SPLASH (ADVI 11): the caption was too small to read
+      add({ role: 'say', text: sentence, delay: t + 360, ...info('say', rank), wMax: 0.8,   // FXI-SPLASH (ADVI 11): the caption was too small to read
         mood: 'tick', sound: { loud: 0.35, pitch: 0.4, sharp: 0.5 }, colors: sayColors(P, o.npc ? 150 : 0), hold: hold - 360 + 120, rotation: -3 });
-      add({ role: 'odds', text: oddsLabel(ev.p) + (ev.pushed ? ' - ' + LBL.push : ''), delay: t + 460, cap: full ? 0.045 : 0.037, wMax: 0.5,
+      add({ role: 'odds', text: oddsLabel(ev.p) + (ev.pushed ? ' - ' + LBL.push : ''), delay: t + 460, ...info('odds', rank), wMax: 0.6,
         mood: 'tick', sound: { loud: 0.3, pitch: 0, sharp: 0.6 }, colors: ODDS_COLORS, hold: hold - 460 + 120, rotation: -2 });
     }
   }
@@ -172,7 +210,7 @@ export function planMoment(ev, o = {}) {
 export const EXIT_MAX = 500;
 /* FXLD2: the push grunt and the routine miss (ADVD2 10, 11) */
 export const MAP_CRIT_CAP = 0.14;   // a critical on a map layer: letter height as a share of the board's 'screen' (5 grid squares)
-export const PRE_CAP = 0.074, PRE_HOLD = 620, SOFT_CAP = 0.064, SOFT_HOLD = 2100;
+export const PRE_CAP = 0.086, PRE_HOLD = 620, SOFT_CAP = 0.064, SOFT_HOLD = 2100;
 /* FXLD2 (ADVD2 2): on the map the words are part of the board: an exit that travels (letters falling, flying apart, zipping away)
    crosses the neighbours' tokens (live 1920: the falling letters dropped across Omni-Man and Atom Eve). On a map layer each exit stays
    where the word stood. */
@@ -234,7 +272,7 @@ export function failStrength(ev) {
 
 /* the stress number joins the moment: "STRESS +2" lettered in pain red beside the Resolve gauge (the gauge itself stays a gauge) */
 export function planStress(stress, o = {}) {
-  const it = { role: 'stress', text: LBL.stress(stress), delay: 0, cap: r3(0.04 + 0.003 * Math.min(4, stress)), wMax: 0.3,
+  const it = { role: 'stress', text: LBL.stress(stress), delay: 0, ...info('stress'), wMax: 0.36,
     mood: 'pain', sound: { loud: r1(Math.min(0.9, 0.35 + 0.12 * stress)), pitch: -0.3 }, colors: STRESS_COLORS, hand: INFO_HAND,
     hold: Math.round(2600 * (o.holdK || 1)), rotation: o.reduced ? 0 : -5, in: 'slam', holdKind: 'throb', out: 'fall' };
   it.rot0 = -5;   // SAMEPIC: laid out with the tilt every seat has
@@ -256,62 +294,129 @@ export function estimateBox(it, S) {
 }
 /* room each box keeps for its own motion (slam overshoot, shake, warp) on top of the hold picture: share of S per side */
 export const PAD = 0.14;
+/* CRITPEAK: the block's search, one order for every rank and layer:
+   1. the size that fits the free part of the view (f0; no part under its floor, see sizeOf);
+   2. by the token (above, below, right, left, slid along each side; the critical: round the focus), at f0 x 1, 0.9, 0.8, 0.7, 0.6 (the
+      narrower stacked block at each size too): the first place that touches nothing and stands by the token wins;
+   3. else the nearest place anywhere in the free part that touches nothing, at the biggest of those sizes (before: the block kept
+      shrinking by the token down to 0.4-0.45: the far-view speck of ADVX 4, where every place by a tiny token touches a neighbour);
+   4. else the place that covers the least, weighed: the roller and the roll's targets 50, tokens 10, panels 20, a pin 1.
+   "By the token" = within half the block's smaller side (or three gaps) of it: at the far view a few px of board is the whole room. */
+export const F_STEPS = Object.freeze([1, 0.9, 0.8, 0.7, 0.6]);
 export function composeMoment(items, frame, measure = estimateBox) {
   const safe = frame.safe, vh = frame.vh || 768, sc = frame.scale || 1;
   const safeW = Math.max(120, Math.min(safe.r - safe.l, frame.freeW ?? Infinity)), safeH = Math.max(120, Math.min(safe.b - safe.t, frame.freeH ?? Infinity));
-  let f = 1, out = null, stack = false, clean = null;
   const T = frame.token;
-  for (let pass = 0; pass < 14; pass++) {
-    out = layoutAt(items, frame, measure, f, safeW, vh, sc, stack);
-    const bw = out.rect.r - out.rect.l, bh = out.rect.b - out.rect.t;
-    let k = Math.min(1, (safeW - 4) / bw, (safeH - 4) / bh);
-    /* by a token: when no side of it has room for the block, the block shrinks (to 0.6 at most) to the side with the most room
-       rather than landing on the token (live 1920: the caption sat on Kid Omni-Man's art). A critical (wMin) covers the screen anyway. */
-    if (k >= 0.999 && T && !items.some(it => it.wMin)) {
-      const g = 6, fitK = (w, h) => Math.min((safeW - 4) / bw, (safeH - 4) / bh, w / bw, h / bh);
-      const best = Math.max(fitK(safeW, T.t - g - safe.t), fitK(safeW, safe.b - T.b - g), fitK(safe.r - T.r - g, safeH), fitK(T.l - g - safe.l, safeH));
-      if (best < 0.999 && best >= 0.6 * Math.min(1, k) && f > 0.6) k = Math.max(best, 0.6 / f);
-    }
-    if (k >= 0.999) {
-      /* FXLD2: nothing clean on any side (neighbours, pins, dice around): first the narrower block (the sixes under the word instead
-         of beside it), then shrink a little (to 0.6 of the size at most; to 0.4 while the block would still cover the hero or the
-         rolling token, which must never happen) and try again */
-      place(out, frame, f <= 0.6);
-      if (!(frame.avoid?.length || frame.token)) return out;
-      /* a clean place that is detached from the token (live, The Warehouse: every side of Kid Omni-Man touched a neighbour or a pin,
-         and the clean place lay beyond Omni-Man, out of the view of a seat looking at the roller) is kept only as a fallback: a
-         smaller block that fits right by the token wins */
-      if (!out.hit) {
-        const off = T ? detached(out.rect, T, frame) : 0;
-        if (off <= 0) return out;
-        if (!clean || off < clean.off - 1) { clean = out; clean.off = off; }   // the nearest clean place so far
-      }
-      if (!stack && out.items.some(it => it.role === 'six' || it.role === 'wreck')) { stack = true; continue; }
-      out.heavy = out.heavy ?? 0;
-      /* the floor: 0.6; 0.4 while the hero would be covered; 0.45 while the only clean places are away from the hero */
-      if (f <= (out.heavy > 0 ? 0.4 : clean ? 0.45 : 0.6)) return clean ?? out;
-      f *= 0.88;
-      continue;
-    }
-    f *= k * 0.97;
+  const canStack = items.some(it => it.role === 'six' || it.role === 'wreck');
+  let f0 = 1;
+  for (let pass = 0; pass < 8; pass++) {
+    const o = layoutAt(items, frame, measure, f0, safeW, vh, sc, false);
+    const k = Math.min(1, (safeW - 4) / (o.rect.r - o.rect.l), (safeH - 4) / (o.rect.b - o.rect.t));
+    if (k >= 0.999 || f0 < 0.25) break;
+    f0 *= k * 0.97;
   }
-  if (clean) return clean;
-  place(out, frame);
-  return out;
+  if (!(frame.avoid?.length || T)) { const o = layoutAt(items, frame, measure, f0, safeW, vh, sc, false); place(o, frame); return o; }
+  /* a word row (the word and its sixes side by side) wider than the free part even at its floors stands only stacked */
+  const wideOk = !canStack || (() => { const o = layoutAt(items, frame, measure, f0, safeW, vh, sc, false); return o.rect.r - o.rect.l <= safeW + 1; })();
+  const tries = [];
+  for (const k of F_STEPS) for (const stack of canStack ? (wideOk ? [false, true] : [true]) : [false]) tries.push([f0 * k, stack]);
+  let best = null;
+  const keep = (o) => { if (!best || o.hit < best.hit - 0.5) best = o; };
+  const byT = (o) => !T || detached(o.rect, T, frame) <= 0;
+  /* clean: nothing covered but a pin's speck (a pin weighs 1, a token 10 or 50: HIT_EPS of the frame's height squared is a few px of a
+     token's rim at most) */
+  const clean = (o) => o.hit <= HIT_EPS * vh * vh;
+  const whole = (far, list = items) => {
+    const seen = new Set();
+    for (const [f, stack] of tries) {
+      const o = layoutAt(list, frame, measure, f, safeW, vh, sc, stack);
+      const sig = stack + ':' + Math.round(o.rect.r - o.rect.l) + 'x' + Math.round(o.rect.b - o.rect.t);
+      if (seen.has(sig)) continue;   // every part at its floor already: the same block again
+      seen.add(sig);
+      place(o, frame, far);
+      if (clean(o) && (far || byT(o))) return o;
+      keep(o);
+    }
+    return null;
+  };
+  /* the block in two (CRITPEAK): the HEAD (the grunt, the word, the wreck) and the CAPTION (the sixes, the sentence, the odds, the stress
+     and its gauge), each placed clean on its own side of what it describes, the caption off the head: a critical frames the struck pair
+     with its word above and its caption below when no single place holds the whole block (live, The Warehouse at 0.8: two tokens side by
+     side leave a 256 px band above and a 156 px band below; the whole critical block is 370 px tall) */
+  const split = (far, list = items) => {
+    for (const roles of [HEAD_ROLES, HEAD_SIX]) { const o = splitBy(far, list, roles); if (o) return o; }
+    return null;
+  };
+  const splitBy = (far, list, roles) => {
+    const head = list.filter(it => roles.has(it.role)), tail = list.filter(it => !roles.has(it.role));
+    if (!head.length || !tail.length || (roles === HEAD_SIX && !head.some(it => it.role === 'six'))) return null;
+    for (const [f, stack] of tries) {
+      const a = layoutAt(head, frame, measure, f, safeW, vh, sc, stack);
+      place(a, frame, far);
+      const fb = { ...frame, avoid: [...(frame.avoid ?? []), { ...a.rect, w: TOKEN_W }] };
+      let b = null;
+      for (const st of [false, true]) {   // the caption on one row, or the sentence over its figure when the row finds no room
+        const b1 = layoutAt(tail, fb, measure, f, safeW, vh, sc, st);
+        /* without a token (a full critical) the caption is sought right under its head, then over it, before anywhere round the focus */
+        const g0 = frame.gap ?? 6, th = b1.rect.b - b1.rect.t, hx = (a.rect.l + a.rect.r) / 2;
+        const fb2 = T ? fb : { ...fb, focus: { x: hx, y: a.rect.b + g0 + th / 2 }, under: a.rect.b + g0 };
+        place(b1, fb2, far);
+        if (!T && b1.hit > 0.5) { const b2 = layoutAt(tail, fb, measure, f, safeW, vh, sc, st); place(b2, { ...fb, focus: { x: hx, y: a.rect.t - g0 - th / 2 }, under: a.rect.t - g0 - th }, far); if (b2.hit < b1.hit) Object.assign(b1, b2); }
+        if (!b || b1.hit < b.hit) b = b1;
+        if (clean(b) && (far || byT(b))) break;
+      }
+      const r = { l: Math.min(a.rect.l, b.rect.l), t: Math.min(a.rect.t, b.rect.t), r: Math.max(a.rect.r, b.rect.r), b: Math.max(a.rect.b, b.rect.b) };
+      const o = { items: [...a.items, ...b.items], rect: r, parts: [a.rect, b.rect], gauge: b.gauge ?? a.gauge, f, side: a.side, hit: a.hit + b.hit, heavy: (a.heavy ?? 0) + (b.heavy ?? 0), split: true };
+      if (clean(o) && (far || (byT(a) && byT(b)))) return o;
+      keep(o);   // the least covering of all, when nothing is clean
+    }
+    return null;
+  };
+  /* a board with no clean place for the critical at its floor: its word may come down to TIGHT_CRIT of that floor (still over any strong
+     roll's floor) before the block stands on a token */
+  const tight = items.some(it => it.rank === 'critical') ? items.map(it => (it.rank === 'critical' && it.min ? { ...it, min: it.min * TIGHT_CRIT } : it)) : null;
+  return whole(false) ?? split(false) ?? (tight && (whole(false, tight) ?? split(false, tight))) ?? whole(true) ?? split(true) ?? (tight && (whole(true, tight) ?? split(true, tight))) ?? best;
 }
-/* how far the block stands off the token beyond a few gaps (0: it touches the token's side, as a block placed by it does) */
+export const TIGHT_CRIT = 0.85;
+export const HIT_EPS = 0.0002;
+/* the parts of a block that stay together when it is split (CRITPEAK): the rest is its caption */
+export const HEAD_ROLES = new Set(['pre', 'word', 'wreck']);
+export const HEAD_SIX = new Set(['pre', 'word', 'wreck', 'six']);   // the sixes with the word, when the caption alone finds room   // the sixes open the caption (a wide head row stuck out of the view)
+/* how far the block stands off the token beyond its room (0: it stands by the token). The room: three gaps, or half the block's smaller
+   side (CRITPEAK: at the far view the gap is a few px and every clean place counted as "away", so the block shrank to a speck) */
 export function detached(rect, T, frame) {
   const dx = Math.max(0, T.l - rect.r, rect.l - T.r), dy = Math.max(0, T.t - rect.b, rect.t - T.b);
-  return Math.max(0, Math.hypot(dx, dy) - 3 * (frame.gap ?? 6));
+  const room = Math.max(3 * (frame.gap ?? 6), Math.min(0.5 * Math.min(rect.r - rect.l, rect.b - rect.t), 0.6 * (T.r - T.l)));   // CRITPEAK: a big block a little further, never past 0.6 of the token
+  return Math.max(0, Math.hypot(dx, dy) - room);
+}
+/* CRITPEAK: one lettering's size at layout shrink f: its nominal size (cap x the frame's height: the reference window on screen, the
+   board's GRID_VH squares on the map, held within 1..MAP_MAX of the nominal SCREEN size: frame units = screen px x px), never under its
+   rank's floor (scaled alike) nor the pixel floor ON SCREEN. frame: { vh, ref (the reference height, px), px (frame units per screen px),
+   maxK, scale } */
+export function sizeOf(it, frame, f = 1) {
+  const vh = frame.vh || 768, sc = frame.scale || 1, ref = frame.ref ?? vh, px = frame.px ?? 1;
+  const cap = it.cap ?? 0.04;
+  /* m: the board's size against the screen rule: on the map the board height (vh) over the reference height at this zoom, held to 1..maxK
+     (the far view letters as the screen does, a close view at most maxK bigger); ONE factor for the whole block, so the floors scale with it
+     and the ranks stay apart (a per-item clamp put an ordinary word at the map's ceiling against a strong word at its floor) */
+  const m = frame.maxK ? clamp(vh / (ref * px), 1, frame.maxK) : vh / ref;
+  const base = cap * ref * px * m * sc;
+  const lo = Math.max((FLOOR[it.role] ?? 16) * px, (it.min ?? 0) * ref * px * m) * sc;
+  return { S: Math.max(lo, base * f), lo, base };
 }
 function layoutAt(items, frame, measure, f, safeW, vh, sc, stack = false) {
   const sized = items.map(it => {
-    let S = Math.max(FLOOR[it.role] ?? 16, (it.cap ?? 0.04) * vh) * sc * f;
+    const z = sizeOf(it, frame, f);
+    let S = z.S;
     let b = measure(it, S);
+    /* too wide for its share: narrower, but not under its floor unless the floor itself is wider than the free part (CRITPEAK) */
     const wMax = (it.wMax ?? 0.6) * safeW;
-    if (b.w > wMax) { S *= wMax / b.w; b = measure(it, S); }
+    /* the floor itself gives way only to the free width, measured on the entrance's biggest drawing (the slam's smear grows the word: ADVI 11,
+       CRUSH! left the screen) */
+    const gw = Math.max(1, Number(b.grow) || 1);
+    if (b.w > wMax || b.w * gw > safeW - 8) { const k = wMax / b.w, kAll = (safeW - 8) / (b.w * gw); S = Math.min(Math.max(S * k, Math.min(z.lo, S * kAll)), S * Math.min(1, kAll)); b = measure(it, S); }
     if (it.wMin && b.w < it.wMin * safeW * f) {   // the critical word fills its share of the screen even when it is short
-      const S2 = Math.min(S * (it.wMin * safeW * f) / b.w, 0.3 * vh * sc * f);
+      const S2 = Math.min(S * (it.wMin * safeW * f) / b.w, 1.15 * z.base * f);
       if (S2 > S) { S = S2; b = measure(it, S); }
     }
     return { ...it, S: Math.round(S * 10) / 10, w: b.w, h: b.h, grow: Math.max(1, Number(b.grow) || 1) };
@@ -324,7 +429,10 @@ function layoutAt(items, frame, measure, f, safeW, vh, sc, stack = false) {
   /* rows, top to bottom; x relative to the word's centre (0), y = the top of each row */
   let y = 0;
   const put = (it, x, top) => { it.x = x; it.y = top + it.h / 2; };
-  if (pre) { put(pre, 0, y); y += pre.h + pad(pre) * 2 + g; }
+  /* CRITPEAK: the push grunt has left before the result comes (planMoment: the word waits for its exit), so it stands IN the word's place,
+     as big as the word row allows: a beat of its own where the eye already is, and the block one row shorter (ADVX 15: the pushed cluster
+     was the tallest block and shrank most) */
+  if (pre && !word) { put(pre, 0, y); y += pre.h + pad(pre) * 2 + g; }
   /* the narrow block: the word alone on its row, the caption right under it, the wreck and the sixes on a row under that */
   const stackRow = () => {
     const row = [wreck, six].filter(Boolean);
@@ -350,6 +458,7 @@ function layoutAt(items, frame, measure, f, safeW, vh, sc, stack = false) {
     for (const it of [word, wreck, six].filter(Boolean)) it.x -= shift;
     y += word.h + g + pad(word);
   } else for (const it of [wreck, six].filter(Boolean)) { put(it, 0, y); y += it.h + g; }   // a lone part still gets its row
+  if (pre && word) { pre.x = word.x; pre.y = word.y + word.h / 2 - pre.h / 2; }   // on the word's baseline, centred on it
   /* the caption: sentence and figure on one row when they fit the word row's width (or 90 % of the free width), else stacked */
   const cap = [sayI, odds].filter(Boolean);
   if (cap.length) {
@@ -367,10 +476,12 @@ function layoutAt(items, frame, measure, f, safeW, vh, sc, stack = false) {
   }
   let gauge = null;
   if (stress) {
-    const gw = (frame.gauge?.w ?? 0) * f, gh = (frame.gauge?.h ?? 0) * f;   // the gauge shrinks with the block (live: a full-size gauge beside words shrunk to 0.6)
+    /* the gauge shrinks with the block (live: a full-size gauge beside words shrunk to 0.6), never under a readable scale (CRITPEAK, ADVX 15) */
+    const gMin = frame.gaugeMin ?? GAUGE_MIN, gk = clamp(f, gMin, Math.max(gMin, frame.gaugeMax ?? 1));
+    const gw = (frame.gauge?.w ?? 0) * gk, gh = (frame.gauge?.h ?? 0) * gk;
     const w = stress.w + (gw ? g + gw : 0), h = Math.max(stress.h, gh);
     stress.x = -w / 2 + stress.w / 2; stress.y = y + h / 2;
-    if (gw) gauge = { x: -w / 2 + stress.w + g, y: y + h / 2 - gh / 2, w: gw, h: gh, k: f };   // top-left of the DOM gauge; k: its scale
+    if (gw) gauge = { x: -w / 2 + stress.w + g, y: y + h / 2 - gh / 2, w: gw, h: gh, k: gk };   // top-left of the DOM gauge; k: its scale
     y += h;
   }
   const rect = { l: Infinity, t: Infinity, r: -Infinity, b: -Infinity };
@@ -396,8 +507,11 @@ const area = (a, b) => Math.max(0, Math.min(a.r, b.r) - Math.max(a.l, b.l)) * Ma
 export function blockHits(rect, avoid = []) { let s = 0; for (const a of avoid) s += area(rect, a) * (a.w ?? 1); return s; }
 /* slides along a side, in shares of the block's own size (never far from the token: live, a block that slid half a scene away
    no longer belonged to its roll) */
-const SLIDE = [0, -0.3, 0.3, -0.6, 0.6, -0.9, 0.9, -1.2, 1.2];
+const SLIDE = [0, -0.15, 0.15, -0.3, 0.3, -0.45, 0.45, -0.6, 0.6, -0.75, 0.75, -0.9, 0.9, -1.05, 1.05, -1.2, 1.2];   // CRITPEAK: finer (a floored caption needs the gap between two neighbours)
 const SIDE_COST = { above: 0, below: 0.15, right: 0.3, left: 0.35 };
+/* CRITPEAK: what a hit weighs (blockHits: area x w): the token the block describes and the roll's targets 50, other tokens 10 (heavy),
+   a panel 20 (stage.mjs UI_WEIGHT), a map pin 1 (it may give way when nothing else can) */
+export const TOKEN_W = 50, TARGET_W = 50, OTHER_W = 10;
 function place(out, frame, far = false) {
   const safe = frame.safe, r = out.rect, bw = r.r - r.l, bh = r.b - r.t;
   const T = frame.token, avoid = frame.avoid ?? [];
@@ -410,7 +524,7 @@ function place(out, frame, far = false) {
   const consider = (s, l, t, pref) => {
     [l, t] = inSafe(l, t);
     const q = at(l, t), onT = T ? area(q, { l: T.l - (frame.gap ?? 6) + 1, t: T.t - (frame.gap ?? 6) + 1, r: T.r + (frame.gap ?? 6) - 1, b: T.b + (frame.gap ?? 6) - 1 }) : 0;
-    const hit = blockHits(q, avoid) + onT * 4, heavy = onT + blockHits(q, avoid.filter(a => (a.w ?? 1) >= 10));
+    const hit = blockHits(q, avoid) + onT * TOKEN_W, heavy = onT + blockHits(q, avoid.filter(a => (a.w ?? 1) >= 10));
     const d = Math.hypot(l + bw / 2 - ref.x, t + bh / 2 - ref.y) / unit;
     const score = (hit > 0.5 ? 1e6 + hit : 0) + d + pref;
     if (!best || score < best.score) best = { s, l, t, hit, heavy, score };
@@ -432,12 +546,17 @@ function place(out, frame, far = false) {
        free area beats covering something; the nearest such place wins */
     if (far && best.hit > 0.5) {
       const W = safe.r - safe.l, H = safe.b - safe.t;
-      for (let gy = 0; gy <= 8; gy++) for (let gx = 0; gx <= 8; gx++) consider('focus', safe.l + gx / 8 * (W - bw), safe.t + gy / 8 * (H - bh), 1);
+      for (let gy = 0; gy <= 12; gy++) for (let gx = 0; gx <= 12; gx++) consider('focus', safe.l + gx / 12 * (W - bw), safe.t + gy / 12 * (H - bh), 1);
     }
   } else {
     const W = safe.r - safe.l, H = safe.b - safe.t;
+    /* a caption sought along its head's edge (composeMoment, split): slid sideways first, then the focus grid */
+    if (frame.under != null) {
+      for (const k of SLIDE) consider('focus', frame.focus.x - bw / 2 + k * bw, frame.under, -1);
+      for (const q of avoid) { consider('focus', q.r + 2, frame.under, -1); consider('focus', q.l - 2 - bw, frame.under, -1); }   // just clear of each obstacle
+    }
     for (const dy of [0, -0.12, 0.12, -0.24, 0.24, -0.36, 0.36]) for (const dx of [0, -0.15, 0.15, -0.3, 0.3, -0.45, 0.45]) consider('focus', frame.focus.x - bw / 2 + dx * W, frame.focus.y - bh / 2 + dy * H, 0);
-    if (far && best.hit > 0.5) for (let gy = 0; gy <= 8; gy++) for (let gx = 0; gx <= 8; gx++) consider('focus', safe.l + gx / 8 * (W - bw), safe.t + gy / 8 * (H - bh), 0.5);
+    if (far && best.hit > 0.5) for (let gy = 0; gy <= 12; gy++) for (let gx = 0; gx <= 12; gx++) consider('focus', safe.l + gx / 12 * (W - bw), safe.t + gy / 12 * (H - bh), 0.5);
   }
   side = best.s;
   const dx = best.l - r.l, dy = best.t - r.t;
@@ -455,49 +574,101 @@ function place(out, frame, far = false) {
    Between the two: the same block shrunk in place (SHRINK_LOCAL steps) and shifted the least way that clears it.
    -> { out, moved: 'none' | 'shift' | 'shrink' | 'layout', k?, d?: { dx, dy } } */
 export function localFix(out, frame, local, std, recompose) {
-  if (!out?.rect || !Number.isFinite(out.rect.l) || cleanHere(out.rect, std, local)) return { out, moved: 'none' };
+  if (!out?.rect || !Number.isFinite(out.rect.l)) return { out, moved: 'none' };
+  /* CRITPEAK: a split block (head and caption apart, composeMoment) is judged by its PARTS: the union of the two stands on the very tokens
+     they frame, so a guard on the union shrank both onto the roller (the shared-hit base was the union's own cover) */
+  const parts = out.parts?.length ? out.parts : [out.rect];
+  if (parts.every(q => cleanHere(q, std, local))) return { out, moved: 'none' };
   const r = out.rect, T = frame.token, gp = frame.gap ?? 6;
-  const sharedHit = q => blockHits(q, frame.avoid ?? []) + (T ? area(q, { l: T.l - gp + 1, t: T.t - gp + 1, r: T.r + gp - 1, b: T.b + gp - 1 }) * 4 : 0);
-  const base = sharedHit(r);
-  /* shifts: into the view, then off each panel it touches (the four ways out), the nearest that is clean and touches nothing new */
-  /* the shifts that could clear rect r: into the view, then off each panel it touches (the four ways out, each brought back into view) */
-  const shiftsFor = (r) => {
-    const tries = [shiftInto(r, local.safe ?? r)];
-    for (const q of local.avoid ?? []) {
-      if (!area(r, q)) continue;
-      for (const d of [{ dx: q.l - r.r - 2, dy: 0 }, { dx: q.r - r.l + 2, dy: 0 }, { dx: 0, dy: q.t - r.b - 2 }, { dx: 0, dy: q.b - r.t + 2 }]) {
+  const hit1 = q => blockHits(q, frame.avoid ?? []) + (T ? area(q, { l: T.l - gp + 1, t: T.t - gp + 1, r: T.r + gp - 1, b: T.b + gp - 1 }) * TOKEN_W : 0);
+  const tf = (q, d, k = 1, ax = 0, ay = 0) => ({ l: ax + (q.l - ax) * k + d.dx, t: ay + (q.t - ay) * k + d.dy, r: ax + (q.r - ax) * k + d.dx, b: ay + (q.b - ay) * k + d.dy });
+  const sharedHit = (d, k, ax, ay) => parts.reduce((s, q) => s + hit1(tf(q, d, k, ax, ay)), 0);
+  const costHere = (d, k, ax, ay) => parts.reduce((s, q) => s + localCost(tf(q, d, k, ax, ay), local), 0);
+  const base = sharedHit({ dx: 0, dy: 0 }, 1, 0, 0);
+  /* the shifts that could clear the parts (scaled by k about ax, ay): into the view, then off each panel a part touches (the four ways out,
+     each brought back into view) */
+  const shiftsFor = (k, ax, ay) => {
+    const ps = parts.map(q => tf(q, { dx: 0, dy: 0 }, k, ax, ay));
+    const u = { l: Math.min(...ps.map(q => q.l)), t: Math.min(...ps.map(q => q.t)), r: Math.max(...ps.map(q => q.r)), b: Math.max(...ps.map(q => q.b)) };
+    const tries = [shiftInto(u, local.safe ?? u)];
+    for (const rq of ps) for (const q of local.avoid ?? []) {
+      if (!area(rq, q)) continue;
+      for (const d of [{ dx: q.l - rq.r - 2, dy: 0 }, { dx: q.r - rq.l + 2, dy: 0 }, { dx: 0, dy: q.t - rq.b - 2 }, { dx: 0, dy: q.b - rq.t + 2 }]) {
         tries.push(d);
-        const m = { l: r.l + d.dx, t: r.t + d.dy, r: r.r + d.dx, b: r.b + d.dy }, s1 = shiftInto(m, local.safe ?? m);
+        const m = { l: u.l + d.dx, t: u.t + d.dy, r: u.r + d.dx, b: u.b + d.dy }, s1 = shiftInto(m, local.safe ?? m);
         tries.push({ dx: d.dx + s1.dx, dy: d.dy + s1.dy });
       }
     }
     return tries.sort((a, b) => Math.hypot(a.dx, a.dy) - Math.hypot(b.dx, b.dy));
   };
-  for (const d of shiftsFor(r)) {
-    const q = { l: r.l + d.dx, t: r.t + d.dy, r: r.r + d.dx, b: r.b + d.dy };
-    if (localCost(q, local) > 1 || sharedHit(q) > base + 0.5) continue;
-    for (const it of out.items) { it.x = Math.round(it.x + d.dx); it.y = Math.round(it.y + d.dy); }
-    if (out.gauge) { out.gauge.x = Math.round(out.gauge.x + d.dx); out.gauge.y = Math.round(out.gauge.y + d.dy); }
-    out.rect = q;
+  const apply = (d, k, ax, ay) => {
+    const mv = (x, a0, dd) => Math.round(a0 + (x - a0) * k + dd);
+    for (const it of out.items) { it.x = mv(it.x, ax, d.dx); it.y = mv(it.y, ay, d.dy); if (k !== 1) { it.S = Math.round(it.S * k * 10) / 10; it.w *= k; it.h *= k; } }
+    if (out.gauge) { out.gauge.x = mv(out.gauge.x, ax, d.dx); out.gauge.y = mv(out.gauge.y, ay, d.dy); if (k !== 1) { out.gauge.w *= k; out.gauge.h *= k; out.gauge.k = (out.gauge.k ?? 1) * k; } }
+    out.rect = tf(r, d, k, ax, ay);
+    if (out.parts) out.parts = out.parts.map(q => tf(q, d, k, ax, ay));
+    if (k !== 1) out.f = (out.f ?? 1) * k;
+  };
+  for (const d of shiftsFor(1, 0, 0)) {
+    if (costHere(d, 1, 0, 0) > 1 || sharedHit(d, 1, 0, 0) > base + 0.5) continue;
+    apply(d, 1, 0, 0);
     return { out, moved: 'shift', d };
   }
-  /* then the same picture a little smaller, about its corner nearest the token (or the focus), shifted in: same side, same order,
-     only the size differs (a seat with a much smaller window: closer to the shared picture than another side would be) */
+  /* then the same picture a little smaller, about its point nearest the token (or the focus), shifted in: same side, same order, only the
+     size differs (a seat with a much smaller window: closer to the shared picture than another side would be) */
   const ref = T ? { x: T.x, y: T.y } : frame.focus ?? { x: (r.l + r.r) / 2, y: (r.t + r.b) / 2 };
-  /* the anchor: the block's point nearest the token first (it stays by it), then its centre and corners (a critical without a token) */
   const anchors = [[Math.max(r.l, Math.min(r.r, ref.x)), Math.max(r.t, Math.min(r.b, ref.y))], [(r.l + r.r) / 2, (r.t + r.b) / 2], [r.l, r.t], [r.r, r.t], [r.l, r.b], [r.r, r.b]];
-  for (const k of SHRINK_LOCAL) for (const [ax, ay] of (T ? anchors.slice(0, 1) : anchors)) {
-    const sc = { l: ax + (r.l - ax) * k, t: ay + (r.t - ay) * k, r: ax + (r.r - ax) * k, b: ay + (r.b - ay) * k };
-    let d = null, q = null;
-    for (const s of shiftsFor(sc)) {
-      const m = { l: sc.l + s.dx, t: sc.t + s.dy, r: sc.r + s.dx, b: sc.b + s.dy };
-      if (localCost(m, local) <= 1 && sharedHit(m) <= base * k * k + 0.5) { d = s; q = m; break; }
+  /* a split block (head and caption framing what they describe): each part shrinks about its point nearest the other part, so the gap
+     between them (the roller, the target) stays clear; the two parts then move as one */
+  if (parts.length === 2) {
+    const ctr = (q) => ({ x: (q.l + q.r) / 2, y: (q.t + q.b) / 2 });
+    const anc = parts.map((q, i) => { const o = ctr(parts[1 - i]); return [Math.max(q.l, Math.min(q.r, o.x)), Math.max(q.t, Math.min(q.b, o.y))]; });
+    const pOf = (x, y) => { let bi = 0, bd = Infinity; parts.forEach((q, i) => { const dd = Math.hypot(Math.max(0, q.l - x, x - q.r), Math.max(0, q.t - y, y - q.b)); if (dd < bd) { bd = dd; bi = i; } }); return bi; };
+    const tfp = (i, k, d) => tf(parts[i], d, k, anc[i][0], anc[i][1]);
+    const hitP = (k, d) => tfp(0, k, d) && hit1(tfp(0, k, d)) + hit1(tfp(1, k, d));
+    const costP = (k, d) => localCost(tfp(0, k, d), local) + localCost(tfp(1, k, d), local);
+    for (const k of SHRINK_LOCAL) {
+      const ps = [tfp(0, k, { dx: 0, dy: 0 }), tfp(1, k, { dx: 0, dy: 0 })];
+      const u = { l: Math.min(ps[0].l, ps[1].l), t: Math.min(ps[0].t, ps[1].t), r: Math.max(ps[0].r, ps[1].r), b: Math.max(ps[0].b, ps[1].b) };
+      const tries = [{ dx: 0, dy: 0 }, shiftInto(u, local.safe ?? u)];
+      for (const rq of ps) for (const q of local.avoid ?? []) {   // off each of this seat's panels a part touches, brought back into view
+        if (!area(rq, q)) continue;
+        for (const d0 of [{ dx: q.l - rq.r - 2, dy: 0 }, { dx: q.r - rq.l + 2, dy: 0 }, { dx: 0, dy: q.t - rq.b - 2 }, { dx: 0, dy: q.b - rq.t + 2 }]) {
+          const m = { l: u.l + d0.dx, t: u.t + d0.dy, r: u.r + d0.dx, b: u.b + d0.dy }, s1 = shiftInto(m, local.safe ?? m);
+          tries.push(d0, { dx: d0.dx + s1.dx, dy: d0.dy + s1.dy });
+        }
+      }
+      tries.sort((p1, p2) => Math.hypot(p1.dx, p1.dy) - Math.hypot(p2.dx, p2.dy));
+      let d = tries.find(s => costP(k, s) <= 1 && hitP(k, s) <= base + 0.5);   // no worse than the shared picture
+      let dd = d ? [d, d] : null;
+      /* or the one part a panel of this seat covers moves off it alone (the other stays): each keeps its side of what it describes */
+      if (!dd) for (const i of [0, 1]) {
+        const own = [shiftInto(ps[i], local.safe ?? ps[i])];
+        for (const q of local.avoid ?? []) if (area(ps[i], q)) own.push({ dx: q.l - ps[i].r - 2, dy: 0 }, { dx: q.r - ps[i].l + 2, dy: 0 }, { dx: 0, dy: q.t - ps[i].b - 2 }, { dx: 0, dy: q.b - ps[i].t + 2 });
+        own.sort((p1, p2) => Math.hypot(p1.dx, p1.dy) - Math.hypot(p2.dx, p2.dy));
+        const z = { dx: 0, dy: 0 };
+        for (const di of own) {
+          const pair = i === 0 ? [di, z] : [z, di], qa = tfp(0, k, pair[0]), qb = tfp(1, k, pair[1]);
+          if (area(qa, qb) || localCost(qa, local) + localCost(qb, local) > 1 || hit1(qa) + hit1(qb) > base + 0.5) continue;
+          dd = pair; break;
+        }
+        if (dd) break;
+      }
+      if (!dd) continue;
+      d = dd[0];
+      const mv = (x, a0, d1) => Math.round(a0 + (x - a0) * k + d1);
+      for (const it of out.items) { const i = pOf(it.x, it.y); it.x = mv(it.x, anc[i][0], dd[i].dx); it.y = mv(it.y, anc[i][1], dd[i].dy); it.S = Math.round(it.S * k * 10) / 10; it.w *= k; it.h *= k; }
+      if (out.gauge) { const i = pOf(out.gauge.x, out.gauge.y); out.gauge.x = mv(out.gauge.x, anc[i][0], dd[i].dx); out.gauge.y = mv(out.gauge.y, anc[i][1], dd[i].dy); out.gauge.w *= k; out.gauge.h *= k; out.gauge.k = (out.gauge.k ?? 1) * k; }
+      out.parts = [tfp(0, k, dd[0]), tfp(1, k, dd[1])];
+      out.rect = { l: Math.min(out.parts[0].l, out.parts[1].l), t: Math.min(out.parts[0].t, out.parts[1].t), r: Math.max(out.parts[0].r, out.parts[1].r), b: Math.max(out.parts[0].b, out.parts[1].b) };
+      out.f = (out.f ?? 1) * k;
+      return { out, moved: 'shrink', k, d };
     }
+  }
+  for (const k of SHRINK_LOCAL) for (const [ax, ay] of (T && !out.parts ? anchors.slice(0, 1) : anchors)) {
+    const d = shiftsFor(k, ax, ay).find(s => costHere(s, k, ax, ay) <= 1 && sharedHit(s, k, ax, ay) <= base + 0.5);
     if (!d) continue;
-    const mv = (x, a0, dd) => Math.round(a0 + (x - a0) * k + dd);
-    for (const it of out.items) { it.x = mv(it.x, ax, d.dx); it.y = mv(it.y, ay, d.dy); it.S = Math.round(it.S * k * 10) / 10; it.w *= k; it.h *= k; }
-    if (out.gauge) { out.gauge.x = mv(out.gauge.x, ax, d.dx); out.gauge.y = mv(out.gauge.y, ay, d.dy); out.gauge.w *= k; out.gauge.h *= k; out.gauge.k = (out.gauge.k ?? 1) * k; }
-    out.rect = q; out.f = (out.f ?? 1) * k;
+    apply(d, k, ax, ay);
     return { out, moved: 'shrink', k, d };
   }
   const o2 = recompose ? recompose() : null;

@@ -114,7 +114,7 @@ async function seat(o) {
     });
     const log = Stage.sameLog().at(-1);
     Stage.clearAll(); Stage.setLayer("screen"); S.setReduced(false);
-    return { drawn, moved: log?.moved ?? "?", W, H };
+    return { drawn, moved: log?.moved ?? "?", W, H, split: !!ctl?.layout?.split };
   } finally { globalThis.setTimeout = st; globalThis.clearTimeout = ct; delete globalThis.canvas; delete globalThis.game; }
 }
 const sig = (s) => s.drawn.map((d) => `${d.role}:${d.text}@${d.x},${d.y}/${d.S}`).join(" | ");
@@ -129,7 +129,10 @@ const smallOk = (c, b, rel = { x: 0, y: 0 }, edge = false) => {
   if (Math.min(...ks) < 0.63 || Math.max(...ks) - Math.min(...ks) > 0.03 || Math.max(...ks) > 1.001) return false;
   const mid = (s) => ({ x: s.drawn.reduce((a, d) => a + d.x, 0) / s.drawn.length - rel.x, y: s.drawn.reduce((a, d) => a + d.y, 0) / s.drawn.length - rel.y });
   const mb = mid(b), mc = mid(c);
-  for (const ax of ["x", "y"]) if (!edge && Math.abs(mb[ax]) > 40 && Math.sign(mb[ax]) !== Math.sign(mc[ax])) return false;
+  for (const ax of ["x", "y"]) if (!edge && Math.abs(mb[ax]) > 40 && Math.sign(mb[ax]) !== Math.sign(mc[ax])) {
+    /* CRITPEAK: a split block (its head above the hero, its caption below) has its middle on the hero: then each part keeps its side */
+    if (!c.split || c.drawn.some((d, i) => Math.abs(b.drawn[i][ax] - rel[ax]) > 40 && Math.sign(b.drawn[i][ax] - rel[ax]) !== Math.sign(d[ax] - rel[ax]))) return false;
+  }
   return inWin(c, 1);
 };
 const kOf = (c, b) => c.drawn.map((d, i) => Math.round(d.S / b.drawn[i].S * 100) / 100).join(",");
@@ -212,7 +215,9 @@ for (const [name, e] of Object.entries(ROLLS()).filter(([k]) => ["good", "pushed
   ok(gm.moved !== "none" && p1.moved === "none", `S4 hud ${name}: only the seat whose desk covers the spot moves the block (GM ${gm.moved}, player ${p1.moved})`);
   ok(gm.drawn.every((d) => !hitR(d, D)), `S4 hud ${name}: the GM's block is not hidden under his desk`);
   /* SAMEPIC: a shift that clears the desk lands on the hero here, so the GM's seat shrinks in place instead: words, order, side kept */
-  ok(smallOk(gm, p1), `S4 hud ${name}: the GM's seat shifts or shrinks it in place, keeps words, order and side (${gm.moved}, k ${kOf(gm, p1)})`);
+  /* CRITPEAK: a split block (head over the hero, caption under him) whose head the desk covers, with a token beside it and the hero under it,
+     has no shift or shrink in place: that seat lays it out again, same words and sizes (provisional, CRITPEAK-4) */
+  ok(smallOk(gm, p1, undefined, !!p1.split), `S4 hud ${name}: the GM's seat shifts or shrinks it in place, keeps words, order and side (${gm.moved}, k ${kOf(gm, p1)}${p1.split ? ", split block" : ""})`);
 }
 
 /* ================================================================ T1-T3 token reactions: each seat in its own process */
