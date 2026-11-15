@@ -113,22 +113,51 @@ const src = (p) => fs.readFileSync(new URL(p, import.meta.url), "utf8");
   const { setup } = await import("../letters/testenv.mjs");
   const E = await setup(); const L = E.engine; L.lookStyle("invincible");
   const tok = E.addToken("t1", 1950, 1450);
-  let n = 0, worst = 0, reachOk = true;
+  let n = 0, worst = 0, reachOk = true, lives = 0;
   for (const [stat, from, to] of [["health", 8, 7], ["health", 8, 4], ["health", 8, 0], ["health", 0, 3], ["resolve", 8, 6], ["resolve", 8, 0], ["resolve", 4, 7]]) for (const lang of ["en", "pl"]) for (let s = 0; s < 3; s++) {
     const c = P.classify({ stat, from, to, max: 8 }), lk = P.look({ show: true, kind: c.kind, num: c.n }, c, lang, `m${s}`);
     lk.word = P.wordFor(lk, L.vocab, { lang, seed: `m${s}` }); if (!lk.word) continue;
     const o = { space: "world", token: tok.document, anchor: "center", reduced: false, fit: "screen", mood: lk.mood, sound: lk.sound, magnitude: lk.magnitude, seed: `m${s}`, hold: lk.hold, rotation: lk.rotation, colors: lk.colors, ...lk.motion, at: { x: 2000, y: 1400 } };
-    const me = L.measure(lk.word, o), h0 = me.plan._holdBox, px = me.px, pad = P.standPad(h0, { halo: me.plan.hand?.halo, inkW: me.plan.hand?.inkW, px });
+    const me = L.measure(lk.word, o), h0 = me.plan._holdBox, px = me.px, lf = !!me.plan.motion?.life, pad = P.standPad(h0, { halo: me.plan.hand?.halo, inkW: me.plan.hand?.inkW, px, life: lf });
+    lives += lf ? 1 : 0;
     ok(me.plan.hand?.halo === "ink", `M: ${lk.word}: a reaction word on the map is drawn with the ink rim (hand.halo ${me.plan.hand?.halo})`);
     const g = P.group({ cap: px, aspect: h0.w, tall: h0.h, nums: [], numCap: px * 0.8, side: 1, up: 0.4, down: 0.2, pad });
-    const foot = { x: (h0.w / 2 * P.STAND.lifeS + P.STAND.lifeXY) * px + (Math.max(0.07 * px, 2.5) + (me.plan.hand?.inkW ?? 0) * 0.6 * px), y: (h0.h / 2 * P.STAND.lifeS + P.STAND.lifeXY) * px + (Math.max(0.07 * px, 2.5) + (me.plan.hand?.inkW ?? 0) * 0.6 * px) };
+    const rimPx = Math.min(16, Math.max(0.07 * px, 2.5)) + (me.plan.hand?.inkW ?? 0) * 0.6 * px, sL = lf ? P.STAND.lifeS : 1, xL = lf ? P.STAND.lifeXY : 0;
+    const foot = { x: (h0.w / 2 * sL + xL) * px + rimPx, y: (h0.h / 2 * sL + xL) * px + rimPx };
     worst = Math.max(worst, foot.x - g.w / 2);
     if (!(me.reach.l >= foot.x - 1.5 && me.reach.u >= foot.y - 1.5)) { reachOk = false; if (process.env.CALLERS_VERBOSE) console.log("reach", lk.word, lk.motion.in, lk.motion.holdKind, JSON.stringify(me.reach), JSON.stringify(foot), px, !!me.plan.motion?.life); }
     n++;
   }
+  ok(lives > 0, `M: some reaction words carry a life (${lives} of ${n}): their footprint includes it`);
   ok(n >= 30 && worst <= 0.5, `M: ${n} real reaction words: the standing footprint (life + rim) stays inside the group box (worst ${worst.toFixed(2)} px over)`);
   ok(reachOk, "M: the engine's measured reach holds the standing footprint (within 1.5 px: the reach is the bigger box, kept from the view's edges)");
   E.restoreWarn();
+}
+/* ---------- M (splash): the block's outline holds every part's standing footprint ---------- */
+{
+  const LP = await import("../splash/letter-plan.mjs"), MO = await import("../letters/motion.mjs"), DE = await import("../letters/design.mjs");
+  eq([LP.STAND.lifeXY, LP.STAND.lifeS, LP.STAND.rimW, LP.STAND.rimMin, LP.STAND.rimMax], [MO.LIFE_REACH.xy, MO.LIFE_REACH.s, DE.INV_RIM.ink.w, DE.INV_RIM.ink.min, DE.INV_RIM.ink.max], "M: the splash's STAND mirrors the engine's life reach and ink rim");
+  eq(LP.roomOf({ w: 3, h: 1 }, 60), {}, "M: no measured reach: no room (the old pad and grow decide)");
+  const m = { w: 3, h: 1.2, reach: { l: 1.9, r: 1.9, u: 0.9, d: 1.1 }, halo: "ink", inkW: 0.04, life: true };
+  const r = LP.roomOf(m, 100).room, st = 0.0225 * 3 * 100 + 5 + 7 + 2.4;
+  ok(Math.abs(r.stand - st) < 1e-6 && r.l === Math.max(st, 190 - 150) && Math.abs(r.d - Math.max(st, 110 - 60)) < 1e-6, `M: roomOf = the footprint (life + rim ${r.stand.toFixed(1)} px) and the measured reach past the hold box`);
+  ok(LP.roomOf({ ...m, halo: null, life: false }, 100).room.stand === 0, "M: a screen word without a life: no footprint past the hold box");
+  ok(Math.abs(LP.roomOf({ ...m, life: false }, 400).room.stand - (16 + 0.04 * 0.6 * 400)) < 1e-6, "M: the rim stops at the engine's 16 px");
+  /* the outline stays the letters' (the seat rule and the view's edge judge it as before); the standing footprint past the pad comes back as
+     out.foot and keeps the block off the token it stands by */
+  const frame = { vh: 900, ref: 900, safe: { l: 0, t: 0, r: 1600, b: 900 }, focus: { x: 800, y: 450 } };
+  const items = [{ role: "word", text: "POW!", cap: 0.1 }];
+  const fp = { w: 2, h: 1.2, reach: { l: 1.2, r: 1.2, u: 0.8, d: 0.8 }, halo: "ink", inkW: 0.04, life: true };
+  const plain = (it, S) => ({ w: 2 * S, h: 1.2 * S, grow: 1 }), withRoom = (it, S) => ({ ...plain(it, S), ...LP.roomOf(fp, S) });
+  const a = LP.composeMoment(items, frame, plain), b = LP.composeMoment(items, frame, withRoom);
+  const S = a.items[0].S, pad = LP.PAD * S, foot = LP.roomOf(fp, S).room.stand;
+  ok(foot > pad && Math.abs((b.rect.r - b.rect.l) - (a.rect.r - a.rect.l)) < 0.5 && Math.abs((b.rect.b - b.rect.t) - (a.rect.b - a.rect.t)) < 0.5, "M: the block's outline is unchanged by the footprint (no seat changes its layer for a rim)");
+  ok(!a.foot && b.foot && Math.abs(b.foot.l - (foot - pad)) < 0.5 && Math.abs(b.foot.b - (foot - pad)) < 0.5, `M: the footprint past the pad comes back as out.foot (${(foot - pad).toFixed(1)} px a side)`);
+  const T = { x: 800, y: 600, l: 760, t: 560, r: 840, b: 640 }, ft = { ...frame, token: T, gap: 6 };
+  const a2 = LP.composeMoment(items, ft, plain), b2 = LP.composeMoment(items, ft, withRoom);
+  ok(a2.side === "above" && b2.side === "above" && Math.abs((T.t - 6 - a2.rect.b) - 0) < 1.5 && Math.abs((T.t - 6 - b2.rect.b) - b2.foot.b) < 1.5, `M: above its token the block stands its footprint further off (${(a2.rect.b - b2.rect.b).toFixed(1)} px)`);
+  const s = src("../splash/stage.mjs");
+  ok(/LE\.measure \? LE\.measure\(LP\.letterable\(it\.text\), base\.map \? \{ \.\.\.om, space: 'world', keepInView: false \} : om\)/.test(s) && /const p = r\?\.plan \?\? me\?\.plan/.test(s) && /m\.life = !!q\.motion\?\.life/.test(s) && /\.\.\.LP\.roomOf\(it\._m, S\)/.test(s), "M: the splash keeps planFor's size and hold box, takes only reach, rim and life from L.measure (as a world word on the map) and hands the room to the layout");
 }
 
 done("check-callers");

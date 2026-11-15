@@ -449,6 +449,18 @@ export function sizeOf(it, frame, f = 1) {
   const lo = Math.max((FLOOR[it.role] ?? 16) * px, (it.min ?? 0) * ref * px * m) * sc;
   return { S: Math.max(lo, base * f), lo, base };
 }
+/* CALLERS (engine 1.9.10-1.9.12): what a lettering needs past its hold box on each side, in px at S px per cap: its entrance reach as the
+   engine measures it (L.measure: poses, travel, the life of a held word, a pad; kept for the record), and its STANDING footprint (the life inside LIFE_REACH:
+   0.05 caps and 4.5 % of its size; on the map the ink rim under the whole lettering, 0.07 cap + the keyline, at least 2.5 px). STAND
+   mirrors the engine's tables (check-callers pins them). m = { w, h, reach: { l, r, u, d } (caps), halo, inkW } -> { room } or {} */
+export const STAND = { lifeXY: 0.05, lifeS: 1.045, rimW: 0.07, rimMin: 2.5, rimMax: 16, keyK: 0.6 };
+export function roomOf(m, S) {
+  if (!m?.reach || !(S > 0)) return {};
+  const rim = m.halo ? Math.min(STAND.rimMax, Math.max(STAND.rimW * S, STAND.rimMin)) + (Number(m.inkW) || 0) * STAND.keyK * S : 0;
+  const life = m.life === false ? 0 : (STAND.lifeS - 1) / 2 * Math.max(m.w, m.h) * S + STAND.lifeXY * S;   // only a word whose plan has a life (plan.motion.life)
+  const st = life + rim, hw = m.w * S / 2, hh = m.h * S / 2;
+  return { room: { stand: st, l: Math.max(st, m.reach.l * S - hw), r: Math.max(st, m.reach.r * S - hw), u: Math.max(st, m.reach.u * S - hh), d: Math.max(st, m.reach.d * S - hh) } };
+}
 function layoutAt(items, frame, measure, f, safeW, vh, sc, stack = false) {
   const sized = items.map(it => {
     const z = sizeOf(it, frame, f);
@@ -458,13 +470,13 @@ function layoutAt(items, frame, measure, f, safeW, vh, sc, stack = false) {
     const wMax = (it.wMax ?? 0.6) * safeW;
     /* the floor itself gives way only to the free width, measured on the entrance's biggest drawing (the slam's smear grows the word: ADVI 11,
        CRUSH! left the screen) */
-    const gw = Math.max(1, Number(b.grow) || 1);
+    const gw = Math.max(1, Number(b.grow) || 1);   // CALLERS: the measured reach, when there is one
     if (b.w > wMax || b.w * gw > safeW - 8) { const k = wMax / b.w, kAll = (safeW - 8) / (b.w * gw); S = Math.min(Math.max(S * k, Math.min(z.lo, S * kAll)), S * Math.min(1, kAll)); b = measure(it, S); }
     if (it.wMin && b.w < it.wMin * safeW * f) {   // the critical word fills its share of the screen even when it is short
       const S2 = Math.min(S * (it.wMin * safeW * f) / b.w, 1.15 * z.base * f);
       if (S2 > S) { S = S2; b = measure(it, S); }
     }
-    return { ...it, S: Math.round(S * 10) / 10, w: b.w, h: b.h, grow: Math.max(1, Number(b.grow) || 1) };
+    return { ...it, S: Math.round(S * 10) / 10, w: b.w, h: b.h, grow: Math.max(1, Number(b.grow) || 1), room: b.room ?? null };
   });
   const get = r => sized.find(x => x.role === r);
   const word = get('word'), pre = get('pre'), six = get('six'), wreck = get('wreck'), sayI = get('say'), odds = get('odds'), stress = get('stress');
@@ -529,7 +541,7 @@ function layoutAt(items, frame, measure, f, safeW, vh, sc, stack = false) {
     if (gw) gauge = { x: -w / 2 + stress.w + g, y: y + h / 2 - gh / 2, w: gw, h: gh, k: gk };   // top-left of the DOM gauge; k: its scale
     y += h;
   }
-  const rect = { l: Infinity, t: Infinity, r: -Infinity, b: -Infinity };
+  const rect = { l: Infinity, t: Infinity, r: -Infinity, b: -Infinity }, fr = { l: Infinity, t: Infinity, r: -Infinity, b: -Infinity };
   for (const it of sized) {
     if (it.x == null) continue;
     /* FXI-SPLASH (ADVI 11): the block's outline holds each part's biggest entrance drawing too (the slam's smear grows the word 1.6-1.8x
@@ -538,9 +550,18 @@ function layoutAt(items, frame, measure, f, safeW, vh, sc, stack = false) {
     const p = pad(it), px = Math.max(p, (it.grow - 1) / 2 * it.w + p * 0.5), py = Math.max(p, (it.grow - 1) / 2 * it.h + p * 0.5);
     rect.l = Math.min(rect.l, it.x - it.w / 2 - px); rect.r = Math.max(rect.r, it.x + it.w / 2 + px);
     rect.t = Math.min(rect.t, it.y - it.h / 2 - py); rect.b = Math.max(rect.b, it.y + it.h / 2 + py);
+    /* CALLERS: with the engine's measure, each part's STANDING footprint (the life of a held word + the map's ink rim: drawn for its whole
+       hold) is kept off the tokens, pins and panels (place: foot). The outline itself (the view's edge, the seat rule, the panels a seat
+       steps back) stays the letters' as before: a rim a few px past a seat's view edge must not send that seat to its screen layer. The
+       entrance's full reach (a whoosh sweeps in from the side, 1.7 caps past the biggest pose) is NOT added: an entrance passes over things
+       for a few frames (provisional, CALLERS-2) */
+    const st = it.room?.stand ?? 0;
+    fr.l = Math.min(fr.l, it.x - it.w / 2 - Math.max(px, st)); fr.r = Math.max(fr.r, it.x + it.w / 2 + Math.max(px, st));
+    fr.t = Math.min(fr.t, it.y - it.h / 2 - Math.max(py, st)); fr.b = Math.max(fr.b, it.y + it.h / 2 + Math.max(py, st));
   }
   if (gauge) { rect.l = Math.min(rect.l, gauge.x); rect.r = Math.max(rect.r, gauge.x + gauge.w); rect.b = Math.max(rect.b, gauge.y + gauge.h); }
-  return { items: sized.filter(it => it.x != null), rect, gauge, f };
+  const foot = Number.isFinite(fr.l) ? { l: Math.max(0, rect.l - fr.l), t: Math.max(0, rect.t - fr.t), r: Math.max(0, fr.r - rect.r), b: Math.max(0, fr.b - rect.b) } : null;
+  return { items: sized.filter(it => it.x != null), rect, gauge, f, ...(foot && (foot.l || foot.t || foot.r || foot.b) ? { foot } : {}) };
 }
 /* where the block goes: by the token (above its head, else under its feet, else to its free side) or on the focus point; inside the safe
    rectangle (the window without the chat, the bars and the hotbar; on a map layer: the scene). FXLD2 (ADVD2 3, 6, 7): the block also
@@ -566,9 +587,10 @@ function place(out, frame, far = false) {
   /* the score: anything touched first (the token four times as bad), then the distance from the token (or the focus) in block sizes
      plus a small preference of the sides (above, below, right, left) */
   const ref = T ? { x: T.x, y: T.y } : frame.focus, unit = Math.max(1, Math.hypot(bw, bh));
+  const ft = out.foot ?? null;   // CALLERS: the standing footprint past the outline (rim + life), kept off what the block must not cover
   const consider = (s, l, t, pref) => {
     [l, t] = inSafe(l, t);
-    const q = at(l, t), onT = T ? area(q, { l: T.l - (frame.gap ?? 6) + 1, t: T.t - (frame.gap ?? 6) + 1, r: T.r + (frame.gap ?? 6) - 1, b: T.b + (frame.gap ?? 6) - 1 }) : 0;
+    const q0 = at(l, t), q = ft ? { l: q0.l - ft.l, t: q0.t - ft.t, r: q0.r + ft.r, b: q0.b + ft.b } : q0, onT = T ? area(q, { l: T.l - (frame.gap ?? 6) + 1, t: T.t - (frame.gap ?? 6) + 1, r: T.r + (frame.gap ?? 6) - 1, b: T.b + (frame.gap ?? 6) - 1 }) : 0;
     const hit = blockHits(q, avoid) + onT * TOKEN_W, heavy = onT + blockHits(q, avoid.filter(a => (a.w ?? 1) >= 10));
     const d = Math.hypot(l + bw / 2 - ref.x, t + bh / 2 - ref.y) / unit;
     const score = (hit > 0.5 ? 1e6 + hit : 0) + d + pref;
@@ -576,11 +598,12 @@ function place(out, frame, far = false) {
   };
   if (T) {
     const gap = frame.gap ?? 6;
+    const fo = ft ?? { l: 0, t: 0, r: 0, b: 0 };   // CALLERS: the footprint stands off the token too
     const cand = [
-      ['above', T.x - bw / 2, T.t - gap - bh, 'x'],
-      ['below', T.x - bw / 2, T.b + gap, 'x'],
-      ['right', T.r + gap, T.y - bh / 2, 'y'],
-      ['left', T.l - gap - bw, T.y - bh / 2, 'y']
+      ['above', T.x - bw / 2, T.t - gap - bh - fo.b, 'x'],
+      ['below', T.x - bw / 2, T.b + gap + fo.t, 'x'],
+      ['right', T.r + gap + fo.l, T.y - bh / 2, 'y'],
+      ['left', T.l - gap - bw - fo.r, T.y - bh / 2, 'y']
     ];
     for (const [s, l, t, ax] of cand) {
       const span = ax === 'x' ? bw : bh;

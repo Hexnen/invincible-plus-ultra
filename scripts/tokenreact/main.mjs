@@ -771,7 +771,7 @@ function planOf(L, it) {
       const pl = m?.plan ?? L.planFor(lk.word, ro)?.plan;
       const hb = pl?._holdBox;
       if (hb && hb.w > 0 && hb.h > 0) {
-        plan.gArgs = { ...gArgs, aspect: hb.w, tall: hb.h, pad: P.standPad(hb, { halo: pl.hand?.halo, inkW: pl.hand?.inkW, px: cap }) };
+        plan.gArgs = { ...gArgs, aspect: hb.w, tall: hb.h, pad: P.standPad(hb, { halo: pl.hand?.halo, inkW: pl.hand?.inkW, px: cap, life: !!pl.motion?.life }) };
         if (m?.reach && m.unit > 0) plan.reach = { l: m.reach.l / m.unit, r: m.reach.r / m.unit, u: m.reach.u / m.unit, d: m.reach.d / m.unit };
         g = P.group(plan.gArgs); plan.g = g; plan.box = { w: g.w, h: g.h };
         const f = P.fitDrawn({ cap, hbW: hb.w, hbH: hb.h, tokenPx: tokPx, vh: vh(), vw: vw() });
@@ -795,7 +795,7 @@ function measure(plan, tok = null) {
   /* the drawn box over the limits: the word (live, its handle's scale is read every frame) and the numbers not yet started shrink with it */
   const f = P.fitDrawn({ cap: plan.cap, hbW: hb.w, hbH: hb.h, tokenPx: plan.tokPx ?? 100, vh: vh(), vw: vw() });
   if (f < 0.98) shrink(plan, f);      // the numbers already started (they wait for the blow's instant) shrink too
-  if (!(plan.gArgs.pad > 0)) { const hd = plan.wordH?.plan?.hand; plan.gArgs = { ...plan.gArgs, pad: P.standPad(hb, { halo: hd?.halo, inkW: hd?.inkW, px: plan.cap }) }; }      // CALLERS: the footprint
+  if (!(plan.gArgs.pad > 0)) { const hd = plan.wordH?.plan?.hand; plan.gArgs = { ...plan.gArgs, pad: P.standPad(hb, { halo: hd?.halo, inkW: hd?.inkW, px: plan.cap, life: !!plan.wordH?.plan?.motion?.life }) }; }      // CALLERS: the footprint
   const regroup = () => { const g = P.group({ ...plan.gArgs, aspect: hb.w, tall: hb.h }); plan.g = g; plan.box = { w: g.w, h: g.h }; };
   regroup();
   /* FXLT2 (ADVT2 6, 10): the side was chosen on the letter-count estimate; with the drawn box known (the first frame) it is chosen again,

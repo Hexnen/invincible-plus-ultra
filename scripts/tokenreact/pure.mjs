@@ -543,11 +543,13 @@ export function group({ cap, aspect, tall = null, nums = [], numCap, side = 1, u
    at least 2.5 px, outside the keyline). STAND mirrors the engine's tables (motion.mjs LIFE_REACH, design.mjs INV_RIM; check-callers M pins
    them to the vendored engine: the running engine does not hand them out yet, request CALLERS-E1). The entrance reaches further still
    (L.measure reach): that room is kept from the view's edges (edgeBox), not from the neighbours (a slam passes them for a few frames). */
-export const STAND = { lifeXY: 0.05, lifeS: 1.045, rimW: 0.07, rimMin: 2.5, keyK: 0.6 };
-/** the footprint margin past the hold box, each side, in caps: hb = { w, h } (caps), halo = plan.hand.halo, inkW = plan.hand.inkW, px = cap px */
-export function standPad(hb, { halo = null, inkW = 0, px = 40 } = {}) {
-  const life = (STAND.lifeS - 1) / 2 * Math.max(Number(hb?.w) || 0, Number(hb?.h) || 0) + STAND.lifeXY;
-  const rim = halo ? Math.max(STAND.rimW, STAND.rimMin / Math.max(1, Number(px) || 40)) + (Number(inkW) || 0) * STAND.keyK : 0;
+export const STAND = { lifeXY: 0.05, lifeS: 1.045, rimW: 0.07, rimMin: 2.5, rimMax: 16, keyK: 0.6 };
+/** the footprint margin past the hold box, each side, in caps: hb = { w, h } (caps), halo = plan.hand.halo, inkW = plan.hand.inkW, px = cap px,
+    life = the plan has a life (plan.motion.life; a word without one, e.g. a throb, stands still in its hold pose) */
+export function standPad(hb, { halo = null, inkW = 0, px = 40, life: hasLife = true } = {}) {
+  const life = hasLife ? (STAND.lifeS - 1) / 2 * Math.max(Number(hb?.w) || 0, Number(hb?.h) || 0) + STAND.lifeXY : 0;
+  const cpx = Math.max(1, Number(px) || 40);
+  const rim = halo ? Math.min(STAND.rimMax, Math.max(STAND.rimW * cpx, STAND.rimMin)) / cpx + (Number(inkW) || 0) * STAND.keyK : 0;
   return Math.round((life + rim) * 1000) / 1000;
 }
 /** the box kept inside the view (symmetric round the group's centre, px): the group box, and the word's entrance reach (caps, from L.measure,

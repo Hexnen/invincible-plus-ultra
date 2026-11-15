@@ -242,16 +242,20 @@ function measureItems(items, base) {
       /* SAMEPIC: measured as every seat measures it: a seat's reduced motion (no tilt, no entrance smear) plays the same block still, it
          does not lay it out smaller or elsewhere */
       const om = { ...o, reduced: false, rotation: Number.isFinite(it.rot0) ? it.rot0 : o.rotation };
-      const r = LE.planFor ? LE.planFor(LP.letterable(it.text), om) : null;
-      const p = r?.plan ?? (LE._plan ? (() => { const q = LE._plan(LP.letterable(it.text), om); LE._settle?.(q); return q; })() : null);
+      /* CALLERS (engine 1.9.11 L.measure): the same plan, plus the word's real entrance reach (a whoosh flies in from the side, a fire word
+         rises from below: the biggest pose alone missed up to 1.7 caps of it) and, on the map, the ink rim its world word gets (1.9.12) */
+      const me = LE.measure ? LE.measure(LP.letterable(it.text), base.map ? { ...om, space: 'world', keepInView: false } : om) : null;
+      const r = LE.planFor ? LE.planFor(LP.letterable(it.text), om) : null;   // size and hold box stay the planFor ones (no picture change)
+      const p = r?.plan ?? me?.plan ?? (LE._plan ? (() => { const q = LE._plan(LP.letterable(it.text), om); LE._settle?.(q); return q; })() : null);
       if (p?._holdBox?.w > 0 && p.sizeK > 0) m = { w: p._holdBox.w, h: p._holdBox.h, sizeK: p.sizeK, hand: p.hand?.id, grow: IP.growOf(p), contact: IP.contactMs(p) };   // FXI-SPLASH: the entrance's biggest drawing and the instant it hits
+      if (m && me?.reach && me.unit > 0) { m.reach = { l: me.reach.l / me.unit, r: me.reach.r / me.unit, u: me.reach.u / me.unit, d: me.reach.d / me.unit }; const q = me.plan ?? p; m.halo = q.hand?.halo ?? null; m.inkW = q.hand?.inkW ?? 0; m.life = !!q.motion?.life; }
     } catch (e) { m = null; }
     if (!m) { let k = 0.62 + 0.7 * (it.sound?.loud ?? 0.5); try { k = LE.design(LP.letterable(it.text), { ...o, reduced: false })?.sizeK ?? k; } catch (e) { /* estimate */ } const b = LP.estimateBox(it, 1); m = { w: b.w, h: b.h, sizeK: k, hand: null }; }
     it._m = m;
     if (m.hand) hands.push(m.hand);
   }
 }
-const measureFn = (it, S) => (it._m ? { w: it._m.w * S, h: it._m.h * S, grow: it._m.grow ?? 1 } : LP.estimateBox(it, S));
+const measureFn = (it, S) => (it._m ? { w: it._m.w * S, h: it._m.h * S, grow: it._m.grow ?? 1, ...LP.roomOf(it._m, S) } : LP.estimateBox(it, S));
 function engineOpts(it, base, hands) {
   const o = {
     mood: it.mood, sound: it.sound, hold: it.hold, rotation: it.rotation || 0, reduced: S.isReduced(), magnitude: it.magnitude,
