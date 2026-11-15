@@ -103,8 +103,9 @@ const reset = () => { user.isGM = true; reducedOS = false; toks.splice(0); };
   ck(`... at the instant the word strikes: its contact (250 ms) after the word starts (${Math.round((impBlow(s) || 0) - (word?.o?.startAt ?? 0))} ms)`, word && Math.abs(impBlow(s) - word.o.startAt - 250) < 8);      // SYNC (2026-11-14): a contact past HIT_LEAD no longer starts "at once" (this seat's now: a per-seat instant); the word starts contact ms before the shared blow, joining its entrance up to LATE_MAX in, so the contact is ON the blow on every seat
   ck(`... seeded by the change everybody shares (${s.seed})`, typeof s.seed === "string" && s.seed.startsWith(`A|health|`) && s.seed.endsWith("|impact"));
   ck("... no reduced key when nothing asks for calm (a false would override the OS switch)", !("reduced" in s));
-  /* IMPCALL2: the low rungs hand the engine their own cut (`frames`, public API: impact-rungs REACT), at most one flash drawing, the engine's
-     guard rationing it like any other (impcall2.mjs measures it on the engine's plan); no key of the guard itself */
+  /* IMPCALL2: a caller's own cut (`frames`, public API) holds at most one flash drawing, the engine's guard rationing it like any other
+     (impcall2.mjs measures it on the engine's plan); no key of the guard itself. CALLER6: a blow's rungs are the engine's ladder again (no
+     `frames`); only a challenge's moments still hand a cut in */
   ck("... and no key that could reach the photosensitivity guard", !("photosafe" in s) && !("flashes" in s) && !("vision" in s)
     && (!("frames" in s) || (Array.isArray(s.frames) && s.frames.filter((x) => ["ink", "slam", "shadow", "window", "glare", "swap", "tear", "shatter"].includes(x.type)).length <= 1)));
   ck(`... the impact starts with the reaction, not later (${Math.round(im[0]?.t - t0)} ms after the change)`, im[0] && im[0].t - t0 < 900);

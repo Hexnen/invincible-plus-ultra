@@ -22,7 +22,13 @@ const minOver = (spec) => { let t = Infinity; for (let i = 0; i < 24; i++) t = M
 
 /* ---- L: the roll's ladder ---- */
 const ord = IP.impactFor({ power: 0.2, action: "slugfest" }), strong = IP.impactFor({ power: 0.55, action: "slugfest" }), crit = IP.impactFor({ power: 0.7, action: "slugfest" });
-ck("L roll: an ordinary success has a moment (was none)", !!ord && ord.rung === "ordinary" && Array.isArray(ord.frames));
+/* CALLER6 (engine 1.9.24): a blow's ordinary / strong result is the engine's own step 1 / 2 of its kind (no `frames`); a result that is not a
+   blow keeps the callers' cut (the engine's "word" kind is 3 ticks there). Was: `Array.isArray(ord.frames)` (the callers' cut for every action) */
+const ordW = IP.impactFor({ power: 0.2, action: "dodge" }), strongW = IP.impactFor({ power: 0.55, action: "dodge" });
+ck("L roll: an ordinary success has a moment (was none)", !!ord && ord.rung === "ordinary" && plan(ord).ticks >= 6 && !!ordW && ordW.rung === "ordinary" && Array.isArray(ordW.frames));
+ck("L roll: a blow's low rungs are the engine's ladder, a result that is no blow the callers' cut", !ord.frames && !strong.frames && ordW.kind === "word" && Array.isArray(strongW.frames));
+ck("L roll: one length per rung whatever the action (blow / shot / charge / no blow)", ["slugfest", "shooting", "charge", "dodge"].every((a) =>
+  plan(IP.impactFor({ power: 0.2, action: a })).ticks === plan(ord).ticks && plan(IP.impactFor({ power: 0.55, action: a })).ticks === plan(strong).ticks));
 ck("L roll: a failure still none", IP.impactFor({ power: 0.9, fail: true }) === null);
 ck("L roll: Effects off none", IP.impactFor({ power: 0.9 }, { fx: 0 }) === null && IP.impactFor({ power: 0.2 }, { fx: 0 }) === null);
 for (const pw of [0.2, 0.55, 0.8]) { const a = IP.impactFor({ power: pw }, { fx: 1 }), b = IP.impactFor({ power: pw }, { fx: 0.5 });
@@ -31,7 +37,7 @@ for (const pw of [0.2, 0.55, 0.8]) { const a = IP.impactFor({ power: pw }, { fx:
 const tO = ticksOf(ord), tS = ticksOf(strong), tC = minOver(crit);
 ck(`L roll: ordinary ${tO} < strong ${tS} < critical ${tC} ticks`, tO < tS && tS < tC);
 ck("L roll: ordinary at least 6 ticks (250 ms), no flash", tO >= 6 && flashOf(ord) === 0);
-ck("L roll: strong at most one flash", flashOf(strong) <= 1);
+ck("L roll: strong at most one flash", flashOf(strong) <= 1 && flashOf(strongW) <= 1);
 ck("L roll: the strength keeps the engine's step (ordinary step 1, strong under step 3)", plan(ord).step === 1 && plan(strong).step < 3);
 for (const r of ["ordinary", "strong"]) {
   const m = IP.mapFrames(r === "ordinary" ? IP.ORD_MAG : 0.6, null, { figs: true, rung: r }), b = IP.mapFrames(0.6, null, { figs: false, rung: r });
@@ -47,12 +53,24 @@ const blowSpec = (amt, kind = "hit", o = {}) => P.impactOf({ kind, amt, known: t
 const sc = blowSpec(0.1), bl = blowSpec(0.15 + 0.1), hb = blowSpec(0.3, "heavy"), hv = blowSpec(0.6, "heavy"), cr = blowSpec(0.9, "heavy");
 ck("L blow: rungs 0..4", [sc, bl, hb, hv, cr].map((s) => s.rung).join() === "0,1,2,3,4");
 const lad = [sc, bl, hb].map(ticksOf), heavyMin = Math.min(minOver(hv), minOver({ ...hv, kind: "shock" }));
-ck(`L blow: scratch ${lad[0]} < blow ${lad[1]} < hard blow ${lad[2]} < heavy ${heavyMin} ticks`, lad[0] < lad[1] && lad[1] < lad[2] && lad[2] < heavyMin);
+/* CALLER6 (engine 1.9.24): the rungs are the engine's ladders. Its step 2 (blow, hard blow) lasts 10 ticks and its step 3 (heavy) 10-11
+   (pinned there by the rapid series: the engine's open question), so from the blow up a rung is no longer told by its LENGTH (IMPCALL2's
+   callers' cuts were 8 / 9 ticks squeezed under that step 3: `lad[1] < lad[2] && lad[2] < heavyMin`) but by its drawings: no rung is
+   shorter than the one below, every rung is longer than IMPCALL2's was, and each adds what the one below has not (the weight below) */
+const weight = (spec) => { let fl = 0, full = 0, stop = 0; for (let i = 0; i < 24; i++) { const p = plan(spec, `w${i}`); fl = Math.max(fl, p.frames.filter(isFlash).length);
+  full = Math.max(full, p.frames.filter((x) => x.full).length); stop = Math.max(stop, p.frames.filter((x) => x.stop).length); } return { fl, full, stop }; };
+const W = [sc, bl, hb, hv].map(weight);
+ck(`L blow: scratch ${lad[0]} < blow ${lad[1]} <= hard blow ${lad[2]} <= heavy ${heavyMin} ticks`, lad[0] < lad[1] && lad[1] <= lad[2] && lad[2] <= heavyMin);
+ck(`L blow: every low rung at least as long as IMPCALL2's own cut (6 / 8 / 9 ticks: ${lad.join(" / ")})`, lad[0] >= 6 && lad[1] >= 8 && lad[2] >= 9);
 ck("L blow: a scratch at least 6 ticks (was 2), no flash", lad[0] >= 6 && flashOf(sc) === 0);
-ck("L blow: blow and hard blow one flash", flashOf(bl) === 1 && flashOf(hb) === 1);
-ck("L blow: an energy blow keeps the rung's cut", RG.ticksOf(blowSpec(0.25, "hit", { dtype: "laser" }).frames) === RG.ticksOf(bl.frames));
-ck("L blow: heavy and up the engine's own ladder", !hv.frames && !cr.frames);
-for (const [name, list] of [["ROLL", Object.values(RG.ROLL)], ["ROLL_MAP", Object.values(RG.ROLL_MAP)], ["REACT", RG.REACT], ["CHALLENGE", Object.values(RG.CHALLENGE)]])
+ck(`L blow: each rung adds to the one below: the panel (blow), the shatter (hard blow), full frames and a hit-stop (heavy): ${JSON.stringify(W)}`,
+  W[0].fl === 0 && W[1].fl === 1 && W[2].fl === 2 && W[1].full === 0 && W[2].full === 0 && W[1].stop === 0 && W[2].stop === 0 && W[3].full >= 1 && W[3].stop >= 1 && W[3].fl >= 2);
+ck("L blow: the low rungs never a full-field frame or a hit-stop, in any kind the ladder takes (blow, crushing, shot)", ["hit", "heavy", "shock"].every((k) =>
+  [sc, bl, hb].every((s) => { const w = weight({ ...s, kind: k }); return w.full === 0 && w.stop === 0 && w.fl <= 2; })));
+ck("L blow: an energy blow is the engine's shot ladder at the rung's strength, the rung's length", blowSpec(0.25, "hit", { dtype: "laser" }).kind === "shock"
+  && ticksOf(blowSpec(0.25, "hit", { dtype: "laser" })) === lad[1] && ticksOf(blowSpec(0.1, "hit", { dtype: "laser" })) === lad[0]);
+ck("L blow: every rung the engine's own ladder", [sc, bl, hb, hv, cr].every((s) => !s.frames));
+for (const [name, list] of [["ROLL", Object.values(RG.ROLL)], ["ROLL_MAP", Object.values(RG.ROLL_MAP)], ["CHALLENGE", Object.values(RG.CHALLENGE)]])
   for (const l of list) {
     ck(`L ${name}: every drawing carries the figures`, l.every((x) => typeof x.fig === "string" && x.fig));
     ck(`L ${name}: at most one flash, at most the engine's max ticks`, RG.flashesOf(l) <= 1 && RG.ticksOf(l) <= 24);
