@@ -121,6 +121,8 @@ export function onCanvasPan() {
    (fit "exact": the layout knows every box), the engine's own Scale setting and ours both enlarge it and the layout counts both. */
 let LE = null;
 export function setLetters(engine) { LE = engine || null; }
+/* SIZEDEAD: the lettering's own Size as the TABLE holds it (engine 1.9.16+: one value on every seat; an older engine's is each screen's own: 1) */
+export function lettersScale() { try { const k = Number(LE?.table?.scale); return typeof LE?.setTable === 'function' && k > 0 ? k : 1; } catch (e) { return 1; } }
 /* the display layer (client setting splashLayer), the engine's layers (contract v3):
    screen  = over everything, sheets and dialogs too (our own splash layer, z 5000, as always);
    ui, hud = the engine's screen layers: over the bars and under the windows / over the map and under the bars;
@@ -860,7 +862,7 @@ function compose(ctl, items, extra = {}) {
     /* the map: scene units, nothing of this seat but its view (the engine's Scale is divided out again in letterOne: the drawn size is S) */
     const g = extra.gauge && ctl.gaugeK ? { w: extra.gauge.w * ctl.gaugeK, h: extra.gauge.h * ctl.gaugeK } : extra.gauge;
     const sf = sharedFrame(ctl.hero, ctl.targets ?? [], ctl.star);
-    frame = { ...sf, scale: 1, ...extra, ...(g ? { gauge: g } : {}) };
+    frame = { ...sf, scale: ctl.userScale || 1, ...extra, ...(g ? { gauge: g } : {}) };   // SIZEDEAD: the table's Size on the board too (it was 1 there: the choice did nothing on a map layer)
   } else {
     /* SAMEPIC: the shared frame (see sharedScreenAvoid): reference height, the table's Scale only (the engine's own Scale is divided out
        in letterOne, as on the map), the standard view, the token's document box, shared obstacles */
@@ -1988,7 +1990,7 @@ function endCtl(ctl, quick) {
 
 /* what a stage knows of its moment (openStage, and a dry stage for prepare(): the layout reads exactly these) */
 function stageFields(opts, shared) {
-  const f = { token: opts.full ? null : (opts.token || null), userScale: shared ? 1 : (opts.scale || 1), hero: opts.token || opts.hero || null, shared,
+  const f = { token: opts.full ? null : (opts.token || null), userScale: opts.scale || 1, hero: opts.token || opts.hero || null, shared,
     backdrop: !!opts.backdrop, momentId: opts.momentId ?? null, shareId: opts.shareId ?? opts.momentId ?? null };
   /* FXLD2: a map moment's gauge: scene px per reference px (the gauge is measured at --u 1, the 768 px reference) */
   if (shared) f.gaugeK = GRID_VH * (globalThis.canvas?.dimensions?.size ?? globalThis.canvas?.grid?.size ?? 100) / LP.REF_VH;

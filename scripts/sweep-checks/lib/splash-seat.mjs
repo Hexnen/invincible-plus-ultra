@@ -175,7 +175,7 @@ export async function seatPlay(o) {
     /* SPLASHSEAT: o.told = { user id: report } (seatTell): the table's lists for this roll, as main.mjs would have heard them */
     const shareId = o.told ? "SH-" + runN : null;
     if (shareId) for (const [u, r] of Object.entries(o.told)) Share.note(shareId, u, r);
-    const ctl = Stage.play(out.e, { token: b.hero, scale: 1, hold: 1, fx: 1, fullFrom: out.full ? 0.7 : null, seed: "SS-" + tag, resolve: () => ({ now: 5, max: 8 }), targets: [b.target.id], from: b.hero, at: 0, ...(o.probe ? { momentId: "SB-" + runN } : {}), ...(shareId ? { shareId } : {}) });
+    const ctl = Stage.play(out.e, { token: b.hero, scale: o.scale ?? 1, hold: 1, fx: 1, fullFrom: out.full ? 0.7 : null, seed: "SS-" + tag, resolve: () => ({ now: 5, max: 8 }), targets: [b.target.id], from: b.hero, at: 0, ...(o.probe ? { momentId: "SB-" + runN } : {}), ...(shareId ? { shareId } : {}) });
     let t, probed;
     if (o.probe) { while ((t = timers.filter((x) => !x.done && x.ms <= (o.probeAt ?? 1500)).sort((a, b2) => a.ms - b2.ms)[0])) { t.done = true; t.fn(); } probed = o.probe({ Stage, ctl, toClient, board: b }); }
     while ((t = timers.filter((x) => !x.done).sort((a, b2) => a.ms - b2.ms)[0])) { t.done = true; t.fn(); }

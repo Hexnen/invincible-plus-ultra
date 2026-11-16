@@ -209,7 +209,9 @@ function loadLetters() {
 function fullFrom() { return cs('fullscreen') ? cs('fullFrom') : null; }
 /* FXLD2: the lettered moment's duration is the table's (world); the classic splash keeps the seat's own */
 function holdK() { try { return Stage.lettersOn() ? cs('tableHold') : cs('hold'); } catch (e) { return 1; } }
-function scaleK() { try { return Stage.lettersOn() ? cs('tableScale') : cs('scale'); } catch (e) { return 1; } }
+/* SIZEDEAD: the lettered moment's size = the splash's own Size x the lettering's Size (both the table's; the layout counts both, the
+   engine's own multiplication is divided out where the words are played) */
+function scaleK() { try { return Stage.lettersOn() ? cs('tableScale') * Stage.lettersScale() : cs('scale'); } catch (e) { return 1; } }
 /* GMALL: the table's Effects; a seat in Foundry's photosensitive mode gets at most the gentle ones (no flash, no sparks) */
 function photosensitive() { try { return game.settings.settings.has('core.photosensitiveMode') && !!game.settings.get('core', 'photosensitiveMode'); } catch (e) { return false; } }
 function fxLevel() { const e = cs('effects'), k = e === 'full' ? 1 : (e === 'reduced' ? 0.5 : 0); return photosensitive() ? Math.min(k, 0.5) : k; }
