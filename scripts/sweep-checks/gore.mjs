@@ -586,6 +586,19 @@ const T = P.TICK_MS;
   ck("a public call returns a handle with its strength, the table's level applied", api.blood({ strength: 0.5 })?.strength === 0.5 && api.cracks({ strength: 0.4 })?.kind === "cracks");
   api.clear({ quick: true });
   ck("clear empties the glass", live() === 0);
+  /* GORE4: the window's Preview shows what the TABLE is set to */
+  ck("Preview: a light blow, a crack and a knock-down at the table's levels", api.preview() === 3 && live() === 3);
+  ck("... pressed again it replaces its last sample (no piling)", api.preview() === 3 && live() === 3);
+  values["invincible-plus-ultra.goreBlood"] = 3; values["invincible-plus-ultra.goreCracks"] = 1;
+  api.preview();
+  ck("... the levels are applied (blood 3 = stronger than asked, cracks 1 = weaker)", (() => { const st = api.blood({ strength: 0.35, seed: "lvl" }).strength, cr = api.cracks({ strength: 0.6, seed: "lvl" }).strength; return st > 0.35 && cr < 0.6; })());
+  values["invincible-plus-ultra.goreBlood"] = 0;
+  api.clear({ quick: true });
+  ck("... blood at 0: the Preview shows the crack only", api.preview() === 1 && live() === 1);
+  values["invincible-plus-ultra.goreCracks"] = 0;
+  ck("... both at 0: nothing", api.preview() === 0 && live() === 0);
+  values["invincible-plus-ultra.goreBlood"] = 2; values["invincible-plus-ultra.goreCracks"] = 2;
+  api.clear({ quick: true });
   ck("mayShow: another scene never", !M.mayShow({ gm: true, sameScene: false, visible: true }));
 }
 
@@ -595,7 +608,7 @@ const T = P.TICK_MS;
   ck("module.js starts the area by a guarded import", /import\("\.\/gore\/main\.mjs"\)\s*\.then\(\(gore\) => gore\.start/.test(src("module.js")));
   const D = await import("../table/defs.mjs");
   ck("the Comic effects window has the tab with the four options", JSON.stringify(D.TABS.find((t) => t.id === "gore")?.sections.flatMap((s) => s.rows.map((r) => r.key))) === JSON.stringify(["goreBlood", "goreCracks", "goreSeats", "goreHold"]));
-  ck("the window's Preview plays it", /tab === "gore"\) \{ \(game\.modules\.get\(MOD\)\?\.api\?\.gore/.test(src("table/app.mjs")));
+  ck("the window's Preview plays it, and says so when both levels are 0", /tab === "gore"\) \{ if \(\(game\.modules\.get\(MOD\)\?\.api\?\.gore \?\? globalThis\.PlusUltraGore\)\?\.preview\?\.\(\) === 0\) ui\.notifications\?\.info\(t\("IPT\.Notice\.goreOff"\)\)/.test(src("table/app.mjs")));
   ck("the glass lies over the map and under the interface, crisp (pixelated, right after #board)", /board\.after\(wrap\)/.test(src("gore/main.mjs")) && /imageRendering: "pixelated"/.test(src("gore/main.mjs")) && /pointerEvents: "none"/.test(src("gore/main.mjs")));
 }
 

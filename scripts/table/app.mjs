@@ -210,7 +210,7 @@ function appClass() {
     static async #preview(_ev, btn) {
       const tab = btn?.dataset?.tabId;
       try {
-        if (tab === "gore") { (game.modules.get(MOD)?.api?.gore ?? globalThis.PlusUltraGore)?.preview?.(); return; }
+        if (tab === "gore") { if ((game.modules.get(MOD)?.api?.gore ?? globalThis.PlusUltraGore)?.preview?.() === 0) ui.notifications?.info(t("IPT.Notice.goreOff")); return; }
         if (tab === "splash") { const api = game.modules.get(MOD)?.api?.splash ?? globalThis.invincibleSplash; api?.preview?.({ n: 5, sixes: 3, action: "slugfest" }); return; }
         const { letters } = await import("../letters/index.mjs");
         const L = await letters();

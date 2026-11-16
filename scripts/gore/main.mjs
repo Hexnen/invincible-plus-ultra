@@ -182,7 +182,7 @@ function play(kind, o = {}) {
     const make = (g) => (kind === "blood" ? P.bloodPlan(g, spec) : P.crackPlan(g, spec));
     if (!ensureGlass()) return null;
     fit();
-    const it = { id: ++uid, kind, t0, make, plan: make(G.g), tok: tok?.id ?? null };
+    const it = { id: ++uid, kind, t0, make, plan: make(G.g), tok: tok?.id ?? null, pv: !!o.pv };
     /* GORE4: no room beside the token in this view (it fills the screen): no blood here rather than blood on it */
     if (it.plan.none) return null;
     /* GORE3: a new splash on a token: its older ones start to crumble as this one lands (one stain per character, no piling) */
@@ -377,12 +377,17 @@ export const api = {
   tokScreen: (t) => tokScreen(typeof t === "string" ? canvas?.tokens?.get(t) : t),
   /** the same effect on EVERY seat at one instant (each seat still applies the table's options and its own accessibility) */
   net: { blood: (o) => send("blood", { ...o, token: typeof o?.token === "string" ? o.token : o?.token?.id }), cracks: (o) => send("cracks", o), clear: (o) => send("clear", o) },
-  /** a sample on this screen (the table window's Preview) */
+  /** a sample on this screen (the table window's Preview): a light blow, a crack, a knock-down, AS THE TABLE IS SET (GORE4: it
+      played at the normal level whatever the GM had chosen, so a change of level showed nothing; a level at 0 now shows nothing, the
+      hold applies). Pressing it again replaces the last sample. -> how many of the three played */
   preview() {
-    const t = pnow();
-    play("blood", { strength: 0.35, seed: "preview|1", dir: 0.3, startAt: t, raw: true });
-    play("cracks", { strength: 0.6, seed: "preview|2", startAt: t + 700, raw: true });
-    play("blood", { strength: 1, seed: "preview|3", dir: 2.6, startAt: t + 1400, raw: true });
+    try {
+      G.items = G.items.filter((it) => !it.pv);
+      const t = pnow();
+      return [play("blood", { strength: 0.35, seed: "preview|1", dir: 0.3, startAt: t, pv: true }),
+        play("cracks", { strength: 0.6, seed: "preview|2", startAt: t + 700, pv: true }),
+        play("blood", { strength: 1, seed: "preview|3", dir: 2.6, startAt: t + 1400, pv: true })].filter(Boolean).length;
+    } catch (err) { once(err); return 0; }
   },
   state: () => {
     const c = [...G.cost].sort((a, b) => a - b);

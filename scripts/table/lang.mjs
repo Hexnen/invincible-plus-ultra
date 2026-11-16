@@ -21,6 +21,7 @@ export const EN = {
   "IPT.NotSaved": "Not saved: {error}",
   "IPT.Notice.moved": "The roll splash and token reaction options are now chosen by the game master for the whole table (your own earlier choices are kept in this browser, unused). See them under Game Settings, Comic effects.",
   "IPT.Notice.refused": "This option is chosen by the game master for the whole table.",
+  "IPT.Notice.goreOff": "Blood and cracks are both set to 0: there is nothing to show.",
   "IPT.Engine.old": "This screen runs an older lettering engine ({version}): its lettering options are each screen's own there, not the table's, so they are shown here without a change. Update the module that carries it (moinen-maps or this one).",
   "IPT.Engine.oldShort": "an older lettering engine runs on this screen",
 
@@ -196,6 +197,7 @@ export const PL = {
   "IPT.NotSaved": "Nie zapisano: {error}",
   "IPT.Notice.moved": "Opcje splasha rzutu i reakcji żetonów wybiera teraz MG dla całego stołu (twoje wcześniejsze wybory zostają w tej przeglądarce, nieużywane). Zobaczysz je w Ustawieniach gry, Efekty komiksowe.",
   "IPT.Notice.refused": "Tę opcję wybiera MG dla całego stołu.",
+  "IPT.Notice.goreOff": "Krew i pęknięcia są ustawione na 0: nie ma czego pokazać.",
   "IPT.Engine.old": "Ten ekran ma starszy silnik liternictwa ({version}): tam opcje liternictwa ustawia każdy ekran sam, nie stół, więc pokazujemy je tu bez zmiany. Zaktualizuj moduł, który go dostarcza (moinen-maps albo ten).",
   "IPT.Engine.oldShort": "na tym ekranie działa starszy silnik liternictwa",
 
