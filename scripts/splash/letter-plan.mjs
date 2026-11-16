@@ -323,7 +323,14 @@ export const PAD = 0.14;
    4. else the place that covers the least, weighed: the roller and the roll's targets 50, tokens 10, panels 20, a pin 1.
    "By the token" = within half the block's smaller side (or three gaps) of it: at the far view a few px of board is the whole room. */
 export const F_STEPS = Object.freeze([1, 0.9, 0.8, 0.7, 0.6]);
-export function composeMoment(items, frame, measure = estimateBox) {
+/* CRITFREEZE (live, two seats: a critical's layout is ONE call of 0.15-0.45 s, the search below; laid out ahead while the dice roll it held
+   the page for that long in one task: the picture froze 176-218 ms, then twice more for the layouts that follow it). The same search, cut
+   into STEPS: composeMomentSteps is the search as a generator that hands the page back between its tries (one size or split tried per
+   step); composeMoment runs it to its end in one go, as before. Whoever steps it (stage.mjs, a sliced prepare) gets the very same block:
+   the steps only say where the work may pause, nothing is read between them that the search did not already hold. */
+export function composeMoment(items, frame, measure = estimateBox) { return runSteps(composeMomentSteps(items, frame, measure)); }
+export function runSteps(g) { let r; while (!(r = g.next()).done); return r.value; }
+export function* composeMomentSteps(items, frame, measure = estimateBox) {
   const safe = frame.safe, vh = frame.vh || 768, sc = frame.scale || 1;
   const safeW = Math.max(120, Math.min(safe.r - safe.l, frame.freeW ?? Infinity)), safeH = Math.max(120, Math.min(safe.b - safe.t, frame.freeH ?? Infinity));
   const T = frame.token;
@@ -335,6 +342,7 @@ export function composeMoment(items, frame, measure = estimateBox) {
     if (k >= 0.999 || f0 < 0.25) break;
     f0 *= k * 0.97;
   }
+  yield;
   if (!(frame.avoid?.length || T)) { const o = layoutAt(items, frame, measure, f0, safeW, vh, sc, false); place(o, frame); o.clean = true; return o; }
   /* a word row (the word and its sixes side by side) wider than the free part even at its floors stands only stacked */
   const wideOk = !canStack || (() => { const o = layoutAt(items, frame, measure, f0, safeW, vh, sc, false); return o.rect.r - o.rect.l <= safeW + 1; })();
@@ -349,9 +357,10 @@ export function composeMoment(items, frame, measure = estimateBox) {
   /* MAPSEAT: in the wide window a split block counts only while its two parts stand together: the gap between the head and the caption no
      more than SPLIT_GAP of the taller part's height (live, The Warehouse crowd: the caption 3900 scene px from its word, on no seat's view) */
   const tog = (o) => !frame.together || !splitApart(o);
-  const whole = (far, list = items) => {
+  const whole = function* (far, list = items) {
     const seen = new Set();
     for (const [f, stack] of tries) {
+      yield;
       const o = layoutAt(list, frame, measure, f, safeW, vh, sc, stack);
       const sig = stack + ':' + Math.round(o.rect.r - o.rect.l) + 'x' + Math.round(o.rect.b - o.rect.t);
       if (seen.has(sig)) continue;   // every part at its floor already: the same block again
@@ -366,14 +375,15 @@ export function composeMoment(items, frame, measure = estimateBox) {
      and its gauge), each placed clean on its own side of what it describes, the caption off the head: a critical frames the struck pair
      with its word above and its caption below when no single place holds the whole block (live, The Warehouse at 0.8: two tokens side by
      side leave a 256 px band above and a 156 px band below; the whole critical block is 370 px tall) */
-  const split = (far, list = items) => {
-    for (const roles of [HEAD_ROLES, HEAD_SIX]) { const o = splitBy(far, list, roles); if (o) return o; }
+  const split = function* (far, list = items) {
+    for (const roles of [HEAD_ROLES, HEAD_SIX]) { const o = yield* splitBy(far, list, roles); if (o) return o; }
     return null;
   };
-  const splitBy = (far, list, roles) => {
+  const splitBy = function* (far, list, roles) {
     const head = list.filter(it => roles.has(it.role)), tail = list.filter(it => !roles.has(it.role));
     if (!head.length || !tail.length || (roles === HEAD_SIX && !head.some(it => it.role === 'six'))) return null;
     for (const [f, stack] of tries) {
+      yield;
       const a = layoutAt(head, frame, measure, f, safeW, vh, sc, stack);
       place(a, frame, far);
       const fb = { ...frame, avoid: [...(frame.avoid ?? []), { ...a.rect, w: PART_W }] };   // SPLASHBLOCK: the caption never on its own word
@@ -390,6 +400,7 @@ export function composeMoment(items, frame, measure = estimateBox) {
         if (!T && b1.hit > 0.5) { const b3 = layoutAt(tail, fb, measure, f, safeW, vh, sc, st); place(b3, fb, far); if (b3.hit < b1.hit) Object.assign(b1, b3); }
         if (!b || b1.hit < b.hit) b = b1;
         if (clean(b) && (far || byT(b))) break;
+        yield;
       }
       const r = { l: Math.min(a.rect.l, b.rect.l), t: Math.min(a.rect.t, b.rect.t), r: Math.max(a.rect.r, b.rect.r), b: Math.max(a.rect.b, b.rect.b) };
       /* CALLERS2: the split block keeps its parts' standing footprint (per side, the larger of the two) for a seat's own panels (localFix) */
@@ -403,13 +414,13 @@ export function composeMoment(items, frame, measure = estimateBox) {
   /* a board with no clean place for the critical at its floor: its word may come down to TIGHT_CRIT of that floor (still over any strong
      roll's floor) before the block stands on a token */
   const tight = items.some(it => it.rank === 'critical') ? items.map(it => (it.rank === 'critical' && it.min ? { ...it, min: it.min * TIGHT_CRIT } : it)) : null;
-  const found = whole(false) ?? split(false) ?? (tight && (whole(false, tight) ?? split(false, tight))) ?? whole(true) ?? split(true) ?? (tight && (whole(true, tight) ?? split(true, tight)));
+  const found = (yield* whole(false)) ?? (yield* split(false)) ?? (tight && ((yield* whole(false, tight)) ?? (yield* split(false, tight)))) ?? (yield* whole(true)) ?? (yield* split(true)) ?? (tight && ((yield* whole(true, tight)) ?? (yield* split(true, tight))));
   if (found) { found.clean = true; return found; }
   /* MAPSEAT (CRITPEAK-9: on a crowded board the critical lay over a bystander's edge): the map's board window holds no clean place for the
      block: it is sought again in the WIDER shared window (frame.wide, the same on every seat) before it lies on anyone. A seat whose view
      does not show that place plays the moment on its screen layer (same-picture.mjs mapSeat) */
   if (frame.wide && best && coverMax(best, frame) > RIM_OK) {
-    const o = composeMoment(items, { ...frame, safe: frame.wide, wide: null, together: true, boardWin: frame.safe }, measure);
+    const o = yield* composeMomentSteps(items, { ...frame, safe: frame.wide, wide: null, together: true, boardWin: frame.safe }, measure);
     /* only a block that still stands together (splitApart; the inner pass may hand back its least-covering split, apart or not) */
     if (o && !splitApart(o) && coverMax(o, frame) < coverMax(best, frame)) { o.wide = true; return o; }
   }
@@ -418,12 +429,12 @@ export function composeMoment(items, frame, measure = estimateBox) {
      harness, a player's critical on a crowded board: with the footprint the least-covering block stood on a bystander and the party cards
      at full size; the outline-clean block is the one shown before). Only then the least covering one */
   if (!frame.bare && items.some(it => measure(it, 40)?.room)) {
-    const o = composeMoment(items, { ...frame, bare: true }, measure);
+    const o = yield* composeMomentSteps(items, { ...frame, bare: true }, measure);
     if (o?.clean) { o.bare = true; return o; }
     /* neither is clean: the one whose letters cover least, of the three: with the footprint, its outline with the footprint's spacing, and
        the outline alone as before the footprint was counted (live harness, the GM's critical on a crowded board: the least-covering block
        with the footprint put 3 SIXES' letters 42 px onto a bystander; the block shown before only grazed its own words) */
-    const o0 = composeMoment(items, { ...frame, bare: true }, (it, S) => { const { room, ...b } = measure(it, S); return b; });
+    const o0 = yield* composeMomentSteps(items, { ...frame, bare: true }, (it, S) => { const { room, ...b } = measure(it, S); return b; });
     let pick = best, ph = best ? letterHits(best, frame) : Infinity;
     for (const c of [o, o0]) if (c && letterHits(c, frame) < ph - 0.5) { pick = c; ph = letterHits(c, frame); }
     if (pick !== best) pick.bare = true;
@@ -876,7 +887,10 @@ export const ALONG_STEPS =Object.freeze([0, -0.15, 0.15, -0.3, 0.3, -0.45, 0.45,
 export function seatFactor(safe, ts) {
   return ts && safe ? clamp(Math.sqrt((safe.r - safe.l) / Math.max(1, ts.r - ts.l) * (safe.b - safe.t) / Math.max(1, ts.b - ts.t)), 0.3, 1) : 1;
 }
-export function seatPlace(table, seat) {
+/* CRITFREEZE: the placing in steps, as composeMoment's (seatPlaceSteps hands the page back between the sizes and arrangements it tries
+   and, in the least-covering search, between the word part's places); seatPlace runs it to its end in one go, as before */
+export function seatPlace(table, seat) { return runSteps(seatPlaceSteps(table, seat)); }
+export function* seatPlaceSteps(table, seat) {
   const H0 = table.hero, H = seat.hero, avoid = seat.avoid ?? [], gp = seat.gap ?? 6;
   let safe = seat.safe;   // SPLASHCLEAR: the seat's wider room (seat.wide) replaces it for the last moves only
   const c = (q) => ({ x: (q.l + q.r) / 2, y: (q.t + q.b) / 2 });
@@ -1174,14 +1188,16 @@ export function seatPlace(table, seat) {
   /* (a caller that takes this block as it is, moved in one piece at most, or not at all) */
   else if (seat.rigidOnly) return null;
   else if ((ds = tryK(k0, false))) moved = ds.every((d) => !d.dx && !d.dy) ? 'none' : 'shift';
+  yield;
   /* on its own side of the roller, in its arrangement, smaller (one factor: the relative sizes kept) before the parts are joined (another
      arrangement) and before anywhere else at its size (the place relative to him is part of the picture: a block that changes side reads
      as another picture, samepic S1; provisional SPLASHSAME-6) */
-  if (!ds) for (const kk of ks.slice(1)) { ds = tryK(kk, false); if (ds) { k = kk; moved = 'shrink'; break; } }
-  if (!ds) for (const kk of ks) { ds = tryJoined(kk); if (ds) { k = kk; moved = 'joined'; break; } }
+  if (!ds) for (const kk of ks.slice(1)) { ds = tryK(kk, false); if (ds) { k = kk; moved = 'shrink'; break; } yield; }
+  if (!ds) for (const kk of ks) { ds = tryJoined(kk); if (ds) { k = kk; moved = 'joined'; break; } yield; }
   if (!ds && (ds = tryK(k0, true))) moved = 'far';
+  if (!ds) yield;
   if (!ds && (ds = tryJoined(k0, true))) moved = 'far';
-  if (!ds) for (const kk of ks.slice(1)) { ds = tryK(kk, true) ?? tryJoined(kk, true); if (ds) { k = kk; moved = 'far'; break; } }
+  if (!ds) for (const kk of ks.slice(1)) { yield; ds = tryK(kk, true); if (!ds) { yield; ds = tryJoined(kk, true); } if (ds) { k = kk; moved = 'far'; break; } }
   /* SPLASHCLEAR (the owner: a seat that cannot show the block clean may show it farther away but clean): before it lies on anything, the seat
      looks again in ALL of its own free view (seat.wide: its window minus the bars it really has, its own panels still kept off by avoid), not
      only inside the reserve band every seat keeps (the sidebar as if open): a GM with the sidebar folded has 300 px more room on the right
@@ -1189,7 +1205,7 @@ export function seatPlace(table, seat) {
      band keeps its picture (the same on every seat) */
   if (!ds && seat.wide && (seat.wide.l < safe.l - 1 || seat.wide.t < safe.t - 1 || seat.wide.r > safe.r + 1 || seat.wide.b > safe.b + 1)) {
     safe = { l: Math.min(safe.l, seat.wide.l), t: Math.min(safe.t, seat.wide.t), r: Math.max(safe.r, seat.wide.r), b: Math.max(safe.b, seat.wide.b) };
-    for (const kk of ks) { ds = tryK(kk, true) ?? tryJoined(kk, true); if (ds) { k = kk; moved = 'far'; break; } }
+    for (const kk of ks) { yield; ds = tryK(kk, true); if (!ds) { yield; ds = tryJoined(kk, true); } if (ds) { k = kk; moved = 'far'; break; } }
     /* the wider room is for CLEAN places only: the least covering stays in the band (its weights already weigh a bystander against a panel) */
     if (!ds) safe = seat.safe;
   }
@@ -1203,10 +1219,11 @@ export function seatPlace(table, seat) {
     /* a split block in order at one size: the word part's least covering places tried in turn with the caption's best in order after each
        (taking the word part's single least covering place first could leave its caption no place in order in the view).
        -> { sum, ds, hard: what it lays on the stars or on its own letters } */
-    const splitAt = (kk) => {
+    const splitAt = function* (kk) {
       const c0 = [];
       for (const { d } of [...movesOf(P[0], kk), ...farOf(P[0], kk)]) { const q = at(P[0], kk, d); if (inSafe(q)) c0.push({ d, q, h: hitOf(q, kk, 0) }); }
       c0.sort((a, b) => a.h - b.h);
+      yield;
       /* SPLASHBLOCK: EVERY place of the word part with every place of the caption (the word's 60 least covering places alone could all
          stand where no caption fits in order: live, the crowded GM view, "no place in order" and the parts swapped). The caption's places
          weighed once against the board, least first; per pair only the two parts against each other, and a pair that cannot beat the
@@ -1214,10 +1231,12 @@ export function seatPlace(table, seat) {
       const c1 = [];
       for (const { d } of [...movesOf(P[1], kk), ...farOf(P[1], kk)]) { const q = at(P[1], kk, d); if (inSafe(q)) c1.push({ d, q, h: hitOf(q, kk, 1) }); }
       c1.sort((a, b) => a.h - b.h);
-      const pairs = (order, lim = Infinity) => {
+      yield;
+      const pairs = function* (order, lim = Infinity) {
         let best = null;
         for (const a of lim < c0.length ? c0.slice(0, lim) : c0) {
           if (best && a.h >= best.sum - 0.5) break;
+          yield;
           const core = coreAt(0, a.q, kk) ?? a.q, more = partsAs([[core, 0, a.q, kk]]);
           for (const b of c1) {
             if (best && a.h + b.h >= best.sum - 0.5) break;
@@ -1267,28 +1286,30 @@ export function seatPlace(table, seat) {
       /* first as before: the word part's 60 least covering places, the caption's best in order after each. Wherever that choice keeps off
          the stars, it stands (the weights were tuned on it: a wider search trades a bystander at a far zoom for the party corner) */
       const byRoom = (q, q0) => orderOk(1, q, q0);
-      let cand = pairs(byRoom, 60);
+      let cand = yield* pairs(byRoom, 60);
       /* 0 EVERY place of the word part with every place of the caption (the word's 60 least covering places alone could all stand where
            no caption fits in order: live, the crowded GM view, "no place in order" and the parts swapped) */
-      if (!cand || hard(cand) > eps) { const t = pairs(byRoom); if (t && (!cand || t.sum < cand.sum - 0.5)) cand = t; }
+      if (!cand || hard(cand) > eps) { const t = yield* pairs(byRoom); if (t && (!cand || t.sum < cand.sum - 0.5)) cand = t; }
       for (const order of [byInk, byMid]) {
         if (cand && hard(cand) <= eps) break;
-        const t = pairs(order); if (t && (!cand || t.sum < cand.sum - 0.5)) cand = t;
-        if (order === byInk) { const j = tryJoined(kk, true, true); if (j && (!cand || j.sum < cand.sum - 0.5)) cand = j; }
+        const t = yield* pairs(order); if (t && (!cand || t.sum < cand.sum - 0.5)) cand = t;
+        if (order === byInk) { yield; const j = tryJoined(kk, true, true); if (j && (!cand || j.sum < cand.sum - 0.5)) cand = j; }
+        yield;
         if (cand) cand = settle(cand, order);
       }
       if (!cand) return { sum: 1e15, ds: [z, z], hard: Infinity };
       /* 3 and, still on them, by their LETTERS alone inside the view (their entrance room and standing ink may pass its edge) */
-      if (hard(cand) > eps) cand = settle(cand, byMid, true);
+      if (hard(cand) > eps) { yield; cand = settle(cand, byMid, true); }
       return { ...cand, hard: hard(cand) };
     };
     let bestAll = null;
     for (const keep of [true, false]) for (const kk of ks) {
       if (!keep && (!rel || (bestAll && bestAll.sum < 1e15))) break;
+      yield;
       const dd = [], placed = [], qs = [];
       let sum = 0;
       if (keep && rel && P.length === 2) {
-        const cand = splitAt(kk);
+        const cand = yield* splitAt(kk);
         if (!bestAll || cand.sum < bestAll.sum * 0.9 - 0.5) bestAll = { k: kk, ds: cand.ds, sum: cand.sum, keep, hard: cand.hard };
         continue;
       }
