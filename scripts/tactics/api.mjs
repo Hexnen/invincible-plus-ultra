@@ -4,7 +4,7 @@
    A write is a request to the executor (the active GM's client, relay.mjs); on that client it runs directly.
    Every function takes the combat as an optional LAST argument (a Combat document or its id; default: the fight on the table), except
    start / stop, where spec 18 puts it first.
-   With the world setting `tacticsEnabled` off (or while Year Zero Engine: Combat is the active tracker) the object exists but is idle:
+   With the world setting `tacticsEnabled` (on by default) switched off (or while Year Zero Engine: Combat is the active tracker) the object exists but is idle:
    reads are empty, writes answer `off`. */
 import * as S from "./state-pure.mjs";
 import * as O from "./ops-pure.mjs";

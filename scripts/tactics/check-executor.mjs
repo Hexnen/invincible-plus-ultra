@@ -34,9 +34,14 @@ combatants.map = (fn) => Array.prototype.map.call(combatants, fn);
 const combats = coll([combat]); combats.active = combat;
 globalThis.CONFIG = { Dice: { randomUniform: () => Math.random() }, Combat: { documentClass: class BaseCombat {} }, ActiveEffect: {} };
 const settings = new Map(), registered = new Map();
+/* TACDEFAULT: `stored` = the keys the GM saved in this world (a Setting document exists); a key not in it reads its default, as in Foundry */
+const stored = new Set();
+const store = (key, v) => { stored.add(`${MOD}.${key}`); settings.set(`${MOD}.${key}`, v); };
+const unstore = (key) => { stored.delete(`${MOD}.${key}`); settings.set(`${MOD}.${key}`, registered.get(`${MOD}.${key}`).default); };
 globalThis.game = { user: users[0], users, actors, combat, combats, messages: coll([]), i18n: { lang: "en", localize: (k) => k }, system: { id: "invincible", version: "2.1.8" }, packs: { get: () => null },
   modules: { get: (id) => (id === MOD ? (game._mod ??= { version: "0.0.0-test", active: true }) : null) },
-  settings: { settings: registered, register: (m, k, d) => { registered.set(`${m}.${k}`, d); settings.set(`${m}.${k}`, d.default); }, get: (m, k) => settings.get(`${m}.${k}`), set: (m, k, v) => settings.set(`${m}.${k}`, v) },
+  settings: { settings: registered, storage: { get: (scope) => (scope === "world" ? { getSetting: (key) => (stored.has(key) ? { key, value: JSON.stringify(settings.get(key)) } : null) } : null) },
+    register: (m, k, d) => { registered.set(`${m}.${k}`, d); if (!stored.has(`${m}.${k}`)) settings.set(`${m}.${k}`, d.default); }, get: (m, k) => settings.get(`${m}.${k}`), set: (m, k, v) => settings.set(`${m}.${k}`, v) },
   socket: { on: (ch, fn) => { socketListener = fn; }, emit: (ch, msg, opts) => { outbox.push({ msg, to: opts?.recipients ?? null }); } } };
 globalThis.fromUuid = async (u) => actors.find((a) => a.uuid === u) ?? null;
 globalThis.fromUuidSync = (u) => actors.find((a) => a.uuid === u) ?? null;
@@ -52,25 +57,42 @@ Store._setSettle(0);                                            // the claim of 
 const origWarn = console.warn; const warns = []; console.warn = (...a) => warns.push(a.map(String).join(" "));
 const settle = async () => { for (let i = 0; i < 30; i++) await new Promise((r) => setTimeout(r, 15)); };
 
-/* ---- the world setting off (the default): nothing but the settings and an idle API */
+/* ---- the world setting switched off by the GM (TACDEFAULT: it is on by default): nothing but the settings and an idle API */
 const BaseClass = CONFIG.Combat.documentClass;
+store("tacticsEnabled", false);
 Main.start({ init: true, ready: true }); await settle();
 const api = game._mod.api.tactics;
-ok(registered.has(`${MOD}.tacticsEnabled`) && registered.get(`${MOD}.tacticsEnabled`).default === false, "the setting exists and is off by default");
+ok(registered.has(`${MOD}.tacticsEnabled`) && registered.get(`${MOD}.tacticsEnabled`).default === true, "TACDEFAULT: the setting exists and is on by default");
+eq([Main.chosen(), game.settings.get(MOD, "tacticsEnabled")], [true, false], "TACDEFAULT: a value the GM stored is kept, the default does not replace it");
 eq([api.running(), socketListener, Object.keys(hooks).length, CONFIG.Combat.documentClass === BaseClass, Main.blocker()], [false, null, 0, true, "off"], "setting off: no socket listener, no hook, the Combat class untouched, the API idle");
 eq([(await api.start(combat)).error?.code, combat.flags[MOD] ?? null, api.state(), api.prompts(), api.journal()], ["off", null, null, [], []], "setting off: no tactical combat can be started, reads are empty");
 combat.flags[MOD] = { tactics: { state: JSON.stringify({ v: 1, rev: 3, mode: "tactical", round: 2 }) } };
 eq([(await import("./source.mjs")).tacticsState(combat), (await import("./source.mjs")).sourceOf(combat)], [null, null], "setting off: even a combat that still carries a state from an earlier session is not read as ours (the widgets fall back)");
 combat.flags = {};
-/* ---- yze-combat still enabled: the same, with one note for the GM */
-settings.set(`${MOD}.tacticsEnabled`, true);
+eq(notes.length, 0, "setting off: the GM is told nothing");
+/* ---- yze-combat still enabled: the same. TACDEFAULT: a world that only has the default is not told anything (the GM uses that module on
+   purpose and never asked for tactical combat); a GM who switched the setting on by hand is told once per load, as before */
 const modules = game.modules.get; game.modules.get = (id) => (id === "yze-combat" ? { active: true } : modules(id));
+unstore("tacticsEnabled");
 Main._reset(); Main.start({ init: true, ready: true }); await settle();
-eq([api.running(), socketListener, Object.keys(hooks).length, CONFIG.Combat.documentClass === BaseClass, Main.blocker(), notes.length, (await api.start(combat)).error?.code], [false, null, 0, true, "yze", 1, "off"], "yze-combat active: nothing runs, nothing is replaced; the GM is told once");
+eq([Main.chosen(), game.settings.get(MOD, "tacticsEnabled"), api.running(), socketListener, Object.keys(hooks).length, CONFIG.Combat.documentClass === BaseClass, Main.blocker(), notes.length, (await api.start(combat)).error?.code], [false, true, false, null, 0, true, "yze", 0, "off"], "TACDEFAULT: yze-combat active, the setting never touched: nothing runs, nothing is replaced, no note");
+store("tacticsEnabled", true);
+Main._reset(); Main.start({ init: true, ready: true }); await settle();
+eq([api.running(), socketListener, Object.keys(hooks).length, CONFIG.Combat.documentClass === BaseClass, Main.blocker(), notes.length, (await api.start(combat)).error?.code], [false, null, 0, true, "yze", 1, "off"], "yze-combat active, the setting switched on by hand: nothing runs, nothing is replaced; the GM is told once");
+ok(notes[0] === "ITAC.Note.Yze" || /Year Zero Engine: Combat/.test(notes[0]), "that note names the module in the way");
 game.modules.get = modules; notes.length = 0;
-/* ---- on: the class, the relay, the executor */
+/* ---- the module's card initiative switched off: the same rule for its note */
+unstore("tacticsEnabled"); store("tacticsInitiative", false);
 Main._reset(); Main.start({ init: true, ready: true }); await settle();
-eq([api.running(), typeof socketListener, Klass.installed(), Main.blocker()], [true, "function", true, null], "setting on: engine started, relay listening, the module's Combat class installed");
+eq([api.running(), socketListener, Object.keys(hooks).length, Main.blocker(), notes.length], [false, null, 0, "noInitiative", 0], "TACDEFAULT: card initiative off, the setting never touched: nothing runs, no note");
+store("tacticsEnabled", true);
+Main._reset(); Main.start({ init: true, ready: true }); await settle();
+eq([api.running(), Main.blocker(), notes.length], [false, "noInitiative", 1], "card initiative off, the setting switched on by hand: the GM is told once");
+unstore("tacticsEnabled"); unstore("tacticsInitiative"); notes.length = 0;
+/* ---- on, by the default alone (TACDEFAULT: a world that never touched the setting): the class, the relay, the executor */
+eq([Main.chosen(), stored.size], [false, 0], "TACDEFAULT: from here on nothing is stored, the world reads the defaults");
+Main._reset(); Main.start({ init: true, ready: true }); await settle();
+eq([api.running(), typeof socketListener, Klass.installed(), Main.blocker()], [true, "function", true, null], "TACDEFAULT: a world on the defaults: engine started, relay listening, the module's Combat class installed");
 eq((await api.start(combat)).ok, true, "tactical combat started on the Combat document");
 eq([typeof combat.flags[MOD].tactics.state, typeof combat.flags[MOD].tactics.log], ["string", "string"], "state and log are JSON strings in the Combat flags (spec 1.3)");
 const st = () => Store.read(combat).state;

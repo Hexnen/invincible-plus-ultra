@@ -9,10 +9,14 @@
    yellow Tactics button above Begin Combat (combat-class.mjs startField): Tactics starts a tactical fight, Begin Combat an ordinary one,
    which carries no state and so is read as not ours by every part (source.mjs tacticsState), for every user and after a reload. The map's
    own rule mechanics are handed over only while a tactical fight is on the table (movement.mjs drive). [TACB-1..3 in combat-questions.md]
-   - `tacticsEnabled` off (the default): nothing but the settings and an idle api.tactics exists. No Combat class, no socket listener,
-     no hook, no executor: the module behaves exactly as before this feature, and the other parts keep reading yze-combat or the core
-     tracker through scripts/yze.mjs.
-   - yze-combat active: the same; the GM is told once when the setting is on.
+   TACDEFAULT (the owner 2026-11-16): the setting is ON by default, so a world that never touched it has tactical combat available. A
+   value the GM stored (on or off) stays as stored.
+   - `tacticsEnabled` off (the GM switched it off): nothing but the settings and an idle api.tactics exists. No Combat class, no socket
+     listener, no hook, no executor: the module behaves exactly as before this feature, and the other parts keep reading yze-combat or
+     the core tracker through scripts/yze.mjs.
+   - yze-combat active: the same, whatever the setting says. The GM is told once per load only when the setting was switched on BY HAND
+     (a stored value, chosen()): a world that merely has the default is not nagged about a module it uses on purpose. The same rule
+     holds for the note about the card initiative being switched off.
    Everything is in try / catch: a failure here must not break the tracker. */
 import * as Store from "./store.mjs";
 import * as Relay from "./relay.mjs";
@@ -35,7 +39,7 @@ function registerSettings() {
   const has = (key) => game.settings.settings.has(`${MOD}.${key}`);
   const reg = (key, data) => { if (!has(key)) game.settings.register(MOD, key, data); };
   const name = (key) => ({ name: t(`ITAC.Settings.${key}.Name`), hint: t(`ITAC.Settings.${key}.Hint`) });
-  reg("tacticsEnabled", { ...name("tacticsEnabled"), scope: "world", config: true, type: Boolean, default: false, requiresReload: true });      // spec 17
+  reg("tacticsEnabled", { ...name("tacticsEnabled"), scope: "world", config: true, type: Boolean, default: true, requiresReload: true });      // spec 17; TACDEFAULT: on by default
   reg("tacticsInitiative", { ...name("tacticsInitiative"), scope: "world", config: true, type: Boolean, default: true, requiresReload: true });
   reg("tacticsRedraw", { ...name("tacticsRedraw"), scope: "world", config: true, type: String, default: "everyRound",
     choices: { everyRound: t("ITAC.Redraw.everyRound"), firstRoundOnly: t("ITAC.Redraw.firstRoundOnly") } });      // [I2] [B2277]
@@ -51,6 +55,8 @@ function registerSettings() {
   /* U62: the size of the dock, the desk and their cards (a slider; separate from Foundry's interface scale). GMGOVERN: the table's. */
   reg("tacticsUiScale", { ...name("tacticsUiScale"), scope: "world", config: false, type: Number, range: { min: 80, max: 140, step: 5 }, default: 100, onChange: (v) => { try { tacticsApi.ui?.rescale?.(v); } catch { /* the surfaces are not up */ } } });
 }
+/** TACDEFAULT: the GM stored a value of `tacticsEnabled` in this world (a Setting document exists), as opposed to the default being read */
+export const chosen = () => { try { return !!game.settings.storage?.get("world")?.getSetting?.(`${MOD}.tacticsEnabled`, null); } catch { return false; } };
 /** what stands in the way of tactical combat on this world: null (it runs) | "off" | "yze" | "noInitiative" */
 export function blocker() {
   try {
@@ -163,7 +169,7 @@ export function start(phases = {}) {
           /* D109: a GM's client writes the language it reads on its own user: a player's client says an intention (only the GMs see it, ui/board.mjs) in it */
           try { const u = game.user, lang = game.i18n?.lang; if (!why && u?.isGM && lang && typeof u.setFlag === "function" && u.getFlag(MOD, "lang") !== lang) u.setFlag(MOD, "lang", lang).catch(() => {}); } catch { /* the intention keeps the player's words */ }
           if (!why) await startRunning();
-          else if (why !== "off" && game.user.isGM) ui.notifications.warn(t(why === "yze" ? "ITAC.Note.Yze" : "ITAC.Note.NoInitiative"), { permanent: false, console: false });
+          else if (why !== "off" && game.user.isGM && chosen()) ui.notifications.warn(t(why === "yze" ? "ITAC.Note.Yze" : "ITAC.Note.NoInitiative"), { permanent: false, console: false });
         } catch (e) { console.warn(`${MOD} | tactical combat failed to start (ready)`, e); }
       });
     } catch (e) { console.warn(`${MOD} | tactical combat failed to start`, e); }

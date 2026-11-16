@@ -20,7 +20,7 @@ import { EN_PWE, PL_PWE } from "./lang-pwe.mjs";      // PWE: the powers review 
 import { EN_FXU3, PL_FXU3 } from "./lang-fxu3.mjs";      // FXU3: the surprise card (U202), rows below the desk's button (U203)
 export const EN = {
   "ITAC.Settings.tacticsEnabled.Name": "Tactical combat",
-  "ITAC.Settings.tacticsEnabled.Hint": "Off (the default): nothing of tactical combat runs and the combat tracker works as it did before. On: the combat tab gets a yellow Tactics button above Begin Combat. Tactics starts a tactical fight (initiative cards, the action budget, declared actions resolved; free mode at any time). Begin Combat starts an ordinary fight. Needs a reload.",
+  "ITAC.Settings.tacticsEnabled.Hint": "On (the default): the combat tab gets a yellow Tactics button above Begin Combat. Tactics starts a tactical fight (initiative cards, the action budget, declared actions resolved; free mode at any time). Begin Combat starts an ordinary fight. Off: the combat tracker works as it did before. Inactive while Year Zero Engine: Combat is enabled. Needs a reload.",
   "ITAC.Settings.tacticsInitiative.Name": "Tactical combat: card initiative",
   "ITAC.Settings.tacticsInitiative.Hint": "With tactical combat on, the module deals numbered initiative cards itself (lowest acts first, redrawn each round). Replaces the Year Zero Engine: Combat module, which is no longer needed; while that module is still enabled it stays in charge and tactical combat is inactive. Needs a reload.",
   "ITAC.Settings.tacticsUiScale.Name": "Tactical combat: interface size (%)",
@@ -1091,7 +1091,7 @@ export const EN = {
 };
 export const PL = {
   "ITAC.Settings.tacticsEnabled.Name": "Walka taktyczna",
-  "ITAC.Settings.tacticsEnabled.Hint": "Wyłączone (domyślnie): nic z walki taktycznej nie działa, a tracker walki zachowuje się jak dotąd. Włączone: w zakładce walki nad Rozpocznij walkę pojawia się żółty przycisk Tactics. Tactics zaczyna walkę taktyczną (karty inicjatywy, budżet akcji, rozstrzyganie zadeklarowanych akcji; tryb swobodny w każdej chwili). Rozpocznij walkę zaczyna zwykłą walkę. Wymaga przeładowania.",
+  "ITAC.Settings.tacticsEnabled.Hint": "Włączone (domyślnie): w zakładce walki nad Rozpocznij walkę pojawia się żółty przycisk Tactics. Tactics zaczyna walkę taktyczną (karty inicjatywy, budżet akcji, rozstrzyganie zadeklarowanych akcji; tryb swobodny w każdej chwili). Rozpocznij walkę zaczyna zwykłą walkę. Wyłączone: tracker walki działa jak dotąd. Nieaktywne, gdy włączony jest Year Zero Engine: Combat. Wymaga przeładowania.",
   "ITAC.Settings.tacticsInitiative.Name": "Walka taktyczna: inicjatywa na kartach",
   "ITAC.Settings.tacticsInitiative.Hint": "Przy włączonej walce taktycznej moduł sam rozdaje numerowane karty inicjatywy (najniższa działa pierwsza, co rundę nowe). Zastępuje moduł Year Zero Engine: Combat, który nie jest już potrzebny; dopóki tamten moduł jest włączony, to on rządzi, a walka taktyczna jest nieaktywna. Wymaga przeładowania.",
   "ITAC.Settings.tacticsUiScale.Name": "Walka taktyczna: rozmiar interfejsu (%)",

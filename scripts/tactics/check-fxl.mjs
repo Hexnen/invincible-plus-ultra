@@ -119,8 +119,7 @@ const Engine = await import("./engine.mjs");
 Store._setSettle(0);
 const origWarn = console.warn; console.warn = () => {};
 const settle = async () => { for (let i = 0; i < 30; i++) await new Promise((r) => setTimeout(r, 15)); };
-Main.start({ init: true, ready: true }); await settle();
-settings.set(`${MOD}.tacticsEnabled`, true); Main._reset(); Main.start({ init: true, ready: true }); await settle();
+Main.start({ init: true, ready: true }); await settle();      // TACDEFAULT: tactical combat is on by default, one start runs it (before: a first idle start, the setting switched on, a second start)
 const api = game._mod.api.tactics;
 const st = () => Store.read(combat).state;
 const rollMsg = (uid, tag, sixes) => ({ id: `m${++nid}`, author: { id: uid }, rolls: [{ options: { tactics: tag }, successCount: sixes, baneCount: 0, pushCount: 0, pushable: false }] });
