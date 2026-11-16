@@ -481,6 +481,79 @@ export function diceRects() {
    layer the words are drawn over both; on the layers under the interface this seat's own guard (localScreen) moves the block only where it
    would really be hidden. */
 const projBox = (b) => { const a = toClient({ x: b.l, y: b.t }), c = toClient({ x: b.r, y: b.b }); return a && c ? { x: (a.x + c.x) / 2, y: (a.y + c.y) / 2, l: a.x, t: a.y, r: c.x, b: c.y } : null; };
+const liveProj = projBox;
+/* SPLASHBLOCK (the owner: the GM and the players see the same picture at the same moment; KOSAME, repeated real fights on two seats: the
+   reaction word's size or place differed in 11 of 16, traced to the roll's screen block standing in another shape and place per seat).
+   The cause, read off the fights' logs and captured inputs: a screen moment by its roller was the table's block (tableFrame) placed by
+   LP.seatPlace on THIS seat's live view: its pan (the users' own views differ by ~190 px by the map's design, the action camera drifts while
+   it holds a shot), its own panels (the GM's scene list and desk) and the documents as that instant's view projected them. On a crowded
+   board nothing is clean, the least-covering search is chaotic in those inputs, and two seats drew two arrangements (joined at the bottom on
+   the GM, split round the fighters on the player).
+   Now the seat's block is decided in two steps:
+   1. the table's block placed on the CANONICAL seat of this seat's view (canonSeat): a window of this size at this zoom (in ZOOM_STEP
+      steps) with the roller at the middle of the SNAP px cell he stands in, and nothing of this seat in it: no panels, no sidebar state, no
+      px of camera drift. From documents, the zoom step, the window's size and the roller's cell alone, so seats whose views agree to within
+      a cell and a zoom step get one block. LP.seatPlace as before (the table's arrangement, sides, order and one factor: SPLASHSAME);
+   2. that block on THIS seat: moved with the roller by the few px he stands off his cell's middle (the usual case), else shifted as ONE
+      piece into the seat's view (LP.seatPlace rigid: a few px of view give a few px of shift, never another arrangement), and only when
+      that covers more than the canonical block does or lands on the seat's own panel, the seat's own search (as before: farther but
+      clean, then smaller).
+   The zoom and the roller's place are read off the view the moment is SHOWN on (planView): the action camera's shot while it is parked
+   away (the same shot on every seat of one window size; the live view drifts while a shot is held and differs per seat by the users' own
+   views once it goes home), else the live view. Seats that look at the board differently (another zoom, another window, another part of
+   the map) still place the one table block each on what they see: provisional SPLASHBLOCK-1 */
+export const SNAP = 64;
+const CANON_FREE = 0.01, CANON_COVER = 0.03, CELL_HOLD = 12;
+export const ZOOM_STEP = 1.025;
+export const quantZoom = (z) => { const s = Math.log(ZOOM_STEP); return Math.exp(Math.round(Math.log(Math.max(0.02, Number(z) || 1)) / s) * s); };
+/* the view a screen moment is laid out on: { x, y, scale, shot } (scene point in the middle of the window, zoom) */
+export function planView() {
+  const C = globalThis.canvas, st = C?.stage;
+  try {
+    const mm = globalThis.game?.modules?.get?.('moinen-maps'), d = mm?.active ? mm.api?.directorStage?.status?.() : null, p = d?.parked;
+    if (p && d.home && [p.x, p.y, p.scale].every(Number.isFinite) && p.scale > 0 && st?.position && Number.isFinite(st.position.x)) return { x: p.x, y: p.y, scale: p.scale, shot: true };
+  } catch (e) { /* no map, no shot */ }
+  const z = Number(st?.scale?.x) || 1;
+  return st?.pivot && Number.isFinite(st.pivot.x) ? { x: st.pivot.x, y: st.pivot.y, scale: z } : { x: 0, y: 0, scale: z };
+}
+/* a scene point on the plan view, client px (the live view: the stage's own transform) */
+function planClient(q, pv) {
+  if (!pv?.shot) return toClient(q);
+  try { const r = canvas.app.view.getBoundingClientRect(), o = canvas.stage.position; return { x: r.left + o.x + (q.x - pv.x) * pv.scale, y: r.top + o.y + (q.y - pv.y) * pv.scale }; } catch (e) { return toClient(q); }
+}
+/* the canonical seat of a zoom step, a window size and the roller's cell (client px of this window; at = the roller's middle on the plan
+   view): { hero, safe, avoid, proj, zoom, W, H, ox, oy, scene(q) } */
+function canonSeat(hero, targets, star, zq, W, H, at, keep = null) {
+  const C = globalThis.canvas, gs = C?.dimensions?.size ?? C?.grid?.size ?? 100;
+  /* keep: the cell this moment was laid out in a moment ago (seen live: the roller on a cell's edge, 445.9 and 448.9 px on two layouts of
+     one moment, 448 the edge: the moment's block jumped between two arrangements on one seat). It stays in that cell while the roller is
+     within CELL_HOLD px past its edge */
+  const held = keep && keep.zq === zq && Math.abs(at.x - keep.x) <= SNAP / 2 + CELL_HOLD && Math.abs(at.y - keep.y) <= SNAP / 2 + CELL_HOLD;
+  const hb = docBox(hero, gs), cx = held ? keep.x : (Math.floor(at.x / SNAP) + 0.5) * SNAP, cy = held ? keep.y : (Math.floor(at.y / SNAP) + 0.5) * SNAP;
+  const proj = (b) => ({ x: ((b.l + b.r) / 2 - hb.x) * zq + cx, y: ((b.t + b.b) / 2 - hb.y) * zq + cy, l: (b.l - hb.x) * zq + cx, t: (b.t - hb.y) * zq + cy, r: (b.r - hb.x) * zq + cx, b: (b.b - hb.y) * zq + cy });
+  const win = { l: 2, t: 2, r: W - 2, b: H - 2 };
+  const band = { l: Math.max(win.l, SP.RESERVE.l), t: Math.max(win.t, SP.RESERVE.t), r: Math.min(win.r, W - SP.RESERVE.r), b: Math.min(win.b, H - SP.RESERVE.b) };
+  if (band.r - band.l < 0.4 * W || band.b - band.t < 0.4 * H) Object.assign(band, win);      // a tiny window: the whole of it (seatBand)
+  const cv = { proj, zoom: zq, W, H, ox: 0, oy: 0 };
+  return { ...cv, cell: { zq, x: cx, y: cy }, hero: proj(hb), safe: band, avoid: sharedScreenAvoid(hero, false, targets, star, cv), scene: (q) => ({ x: hb.x + (q.x - cx) / zq, y: hb.y + (q.y - cy) / zq }) };
+}
+/* SPLASHBLOCK: what a block really draws, part by part (the layout's px): each part's letters' boxes and their standing ink. The block's
+   outline (rect) is the union of its parts with their entrance room: a split block's outline spans whatever its parts frame (live: the
+   roll's critical framed the fighters, word above and caption below, and its outline covered the struck token and most of the view) */
+export function partBoxes(lay) {
+  if (!lay?.items?.length) return lay?.rect && Number.isFinite(lay.rect.l) ? [{ ...lay.rect }] : [];
+  const parts = lay.parts?.length === 2 ? lay.parts : [lay.rect], out = parts.map(() => ({ l: Infinity, t: Infinity, r: -Infinity, b: -Infinity }));
+  const near = (x, y) => { let bi = 0, bd = Infinity; parts.forEach((q, i) => { const dd = Math.hypot(Math.max(0, q.l - x, x - q.r), Math.max(0, q.t - y, y - q.b)); if (dd < bd) { bd = dd; bi = i; } }); return bi; };
+  const pi = parts.length === 2 && lay.pi?.length === lay.items.length ? lay.pi : null;
+  for (let n = 0; n < lay.items.length; n++) {
+    const it = lay.items[n];
+    if (!(it.w > 0) || it.x == null) continue;
+    const r = out[pi ? pi[n] : near(it.x, it.y)], st = it.room?.stand ?? { l: 2, r: 2, u: 2, d: 2 };
+    r.l = Math.min(r.l, it.x - it.w / 2 - st.l); r.r = Math.max(r.r, it.x + it.w / 2 + st.r); r.t = Math.min(r.t, it.y - it.h / 2 - st.u); r.b = Math.max(r.b, it.y + it.h / 2 + st.d);
+  }
+  if (lay.gauge) { const g = lay.gauge, r = out[pi && lay.gpi != null ? lay.gpi : near(g.x + g.w / 2, g.y + g.h / 2)]; r.l = Math.min(r.l, g.x); r.t = Math.min(r.t, g.y); r.r = Math.max(r.r, g.x + g.w); r.b = Math.max(r.b, g.y + g.h); }
+  return out.filter((r) => Number.isFinite(r.l));
+}
 function sharedTokenBox(tok) { try { const C = globalThis.canvas, gs = C?.dimensions?.size ?? C?.grid?.size ?? 100; return projBox(docBox(tok, gs)); } catch (e) { return null; } }
 /* CRITPEAK: is a token's document box (not its swaying mesh) inside the standard view of this view by at least half of it? */
 export function mapScaleOk() {
@@ -518,19 +591,22 @@ export function starOf(ev, ctl) {
 }
 /* the star's cut-in box: c = its centre, size = its drawn size, u = the view's short side (one unit); weighed STAR_W, marked star */
 const starAvoid = (st, c, size, u) => { const b = st && c ? LP.starBox(c, size, u, st.step, st.max) : null; return b ? { ...b, w: LP.STAR_W, star: true } : null; };
-function sharedScreenAvoid(hero, full, targets = [], star = null) {
+function sharedScreenAvoid(hero, full, targets = [], star = null, cv = null) {
   const out = [];
+  const C = globalThis.canvas, gs = C?.dimensions?.size ?? C?.grid?.size ?? 100;
+  /* SPLASHBLOCK: cv = the canonical seat (canonSeat): its projection of a scene box, its zoom and its window; else this seat's live view */
+  const projBox = cv?.proj ?? liveProj, W = cv?.W ?? window.innerWidth, H = cv?.H ?? window.innerHeight, zoomNow = cv?.zoom ?? (C?.stage?.scale?.x || 1);
+  const sharedTokenBox = (tok) => { try { return projBox(docBox(tok, gs)); } catch (e) { return null; } };
   /* CAPSTAR: on this seat's screen the engine sizes the cut-in by THIS window's short side */
   if (star) { const q = sharedTokenBox(star.tok); const s = q && starAvoid(star, q, Math.max(q.r - q.l, q.b - q.t), Math.min(window.innerWidth, window.innerHeight)); if (s) out.push(s); }
-  const C = globalThis.canvas, gs = C?.dimensions?.size ?? C?.grid?.size ?? 100;
   for (const t of C?.tokens?.placeables ?? []) {
     /* CRITPEAK (ADVX 3: the critical's caption lines across the target's face): the roll's target weighs as much as the hero, every other
        token is heavy too (a pin may give way, a token never) */
     try { const d = docOf(t); if (!d || d.hidden || sameTok(t, hero)) continue; const q = projBox(grow(docBox(t, gs), 0.06 * gs)); if (q) out.push({ ...q, w: targets.includes(t.id) ? LP.TARGET_W : LP.OTHER_W }); } catch (e) { /* one token */ }
   }
   for (const n of C?.notes?.placeables ?? []) { try { if (!docOf(n)) continue; const q = projBox(noteBox(n, gs)); if (q) out.push(q); } catch (e) { /* one pin */ } }
-  for (const b of zoneBadges(C?.stage?.scale?.x || 1).shared) { const q = projBox(b); if (q) out.push({ ...q, w: BADGE_W }); }   // SPLASHCLEAR: the zone badges every seat sees
-  for (const z of SP.panelZones(window.innerWidth, window.innerHeight)) out.push({ ...z, w: UI_WEIGHT });   // the party panel's corner, the same zone on every seat
+  for (const b of zoneBadges(zoomNow).shared) { const q = projBox(b); if (q) out.push({ ...q, w: BADGE_W }); }   // SPLASHCLEAR: the zone badges every seat sees
+  for (const z of SP.panelZones(W, H)) out.push({ ...(cv ? { ...z, l: z.l + cv.ox, t: z.t + cv.oy, r: z.r + cv.ox, b: z.b + cv.oy } : z), w: UI_WEIGHT });   // the party panel's corner, the same zone on every seat
   if (full && hero) { const h = sharedTokenBox(hero); if (h) out.push({ ...grow(h, Math.max(10, 0.15 * (h.r - h.l))), w: 50 }); }   // the drawn art (hair, a fist) reaches past the token's box; the hero weighs most
   return out;
 }
@@ -593,12 +669,6 @@ export function tableFrame(hero, full, targets = [], scale = 1, star = null) {
 /* SPLASHSAME: this seat's place of the table's block: its roller (document box at its zoom), its free view (its window minus the bars every
    seat keeps, its open sidebar), the same documents as obstacles at its zoom, the party corner of a small window and, under the interface, its
    own panels (localScreen) */
-function seatOf(ctl, T, lay) {
-  const loc = localScreen(lay);
-  /* the roller himself is kept clear by seatPlace (his box and the table's gap, weighed as the token); the critical hero's art margin (0.15 of
-     his width) is the TABLE's room when it composes the block, not a seat's: before, the screen block stood in it on the GM's seat too */
-  return { hero: T, safe: loc.safe, wide: seatWide(lay), avoid: [...sharedScreenAvoid(ctl.hero, false, ctl.targets ?? [], ctl.star), ...loc.avoid], own: loc.own ?? [], gap: ctl.full ? 6 : Math.max(8, Math.round(0.08 * (T.r - T.l))) };
-}
 /* SPLASHCLEAR: all of this seat's free view (client px): its window inside the bars it really has (the tool column, the hotbar and players list,
    the open sidebar; not the reserve band of the standard view), for a block that finds no clean place in the band (LP.seatPlace, last moves) */
 function seatWide(lay) {
@@ -709,7 +779,7 @@ function logSame(row) { SAME_LOG.push(row); if (SAME_LOG.length > 20) SAME_LOG.s
 /* compose: measure, lay out, and (when the block had to go below or beside the token) measure again with the sound coming from there */
 function compose(ctl, items, extra = {}) {
   const vh = window.innerHeight, k = Number(LE?.prefs?.scale) > 0 ? Number(LE.prefs.scale) : 1;
-  let frame;
+  let frame, tab = null;
   if (ctl.shared) {
     /* a critical on the map is a board moment like the others (live: sized to fill a share of a 16:9 'screen' of the board, it went
        two tokens away and past every seat's view): still the biggest word, but anchored by the hero */
@@ -727,10 +797,15 @@ function compose(ctl, items, extra = {}) {
     /* SPLASHSAME: a moment by its roller (a token moment, or the critical with its hero) whose roller stands in this seat's window: the
        TABLE's block (tableFrame: the same on every seat), placed on this seat (LP.seatPlace). Without a roller in the window (none, unseen,
        off this seat's screen) the moment is this seat's own, laid out round its view as before */
-    const anchor = ctl.token ?? (ctl.full ? ctl.hero : null), A = anchor ? (T ?? sharedTokenBox(anchor)) : null;
+    /* SPLASHBLOCK: the roller where the view the moment is shown on has him (planView: the action camera's shot, else the live view) */
+    const pv = planView(), gsA = globalThis.canvas?.dimensions?.size ?? globalThis.canvas?.grid?.size ?? 100;
+    const anchor = ctl.token ?? (ctl.full ? ctl.hero : null);
+    let A = null;
+    if (anchor) { try { const hb = docBox(anchor, gsA), c = planClient({ x: hb.x, y: hb.y }, pv); A = c && Number.isFinite(c.x) ? c : null; } catch (e) { A = null; } }
     if (A && A.x >= 0 && A.y >= 0 && A.x <= window.innerWidth && A.y <= window.innerHeight && globalThis.canvas?.ready) {
       const tf = tableFrame(anchor, !ctl.token, ctl.targets ?? [], ctl.userScale || 1, ctl.star);
-      frame = { ...tf.frame, ...extra, table: { hero: tf.hero, T: A } };
+      frame = { ...tf.frame, ...extra };
+      tab = { hero: tf.hero, at: A, zq: quantZoom(pv.scale), anchor };   // (not in the frame: the kept layout is the table's, whatever the view)
     } else frame = { vh: SP.REF_VH, ref: SP.REF_VH, px: 1, scale: ctl.userScale || 1, safe: std, token: T, avoid: sharedScreenAvoid(ctl.hero, !ctl.token, ctl.targets ?? [], ctl.star),
       gap: T ? Math.max(8, Math.round(0.08 * (T.r - T.l))) : 6, focus: { x: (std.l + std.r) / 2, y: vh * (ctl.full ? 0.47 : 0.42) }, ...extra };
   }
@@ -742,13 +817,60 @@ function compose(ctl, items, extra = {}) {
        fit = what this seat shows of the board (its window minus Foundry's bars where they stand, in scene px): only the seat's layer rule
        reads it (playLetters, SP.mapSeat) */
     fit = sceneRectOf(safeRect({ core: true }));
-  } else if (frame.table) {
+  } else if (tab) {
     /* SPLASHSAME: the table's block (composed above from the table's frame), placed on this seat */
-    const lay = WORLD_LAYERS.includes(LAYER) ? 'screen' : LAYER, seat = { ...seatOf(ctl, frame.table.T, lay), gap: frame.gap };   // the table's gap to the roller
-    const tableOut = out;
-    out = LP.seatPlace({ ...tableOut, hero: frame.table.hero, ref: frame.ref, scale: frame.scale, tsafe: frame.safe, avoid1: frame.avoid.filter((q) => q.z1) }, seat);
+    const lay = WORLD_LAYERS.includes(LAYER) ? 'screen' : LAYER;
+    const tableOut = out, tb = tab;
+    /* SPLASHBLOCK: the canonical seat of this view (shared: documents, zoom step, window size, the roller's cell) */
+    const cs = canonSeat(tb.anchor, ctl.targets ?? [], ctl.star, tb.zq, window.innerWidth, window.innerHeight, tb.at, ctl.cell);
+    ctl.cell = cs.cell;
+    const T1 = { ...tableOut, hero: tb.hero, ref: frame.ref, scale: frame.scale, tsafe: frame.safe, avoid1: frame.avoid.filter((q) => q.z1) };
+    const worst = (m) => m === 'least' || m === 'swapped';
+    /* ... and this seat: the shared things as the canonical seat has them, moved with the roller to where he stands here (a few px of
+       camera drift do not weigh another cover), its own view and panels */
+    const dx = tb.at.x - (cs.hero.l + cs.hero.r) / 2, dy = tb.at.y - (cs.hero.t + cs.hero.b) / 2;
+    /* (a window's own zone, the party corner, stays where this window has it) */
+    const mvq = (q) => q.at ? { ...q, l: q.l - cs.ox, t: q.t - cs.oy, r: q.r - cs.ox, b: q.b - cs.oy } : ({ ...q, l: q.l + dx, t: q.t + dy, r: q.r + dx, b: q.b + dy, ...(q.x != null ? { x: q.x + dx, y: q.y + dy } : {}) });
+    const loc = localScreen(lay), T2 = mvq(cs.hero);
+    const seat = { hero: T2, safe: loc.safe, wide: seatWide(lay), avoid: [...cs.avoid.map(mvq), ...loc.avoid], own: loc.own ?? [], gap: frame.gap };   // the table's gap to the roller
+    /* SPLASHBLOCK 0: a seat on which the table's block holds where the table set it shows exactly that (SPLASHSAME: every such seat the
+       same block round the roller); the steps below are for a seat that has to move it */
+    let own = LP.seatPlace(T1, { ...seat, plainOnly: true });
+    const c1 = own ?? LP.seatPlace(T1, { hero: cs.hero, safe: cs.safe, wide: null, avoid: cs.avoid, own: [], gap: frame.gap });
+    /* SPLASHBLOCK 1: else the block the canonical seat places (c1); SPLASHBLOCK 2: shown here as it is, or moved in one piece (never searched again from where the canonical seat left it: two
+       searches one after the other carried a block from over the roller to beside him) */
+    out = own ?? LP.seatPlace({ ...c1, hero: cs.hero, ref: frame.ref, scale: frame.scale, tsafe: cs.safe, avoid1: cs.avoid, rigid: true },
+      /* (weighed here: the documents, moved with the roller, and this seat's own panels; the window's shared corner zone was weighed on
+         the canonical seat, a few px away) */
+      { ...seat, avoid: cs.avoid.filter((q) => !q.at).map(mvq), rigidOnly: true, slack: SNAP / 2 + CELL_HOLD + 1, asIs: worst(c1.moved) });
+    /* SPLASHBLOCK 3: a seat that cannot take it so (its own panel under a clean block, its edge), or whose canonical seat found nothing
+       clean while its own view has a clean place (the owner: farther away but clean before anything is covered), places the table's block
+       itself, as before. Where neither has a clean place the canonical block stands as it is (asIs: seen live, each seat searched by itself
+       for the few per cent less it covered there, and two seats on one shot showed two arrangements) ... */
+    let dbg = null;
+    if (!out || worst(c1.moved)) {
+      const alt = LP.seatPlace(T1, seat), toks = { token: seat.hero, avoid: seat.avoid.filter((q) => q.x != null && !q.at) };
+      /* (... unless this seat's own search keeps every token free, CANON_FREE of a token's box at most, where the canonical block lies
+         on one, over CANON_COVER of it: the roller a few px off his cell's middle can leave the canonical seat less room than this seat has) */
+      if (Array.isArray(globalThis.__splashFit)) dbg = { rigid: out ? out.moved : null, c1hit: c1.hit ?? null, alt: alt.moved, althit: alt.hit ?? null, cov: [LP.coverMax(alt, toks), out ? LP.coverMax(out, toks) : null], own: seat.own.length };
+      if (!out || !worst(alt.moved) || (LP.coverMax(alt, toks) <= CANON_FREE && LP.coverMax(out, toks) > CANON_COVER)) out = own = alt;
+    }
     out.table = { rect: tableOut.rect, side: tableOut.side, split: !!tableOut.split };
-    same = out.moved;
+    /* the block as this seat shows it, part by part in scene px of the planned view (the token reactions plan round it: the same rects on
+       every seat that shows the canonical block) */
+    /* (seen live, two seats on one shot: a canonical block shifted a few px into each seat's view gave the reactions two rects a few px
+       apart, and a reaction another side per seat: the rect told is the CANONICAL block's, before this seat's shift; the drawn block still
+       pushes this seat's word live) */
+    const via = !own ? 'canon' : own === c1 ? 'table' : 'own', told = via === 'canon' ? partBoxes(c1) : null, shown = partBoxes(out);
+    const sceneOf = (q, ox, oy) => { const a = cs.scene({ x: q.l - ox, y: q.t - oy }), c = cs.scene({ x: q.r - ox, y: q.b - oy }); return { l: a.x, t: a.y, r: c.x, b: c.y }; };
+    out.canon = { moved: c1.moved, own: !!own, via, zq: tb.zq, scene: told && told.length === shown.length ? told.map((q) => sceneOf(q, 0, 0)) : shown.map((q) => sceneOf(q, dx, dy)) };
+    /* a live probe may collect how each seat got its block (set globalThis.__splashFit = [] in a console); nothing is kept otherwise */
+    if (Array.isArray(globalThis.__splashFit)) globalThis.__splashFit.push({ dbg, via, c1: c1.moved, seat: out.moved, hit: out.hit ?? null, zq: tb.zq, at: tb.at, cell: { x: (cs.hero.l + cs.hero.r) / 2, y: (cs.hero.t + cs.hero.b) / 2 }, scene: out.canon.scene, shown });
+    /* how this seat got it, for the log and the checks: 'swapped', then 'least' (nothing clean: on either step) first, then this seat's
+       own move, then the canonical seat's */
+    const ms = own ? [own.moved] : [out.moved, c1.moved];
+    same = ms.includes('swapped') ? 'swapped' : ms.includes('least') ? 'least' : ms[0] !== 'none' ? ms[0] : ms.at(-1);
+    out.moved2 = out.moved; out.moved = same;
     if (same !== 'none') why = whyMoved(tableOut.rect, { safe: seat.safe, avoid: [] });
     frame = { ...frame, safe: seat.safe, token: ctl.full ? null : seat.hero, avoid: seat.avoid, gap: seat.gap };
   } else {
@@ -1412,6 +1534,21 @@ export function nearBlock(block, tb, k = COVER_K) {
   const p = k * Math.max(tb.r - tb.l, tb.b - tb.t);
   return block.l < tb.r + p && block.r > tb.l - p && block.t < tb.b + p && block.b > tb.t - p;
 }
+/* SPLASHBLOCK (seen live, the fight's critical: on the player's seat the roll's lettering left about 1 s after the impact while it stood
+   about 4 s on the GM's): the moment's block was its OUTLINE, the union of its parts. A split critical frames the fighters (the word over
+   them, the caption under them), so its outline covered the struck token although no letter did; the reaction's blow then made that seat's
+   moment make room (and the reaction's word, kept off that outline, shrank to 0.35-0.4 of its size: the tiny THROOMF!). The block is now
+   its PARTS as drawn (partBoxes: letters and standing ink): a moment makes room only when a part really stands on a struck token, and a
+   reaction's word may stand between the parts, by its token */
+function partsOf(ctl) {
+  const lay = ctl.layout;
+  if (lay?.items?.length && Number.isFinite(lay.rect?.l)) {
+    const o = !ctl.shared && ctl.offset ? ctl.offset : { x: 0, y: 0 };
+    return partBoxes(lay).map((q) => ({ l: q.l + o.x, t: q.t + o.y, r: q.r + o.x, b: q.b + o.y }));
+  }
+  const b = blockOf(ctl);
+  return b ? [b] : [];
+}
 export function makeRoom(ids, at) {
   try {
     if (!Array.isArray(ids) || !ids.length) return 0;
@@ -1419,8 +1556,8 @@ export function makeRoom(ids, at) {
     let n = 0;
     for (const ctl of [...active.values()]) {
       if (ctl.dead || !ctl.landed || ctl.roomFor) continue;   // a moment that has not struck yet keeps its story (it comes after the blow anyway)
-      const block = blockOf(ctl);
-      if (!toks.some((t) => nearBlock(block, tokenAreaOf(ctl, t)))) continue;
+      const parts = partsOf(ctl);
+      if (!toks.some((t) => { const tb = tokenAreaOf(ctl, t); return parts.some((b) => nearBlock(b, tb)); })) continue;
       ctl.roomFor = at;
       const ms = Math.max(0, (Number.isFinite(at) ? at : performance.now()) - ROOM_MS - performance.now());
       ctl.later(() => endCtl(ctl, false), ms);
@@ -1430,20 +1567,23 @@ export function makeRoom(ids, at) {
   } catch (e) { return 0; }
 }
 /* the landed moments' blocks in client px (a map moment's scene block projected on this seat's view) */
-export function blocks() {
+/* SPLASHBLOCK: part by part (partsOf). scene (optional array, filled alongside): each block's SCENE rect where the splash knows one that
+   every seat shares (a map moment's board block; a screen moment's canonical block, compose): a reaction planned on another view than the
+   live one takes that rect through the scene, so every seat plans round the same thing; null = only this seat's client rect */
+export function blocks(scene = null) {
   const out = [];
   for (const ctl of active.values()) {
     if (ctl.dead || !ctl.landed || ctl.roomFor) continue;
-    const b = blockOf(ctl);
-    if (!b) continue;
-    if (ctl.shared) { const a = toClient({ x: b.l, y: b.t }), c = toClient({ x: b.r, y: b.b }); if (a && c) out.push({ l: a.x, t: a.y, r: c.x, b: c.y }); }
-    else out.push(b);
+    const ps = partsOf(ctl);
+    if (ctl.shared) { for (const b of ps) { const a = toClient({ x: b.l, y: b.t }), c = toClient({ x: b.r, y: b.b }); if (a && c) { out.push({ l: a.x, t: a.y, r: c.x, b: c.y }); scene?.push({ ...b }); } } continue; }
+    const cn = ctl.layout?.canon?.scene, ok = Array.isArray(cn) && cn.length === ps.length;
+    ps.forEach((b, i) => { out.push(b); scene?.push(ok ? { ...cn[i] } : null); });
   }
   return out;
 }
 export function onTokenReact(data) {
   if (data?.phase === 'hit') makeRoom(data.ids, data.at);
-  else if (data?.phase === 'place' && Array.isArray(data.blocks)) data.blocks.push(...blocks());
+  else if (data?.phase === 'place' && Array.isArray(data.blocks)) data.blocks.push(...blocks(Array.isArray(data.scene) ? data.scene : null));
 }
 /* the screen pins of a map moment: an HTML part follows its scene point (followPan) */
 function pin(ctl, el, at, c0, k = 0) { (ctl.pins ??= []).push({ el, at, c0, k }); }

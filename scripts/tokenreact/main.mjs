@@ -821,6 +821,16 @@ const SEAT_ONLY_PINS = false;
    on every seat, as the party cards and the challenges' panel are: a word keeps off it everywhere, so the GM's guard finds nothing left to
    move. A meter dragged away or unfolded still moves the word on the GM's seat only (CROWD2-6) */
 const METER_ZONE = Object.freeze({ l: 92, t: 88, r: 364, b: 148 });
+/* SPLASHBLOCK (repeated real fights on two seats with equal windows on one camera shot: once the roll's block no longer squeezed the blow's
+   word to 0.35 of its size, the word took the side the table chose, right of the struck token, on the player's seat, and on the GM's seat
+   the GM's own guard moved it above: 4 of 6 fights): the GM's desk is the GM's own, open through a fight under the challenges' panel, and
+   with the GM's sidebar folded (the lane's GM; the desk hugs the window's edge) its left end stands DESK_ZONE.w px inside the standard view
+   (live: 1194..1542 x 300..491 on 1600 x 900, the standard view ending at 1244). That end, as measured, is a shared zone on every seat
+   while a fight is on (body.ita-tactics), as the map meter's place is (CROWD2): a word keeps off it everywhere, so the GM's guard finds
+   nothing left to move. A desk grown by a card's rows, or one beside an open sidebar, still moves the word on the GM's seat only.
+   Provisional SPLASHBLOCK-5 */
+export const DESK_ZONE = Object.freeze({ w: 52, gap: 19, h: 192 });
+export function deskZone(dock, on) { return on && dock ? { l: dock.r - DESK_ZONE.w, t: dock.b + DESK_ZONE.gap, r: dock.r, b: dock.b + DESK_ZONE.gap + DESK_ZONE.h } : null; }
 const view = {
   at: 0, cache: null,
   ok: () => !!globalThis.canvas?.stage?.toGlobal && !!canvas.app?.view?.getBoundingClientRect,
@@ -845,19 +855,25 @@ const view = {
      SAMEPIC: the splash lays its block out from shared data, so its block counts as shared */
   blocks() {
     const out = [];
-    try { const blocks = []; Hooks.callAll(REACT_HOOK, { phase: "place", blocks }); for (const b of blocks) if (b && b.r > b.l && b.b > b.t) out.push({ x: b.l, y: b.t, w: b.r - b.l, h: b.b - b.t, k: P.SLOT_K.panel }); } catch { /* no splash */ }
+    /* SPLASHBLOCK: the splash tells its blocks part by part (what its letters cover, not the outline round a split block) and, where it has
+       one, each block's SCENE rect as every seat shares it (`scene`, alongside `blocks`) */
+    const scene = [];
+    try { const blocks = []; Hooks.callAll(REACT_HOOK, { phase: "place", blocks, scene }); blocks.forEach((b, i) => { if (b && b.r > b.l && b.b > b.t) { const sc = scene[i]; out.push({ x: b.l, y: b.t, w: b.r - b.l, h: b.b - b.t, k: P.SLOT_K.panel, ...(sc && sc.r > sc.l && sc.b > sc.t ? { sc } : {}) }); } }); } catch { /* no splash */ }
     /* KOSAME (seen live: the GM's block and the player's stood ~200-500 px apart on the same moment): a map moment's block is its scene block
        projected on this seat's LIVE view (the action camera's). A moment laid out on another view (planFrame) takes it through the scene
        into that view, as its token is */
     if (this.frame && out.length) {
       const v = this.rect(), was = this.frame;
-      return out.map((q) => {
-        const a = canvas.stage.toLocal({ x: q.x - v.ox, y: q.y - v.oy }), c = canvas.stage.toLocal({ x: q.x + q.w - v.ox, y: q.y + q.h - v.oy });
+      return out.map(({ sc, ...q }) => {
+        /* SPLASHBLOCK (seen live: the two seats' screen blocks, a few to some hundred px apart on their screens, gave the reaction another
+           side and size per seat): a block with a shared scene rect is planned round THAT, the same on every seat; this seat's own block
+           (shifted into its view, moved off its panel) still pushes the drawn word live (follow) */
+        const a = sc ? { x: sc.l, y: sc.t } : canvas.stage.toLocal({ x: q.x - v.ox, y: q.y - v.oy }), c = sc ? { x: sc.r, y: sc.b } : canvas.stage.toLocal({ x: q.x + q.w - v.ox, y: q.y + q.h - v.oy });
         const A = P.frameScreen(a, was, canvas.stage.position), C = P.frameScreen(c, was, canvas.stage.position);
         return { ...q, x: v.ox + A.x, y: v.oy + A.y, w: C.x - A.x, h: C.y - A.y };
       });
     }
-    return out;
+    return out.map(({ sc, ...q }) => q);
   },
   /* SAMEPIC: the corner panels' shared zones (same-picture.mjs PANEL_ZONES: the party cards, as on the reference window), the same on
      every seat with this view */
@@ -867,6 +883,8 @@ const view = {
       /* the challenges' panel moves with the sidebar (live: a word over Mauler B took 0.7 of its size on the seat whose sidebar was open) */
       const el = document.querySelector?.("#ich-dock"), d = el ? dockZone(W, H, el.getBoundingClientRect()) : null;
       if (d) zs.push(d);
+      const dk = deskZone(d, !!document.body?.classList?.contains?.("ita-tactics"));
+      if (dk) zs.push(dk);
       const ox = W / 2 - REF_VW / 2, oy = H / 2 - REF_VH / 2;
       zs.push({ l: ox + METER_ZONE.l, t: oy + METER_ZONE.t, r: ox + METER_ZONE.r, b: oy + METER_ZONE.b });
       return zs.map((z) => ({ x: z.l, y: z.t, w: z.r - z.l, h: z.b - z.t, k: P.SLOT_K.panel, push: true }));      // CROWD2: follow() pushes off it on every seat

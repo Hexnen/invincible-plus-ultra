@@ -376,7 +376,7 @@ export function composeMoment(items, frame, measure = estimateBox) {
     for (const [f, stack] of tries) {
       const a = layoutAt(head, frame, measure, f, safeW, vh, sc, stack);
       place(a, frame, far);
-      const fb = { ...frame, avoid: [...(frame.avoid ?? []), { ...a.rect, w: TOKEN_W }] };
+      const fb = { ...frame, avoid: [...(frame.avoid ?? []), { ...a.rect, w: PART_W }] };   // SPLASHBLOCK: the caption never on its own word
       let b = null;
       for (const st of [false, true]) {   // the caption on one row, or the sentence over its figure when the row finds no room
         const b1 = layoutAt(tail, fb, measure, f, safeW, vh, sc, st);
@@ -634,6 +634,11 @@ const SIDE_COST = { above: 0, below: 0.15, right: 0.3, left: 0.35 };
 /* CRITPEAK: what a hit weighs (blockHits: area x w): the token the block describes and the roll's targets 50, other tokens 10 (heavy),
    a panel 20 (stage.mjs UI_WEIGHT), a map pin 1 (it may give way when nothing else can) */
 export const TOKEN_W = 50, TARGET_W = 50, OTHER_W = 10;
+/* SPLASHBLOCK (seen live, the GM's fight critical on a crowded board, sheet capstar after3: '6 SIXES' drawn across the end of 'HAYMAKER!'):
+   where nothing is clean the least-covering search weighed the caption part on its own word part like a token (TOKEN_W), under the star's
+   cut-in (STAR_W), so the caption went onto its own word to spare the star. A block's own parts never lie on each other: the other part
+   weighs PART_W per px2, over anything else a block can cover (a whole star at STAR_W is ~1.2e7; a 40 x 40 px overlap of the parts 1.6e7) */
+export const PART_W = 1e4;
 /* CAPSTAR: the impact's cut-in (engine 1.9.23 IMPACT5) draws the STAR of the blow (the struck token, else the roller the blow comes from)
    enlarged at its own place for the whole cut: up to CUT.want of the view's short side (at least CUT.min x its token, never past CUT.max), as
    far as the strength's CU_TOP goes. A block laid out round the token's plain box put its captions across that enlarged figure (live, the GM's
@@ -877,6 +882,11 @@ export function seatPlace(table, seat) {
   const c = (q) => ({ x: (q.l + q.r) / 2, y: (q.t + q.b) / 2 });
   const parts0 = table.parts?.length === 2 ? table.parts : [table.rect];
   const pOf = (x, y) => { let bi = 0, bd = Infinity; parts0.forEach((q, i) => { const dd = Math.hypot(Math.max(0, q.l - x, x - q.r), Math.max(0, q.t - y, y - q.b)); if (dd < bd) { bd = dd; bi = i; } }); return bi; };
+  /* SPLASHBLOCK: a block placed once already (the canonical seat's, stage.mjs compose) says which part each of its lines is and in what
+     order the table set them (pi, gpi, rel): its parts may stand nearer each other than their padded rooms (their rooms overlapping), where
+     the nearest room no longer tells a line's part nor the rooms their order */
+  const ipi = table.pi?.length === table.items.length ? table.pi : table.items.map((it) => pOf(it.x, it.y));
+  const gpi = table.gauge ? (table.gpi ?? pOf(table.gauge.x + table.gauge.w / 2, table.gauge.y + table.gauge.h / 2)) : null;
   const h0 = c(H0), h1 = c(H), dhx = (H.r - H.l - (H0.r - H0.l)) / 2, dhy = (H.b - H.t - (H0.b - H0.t)) / 2;
   /* each part's side of the roller (on the table) and its place here: the same offset from the roller, out by the token's growth on that side */
   const P = parts0.map((q) => {
@@ -897,19 +907,38 @@ export function seatPlace(table, seat) {
      frames (CALLERS-2). Without the items' stand: the outline and its foot, as the table placed it */
   const cores = parts0.map((_, i) => {
     const r = { l: Infinity, t: Infinity, r: -Infinity, b: -Infinity };
-    for (const it of table.items) {
-      if (pOf(it.x, it.y) !== i || !(it.w > 0)) continue;
+    for (let n = 0; n < table.items.length; n++) {
+      const it = table.items[n];
+      if (ipi[n] !== i || !(it.w > 0)) continue;
       /* no measured stand (no engine measure): its letters' box and a hair (2 px: never abutting what it keeps off), as the table's own
          last word on a block (letterHits) */
       const st = it.room?.stand ?? { l: 2, r: 2, u: 2, d: 2 };
       r.l = Math.min(r.l, it.x - it.w / 2 - st.l); r.r = Math.max(r.r, it.x + it.w / 2 + st.r); r.t = Math.min(r.t, it.y - it.h / 2 - st.u); r.b = Math.max(r.b, it.y + it.h / 2 + st.d);
     }
-    if (table.gauge && pOf(table.gauge.x + table.gauge.w / 2, table.gauge.y + table.gauge.h / 2) === i) { const g = table.gauge; r.l = Math.min(r.l, g.x); r.t = Math.min(r.t, g.y); r.r = Math.max(r.r, g.x + g.w); r.b = Math.max(r.b, g.y + g.h); }
+    if (table.gauge && gpi === i) { const g = table.gauge; r.l = Math.min(r.l, g.x); r.t = Math.min(r.t, g.y); r.r = Math.max(r.r, g.x + g.w); r.b = Math.max(r.b, g.y + g.h); }
     return Number.isFinite(r.l) ? r : null;
   });
-  const coreAt = (i, q, k) => { const c = cores[i], p = P[i]; if (!c) return null; const tf = (x, ax, t, dd) => ax + (x + t - ax) * k + dd, dx = q.l - (q.ax + (p.r.l - q.ax) * k), dy = q.t - (q.ay + (p.r.t - q.ay) * k);
+  const boxAt = (c, i, q, k) => { const p = P[i]; if (!c) return null; const tf = (x, ax, t, dd) => ax + (x + t - ax) * k + dd, dx = q.l - (q.ax + (p.r.l - q.ax) * k), dy = q.t - (q.ay + (p.r.t - q.ay) * k);
     return { l: tf(c.l, q.ax, p.tx, dx), t: tf(c.t, q.ay, p.ty, dy), r: tf(c.r, q.ax, p.tx, dx), b: tf(c.b, q.ay, p.ty, dy) }; };
-  const hitOf = (q, k, i, more = []) => { const ft = F(i), g = coreAt(i, q, k) ?? { l: q.l - ft.l * k, t: q.t - ft.t * k, r: q.r + ft.r * k, b: q.b + ft.b * k }; return blockHits(g, avoid) + blockHits(g, more) + area(g, Hg) * TOKEN_W; };
+  const coreAt = (i, q, k) => boxAt(cores[i], i, q, k);
+  /* SPLASHBLOCK: each part's LETTERS (its items' own boxes, line by line, no standing ink): one part's letters never lie on the other's
+     (PART_W; their standing ink meeting weighs as before, TOKEN_W). Line by line, not the part's outline: a caption line may stand beside
+     the end of the word inside the word part's outline, as the table lays it */
+  const bares = parts0.map((_, i) => table.items.filter((it, n) => it.w > 0 && ipi[n] === i).map((it) => ({ l: it.x - it.w / 2, t: it.y - it.h / 2, r: it.x + it.w / 2, b: it.y + it.h / 2 })));
+  const bareAt = (i, q, k) => bares[i].map((c) => boxAt(c, i, q, k));
+  const bareU = (i, q, k) => { const B = bareAt(i, q, k); return B.length ? { l: Math.min(...B.map((c) => c.l)), t: Math.min(...B.map((c) => c.t)), r: Math.max(...B.map((c) => c.r)), b: Math.max(...B.map((c) => c.b)) } : null; };
+  /* the parts already placed, as obstacles of the next: [core, i, q, k] -> their standing ink (TOKEN_W) and their letters (PART_W, `bare`) */
+  const partsAs = (list) => list.flatMap(([c, i, q, k]) => [{ ...c, w: TOKEN_W }, ...bareAt(i, q, k).map((b) => ({ ...b, w: PART_W, bare: true }))]);
+  const hitOf = (q, k, i, more = []) => {
+    const ft = F(i), g = coreAt(i, q, k) ?? { l: q.l - ft.l * k, t: q.t - ft.t * k, r: q.r + ft.r * k, b: q.b + ft.b * k };
+    let s = blockHits(g, avoid) + area(g, Hg) * TOKEN_W, B = null;
+    for (const m of more) {
+      if (!m.bare) { s += area(g, m) * (m.w ?? 1); continue; }
+      B ??= bareAt(i, q, k);
+      for (const b of B) s += area(b, m) * m.w;
+    }
+    return s;
+  };
   const inSafe = (q) => q.l >= safe.l - 1 && q.t >= safe.t - 1 && q.r <= safe.r + 1 && q.b <= safe.b + 1;
   const eps = HIT_EPS * 900 * 900;
   /* a part at scale k about its point nearest the roller, moved by d */
@@ -923,7 +952,9 @@ export function seatPlace(table, seat) {
      moves them, it does not shrink the whole picture under its ranks) */
   /* (nor by its parts as the table spread them round a bigger roller: here they stand by this seat's smaller one) */
   const U1 = { l: Math.min(...P.map((p) => p.r.l)), t: Math.min(...P.map((p) => p.r.t)), r: Math.max(...P.map((p) => p.r.r)), b: Math.max(...P.map((p) => p.r.b)) };
-  const k0 = Math.min(kSeat, (safe.r - safe.l - 4) / Math.max(1, Math.min(U0.r - U0.l, U1.r - U1.l)), (safe.b - safe.t - 4) / Math.max(1, Math.min(U0.b - U0.t, U1.b - U1.t)));
+  /* (SPLASHBLOCK: a block already fitted into a view of this size, table.rigid, is not fitted a second time) */
+  const fitM = 4;
+  const k0 = table.rigid ? Math.min(1, kSeat) : Math.min(kSeat, (safe.r - safe.l - fitM) / Math.max(1, Math.min(U0.r - U0.l, U1.r - U1.l)), (safe.b - safe.t - fitM) / Math.max(1, Math.min(U0.b - U0.t, U1.b - U1.t)));
   /* how small a seat may draw it for room: never a word under its RANK's floor (RANK_WORD min, the critical TIGHT_CRIT of it: so the ranks read in
      order on every seat, ADVS2 D6), never a word under MAP_READ.word nor a caption under MAP_READ.info. Only a window too small for the block at
      its floors goes under them (k0) */
@@ -964,13 +995,34 @@ export function seatPlace(table, seat) {
      caption beside it stays on that side), however far a seat moves them (ADVS2 D2: the critical's caption under the word on one seat, over
      it on the other) */
   const T0 = parts0[0], T1 = parts0[1];
-  const rel = T1 ? { v: T0.b <= T1.t + 1 ? -1 : T1.b <= T0.t + 1 ? 1 : 0, h: T0.r <= T1.l + 1 ? -1 : T1.r <= T0.l + 1 ? 1 : 0 } : null;
+  const rel = T1 ? (table.rel ?? { v: T0.b <= T1.t + 1 ? -1 : T1.b <= T0.t + 1 ? 1 : 0, h: T0.r <= T1.l + 1 ? -1 : T1.r <= T0.l + 1 ? 1 : 0 }) : null;
   const orderOk = (i, q, q0) => {
     if (!rel || i !== 1 || !q0) return true;
     if (rel.v < 0 && q0.b > q.t + 2) return false;
     if (rel.v > 0 && q.b > q0.t + 2) return false;
     if (rel.h < 0 && q0.r > q.l + 2) return false;
     if (rel.h > 0 && q.r > q0.l + 2) return false;
+    return true;
+  };
+  /* SPLASHBLOCK: the same order read by the parts' LETTERS (not their padded room): where nothing is clean (least), the word may stand as
+     near its caption as their letters allow before either lies on the star or on a fighter */
+  const orderInk = (q, q0, k) => {
+    if (!rel || !q0) return true;
+    const a = bareU(0, q0, k) ?? q0, b = bareU(1, q, k) ?? q, g = 2;
+    if (rel.v < 0 && a.b > b.t + g) return false;
+    if (rel.v > 0 && b.b > a.t + g) return false;
+    if (rel.h < 0 && a.r > b.l + g) return false;
+    if (rel.h > 0 && b.r > a.l + g) return false;
+    return true;
+  };
+  /* ... and by their MIDDLES alone (the letters themselves kept apart by PART_W): a line of the caption may stand past the word's end */
+  const orderMid = (q, q0, k) => {
+    if (!rel || !q0) return true;
+    const a = bareU(0, q0, k) ?? q0, b = bareU(1, q, k) ?? q, ax = (a.l + a.r) / 2, ay = (a.t + a.b) / 2, bx = (b.l + b.r) / 2, by = (b.t + b.b) / 2;
+    if (rel.v < 0 && ay >= by) return false;
+    if (rel.v > 0 && by >= ay) return false;
+    if (rel.h < 0 && ax >= bx) return false;
+    if (rel.h > 0 && bx >= ax) return false;
     return true;
   };
   /* a split block is split only to frame the roller (CRITPEAK: head on one side, caption on the other); parts placed apart that no longer
@@ -1007,8 +1059,9 @@ export function seatPlace(table, seat) {
   const midOk = (a, b) => { const m = midOf(a, b); for (const ax of ['x', 'y']) { const t = tMid[ax] - h0[ax]; if (Math.abs(t) > 40 && (m[ax] - h1[ax]) * Math.sign(t) < 0.4 * Math.abs(t)) return false; } return true; };
   /* joined: the caption part back under (over, beside) the word part as on a block that was never split, or the word part back over the
      caption part (whichever keeps the block on its side of the roller), the two moved as ONE block */
-  const tryJoined = (k, anySide = false) => {
+  const tryJoined = (k, anySide = false, least = false) => {
     if (!rel || P.length !== 2) return null;
+    let low = null;
     const q0 = at(P[0], k, z), q1 = at(P[1], k, z), w0 = q0.r - q0.l, h0q = q0.b - q0.t, w1 = q1.r - q1.l, h1q = q1.b - q1.t;
     for (const anchor of [0, 1]) {
       /* the other part's offset to stand joined to the anchor */
@@ -1029,10 +1082,12 @@ export function seatPlace(table, seat) {
         if (!inSafe(a) || !inSafe(b)) continue;
         const ca = coreAt(0, a, k) ?? a, cb = coreAt(1, b, k) ?? b;
         if (!anySide && !(sideOk(ca) && midOk(ca, cb))) continue;
-        if (hitOf(a, k, 0) + hitOf(b, k, 1, [{ ...ca, w: TOKEN_W }]) <= eps) return [{ dx: d0.dx, dy: d0.dy }, { dx: d1.dx, dy: d1.dy }];
+        const h = hitOf(a, k, 0) + hitOf(b, k, 1, partsAs([[ca, 0, a, k]]));
+        if (least) { if (!low || h < low.sum - 0.5) low = { sum: h, ds: [{ dx: d0.dx, dy: d0.dy }, { dx: d1.dx, dy: d1.dy }] }; continue; }
+        if (h <= eps) return [{ dx: d0.dx, dy: d0.dy }, { dx: d1.dx, dy: d1.dy }];
       }
     }
-    return null;
+    return low;
   };
   /* a part moved on its own side keeps the side its middle had on the table (on each axis where that middle stood clear of the roller's):
      a "shift" along the side that carried the block from under him to over him was another picture (samepic S4, the GM's desk) */
@@ -1047,11 +1102,11 @@ export function seatPlace(table, seat) {
   const tryK = (k, far) => {
     const ds = [], placed = [], qs = [];
     for (let i = 0; i < P.length; i++) {
-      const p = P[i], more = placed.map((x) => ({ ...x, w: TOKEN_W }));
+      const p = P[i], more = partsAs(placed);
       const cands = far ? [...movesOf(p, k), ...farOf(p, k)] : movesOf(p, k);
       const hit = cands.find(({ d }) => { const q = at(p, k, d); return inSafe(q) && orderOk(i, q, qs[0]) && framesOk(i, q, qs[0], k) && (far || keepsSide(i, q, k)) && hitOf(q, k, i, more) <= eps; });
       if (!hit) return null;
-      ds.push(hit.d); { const q = at(p, k, hit.d); placed.push(coreAt(i, q, k) ?? q); qs.push(q); }
+      ds.push(hit.d); { const q = at(p, k, hit.d); placed.push([coreAt(i, q, k) ?? q, i, q, k]); qs.push(q); }
     }
     return ds;
   };
@@ -1066,23 +1121,58 @@ export function seatPlace(table, seat) {
   /* only at a zoom the table planned round (TABLE_ZOOMS in stage.mjs, 1 .. 0.5 of the reference): further out or closer the documents
      stand elsewhere round the roller than any the table weighed, and the seat seeks its clean place */
   const zr = (H.r - H.l) / Math.max(1, H0.r - H0.l);
+  /* a block taken as it is (table.rigid) is in the view when its LETTERS are (where nothing was clean the canonical seat may have let a
+     part's entrance room pass the edge);
+     seat.slack: how far past the view's band they may stand, the few px the roller stands off where the canonical seat had him) */
+  const inView = (i, q, k) => { if (!table.rigid) return inSafe(q); const c = bareU(i, q, k) ?? q, m = seat.slack ?? 1; return c.l >= safe.l - m && c.t >= safe.t - m && c.r <= safe.r + m && c.b <= safe.b + m; };
+  /* SPLASHBLOCK (seen live: where the board left no clean place the canonical block was refused on nearly every seat, for the few px2 it
+     lay on that seat's own panel or the few per cent more it covered there, and each seat then searched by itself: two arrangements on two
+     seats that look at the same shot). seat.asIs: a block taken as it is where nothing is clean anyway: it stands wherever its letters
+     are in this seat's view, whatever it covers there (the caller has seen that this seat has no clean place of its own either) */
+  const asIs = !!(table.rigid && seat.asIs);
   const plain = () => {
     if (tHit == null || !Number.isFinite(tHit) || zr < 0.45 || zr > 1.05) return null;
     let s = 0;
     const placed = [];
     for (let i = 0; i < P.length; i++) {
       const q = at(P[i], k0, z);
-      if (!inSafe(q)) return null;
-      s += hitOf(q, k0, i, placed.map((x) => ({ ...x, w: TOKEN_W })));
+      if (!inView(i, q, k0)) return null;
+      /* (a block taken as it is, table.rigid: its parts stand to each other as they stood, whatever they cover of each other) */
+      s += hitOf(q, k0, i, table.rigid ? [] : partsAs(placed));
       /* never onto this seat's own things (its panels, its resting dice under the bars): the table never weighed them */
       const c = coreAt(i, q, k0) ?? q;
-      if (seat.own?.length && blockHits(c, seat.own) > 0.5) return null;
-      placed.push(c);
+      if (!asIs && seat.own?.length && blockHits(c, seat.own) > 0.5) return null;
+      placed.push([c, i, q, k0]);
     }
-    return s <= tHit + eps ? P.map(() => z) : null;
+    return asIs || s <= tHit + eps ? P.map(() => z) : null;
+  };
+  /* SPLASHBLOCK: the table's block as ONE piece, shifted the least way that brings it inside this seat's view (table.rigid: a block composed
+     at this seat's own zoom, stage.mjs compose). The arrangement, the sizes and the parts' places to each other stay the table's; only a
+     shift that makes it cover more than the table's own block covers (or puts it on this seat's own panel) sends the seat on to its own
+     search below. A shift is continuous in the seat's view: two seats a few px apart get two blocks a few px apart, never two arrangements */
+  const rigid = () => {
+    if (!table.rigid || tHit == null || !Number.isFinite(tHit)) return null;
+    const qs = P.map((p, i) => { const q = at(p, k0, z); return bareU(i, q, k0) ?? q; });
+    const U = { l: Math.min(...qs.map((q) => q.l)), t: Math.min(...qs.map((q) => q.t)), r: Math.max(...qs.map((q) => q.r)), b: Math.max(...qs.map((q) => q.b)) };
+    const d = SP_shiftInto(U, safe);
+    if (!d.dx && !d.dy) return null;
+    let s = 0;
+    for (let i = 0; i < P.length; i++) {
+      const q = at(P[i], k0, d);
+      if (!inView(i, q, k0)) return null;
+      s += hitOf(q, k0, i);
+      const c = coreAt(i, q, k0) ?? q;
+      if (!asIs && seat.own?.length && blockHits(c, seat.own) > 0.5) return null;
+    }
+    return asIs || s <= tHit + eps ? P.map(() => ({ dx: d.dx, dy: d.dy })) : null;
   };
   let k = k0, ds = null, moved = 'none';
   if ((ds = plain())) moved = 'none';
+  /* (SPLASHBLOCK: a caller that only asks whether the table's own place holds on this seat) */
+  else if (seat.plainOnly) return null;
+  else if ((ds = rigid())) moved = 'shift';
+  /* (a caller that takes this block as it is, moved in one piece at most, or not at all) */
+  else if (seat.rigidOnly) return null;
   else if ((ds = tryK(k0, false))) moved = ds.every((d) => !d.dx && !d.dy) ? 'none' : 'shift';
   /* on its own side of the roller, in its arrangement, smaller (one factor: the relative sizes kept) before the parts are joined (another
      arrangement) and before anywhere else at its size (the place relative to him is part of the picture: a block that changes side reads
@@ -1108,35 +1198,105 @@ export function seatPlace(table, seat) {
     moved = 'least';
     /* the table's order always (the arrangement is the picture: live, the GM's critical swapped to caption over word while the player's
        kept it); the parts swapped only when no allowed size has any place for them in order in the view at all */
+    /* a split block in order at one size: the word part's least covering places tried in turn with the caption's best in order after each
+       (taking the word part's single least covering place first could leave its caption no place in order in the view).
+       -> { sum, ds, hard: what it lays on the stars or on its own letters } */
+    const splitAt = (kk) => {
+      const c0 = [];
+      for (const { d } of [...movesOf(P[0], kk), ...farOf(P[0], kk)]) { const q = at(P[0], kk, d); if (inSafe(q)) c0.push({ d, q, h: hitOf(q, kk, 0) }); }
+      c0.sort((a, b) => a.h - b.h);
+      /* SPLASHBLOCK: EVERY place of the word part with every place of the caption (the word's 60 least covering places alone could all
+         stand where no caption fits in order: live, the crowded GM view, "no place in order" and the parts swapped). The caption's places
+         weighed once against the board, least first; per pair only the two parts against each other, and a pair that cannot beat the
+         best is not weighed at all */
+      const c1 = [];
+      for (const { d } of [...movesOf(P[1], kk), ...farOf(P[1], kk)]) { const q = at(P[1], kk, d); if (inSafe(q)) c1.push({ d, q, h: hitOf(q, kk, 1) }); }
+      c1.sort((a, b) => a.h - b.h);
+      const pairs = (order, lim = Infinity) => {
+        let best = null;
+        for (const a of lim < c0.length ? c0.slice(0, lim) : c0) {
+          if (best && a.h >= best.sum - 0.5) break;
+          const core = coreAt(0, a.q, kk) ?? a.q, more = partsAs([[core, 0, a.q, kk]]);
+          for (const b of c1) {
+            if (best && a.h + b.h >= best.sum - 0.5) break;
+            if (!order(b.q, a.q)) continue;
+            const h = a.h + b.h + hitOf(b.q, kk, 1, more) - hitOf(b.q, kk, 1);
+            if (!best || h < best.sum - 0.5) best = { sum: h, ds: [a.d, b.d] };
+          }
+        }
+        return best;
+      };
+      /* what a choice lays on the moment's stars (the star's cut-in, the target, the roller: the weights from TOKEN_W up) or on its own
+         other part's letters */
+      const heavy = avoid.filter((a) => (a.w ?? 1) >= TOKEN_W);
+      const hard = (c) => {
+        const q0 = at(P[0], kk, c.ds[0]), q1 = at(P[1], kk, c.ds[1]), g0 = coreAt(0, q0, kk) ?? q0, g1 = coreAt(1, q1, kk) ?? q1;
+        let v = blockHits(g0, heavy) + blockHits(g1, heavy) + (area(g0, Hg) + area(g1, Hg)) * TOKEN_W;
+        for (const a of bareAt(0, q0, kk)) for (const b of bareAt(1, q1, kk)) v += area(a, b) * PART_W;
+        return v;
+      };
+      /* SPLASHBLOCK: only a choice that lies on the stars (or has no place in order at all) looks further, a step at a time:
+         1 the parts as near each other as their LETTERS allow (tighter than the table set them), or the two JOINED (the caption right
+           under, over or beside its word, moved as one block);
+         2 the caption's lines past the word's end (its middle still on its side of the word's middle: a short line beside the last letter,
+           the long ones under it), where the view is not as tall as the two one under the other.
+         Each settles: the places tried stand a step of the view apart (1/16 of its free room: 30-70 px), so the best of them may graze the
+         star by a few px where a place a few px on is clear; each part in turn is nudged (64 .. 4 px, the eight ways) while the two together
+         cover less. The caption must not buy the star's clear face by lying on its own word (live, the crowded GM view: "6 SIXES" on the
+         end of the critical's word), nor its order by lying on the star */
+      const inInk = (i, q) => { const c = bareU(i, q, kk) ?? q; return c.l >= safe.l - 1 && c.t >= safe.t - 1 && c.r <= safe.r + 1 && c.b <= safe.b + 1; };
+      const settle = (cand, order, ink = false) => {
+        const tot = (d0, d1) => { const q0 = at(P[0], kk, d0), q1 = at(P[1], kk, d1); if (!(ink ? inInk(0, q0) && inInk(1, q1) : inSafe(q0) && inSafe(q1)) || !order(q1, q0)) return Infinity;
+          return hitOf(q0, kk, 0) + hitOf(q1, kk, 1, partsAs([[coreAt(0, q0, kk) ?? q0, 0, q0, kk]])); };
+        let cur = { ds: cand.ds.map((d) => ({ dx: d.dx, dy: d.dy })), sum: tot(cand.ds[0], cand.ds[1]) };
+        if (!Number.isFinite(cur.sum)) return cand;
+        for (const st of [64, 32, 16, 8, 4]) for (let n = 0; n < 8; n++) {
+          let nx = null;
+          for (const i of [0, 1]) for (const [ux, uy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+            const ds2 = cur.ds.map((d, j) => (j === i ? { dx: d.dx + ux * st, dy: d.dy + uy * st } : d)), v = tot(ds2[0], ds2[1]);
+            if (v < (nx?.sum ?? cur.sum) - 0.5) nx = { ds: ds2, sum: v };
+          }
+          if (!nx) break;
+          cur = nx;
+        }
+        return cur.sum < cand.sum - 0.5 ? cur : cand;
+      };
+      const byInk = (q, q0) => orderInk(q, q0, kk), byMid = (q, q0) => orderMid(q, q0, kk);
+      /* first as before: the word part's 60 least covering places, the caption's best in order after each. Wherever that choice keeps off
+         the stars, it stands (the weights were tuned on it: a wider search trades a bystander at a far zoom for the party corner) */
+      const byRoom = (q, q0) => orderOk(1, q, q0);
+      let cand = pairs(byRoom, 60);
+      /* 0 EVERY place of the word part with every place of the caption (the word's 60 least covering places alone could all stand where
+           no caption fits in order: live, the crowded GM view, "no place in order" and the parts swapped) */
+      if (!cand || hard(cand) > eps) { const t = pairs(byRoom); if (t && (!cand || t.sum < cand.sum - 0.5)) cand = t; }
+      for (const order of [byInk, byMid]) {
+        if (cand && hard(cand) <= eps) break;
+        const t = pairs(order); if (t && (!cand || t.sum < cand.sum - 0.5)) cand = t;
+        if (order === byInk) { const j = tryJoined(kk, true, true); if (j && (!cand || j.sum < cand.sum - 0.5)) cand = j; }
+        if (cand) cand = settle(cand, order);
+      }
+      if (!cand) return { sum: 1e15, ds: [z, z], hard: Infinity };
+      /* 3 and, still on them, by their LETTERS alone inside the view (their entrance room and standing ink may pass its edge) */
+      if (hard(cand) > eps) cand = settle(cand, byMid, true);
+      return { ...cand, hard: hard(cand) };
+    };
     let bestAll = null;
     for (const keep of [true, false]) for (const kk of ks) {
       if (!keep && (!rel || (bestAll && bestAll.sum < 1e15))) break;
       const dd = [], placed = [], qs = [];
       let sum = 0;
-      /* a split block in order: the word part's least covering places tried in turn with the caption's best in order after each (taking
-         the word part's single least covering place first could leave its caption no place in order in the view) */
       if (keep && rel && P.length === 2) {
-        const c0 = [];
-        for (const { d } of [...movesOf(P[0], kk), ...farOf(P[0], kk)]) { const q = at(P[0], kk, d); if (inSafe(q)) c0.push({ d, q, h: hitOf(q, kk, 0) }); }
-        c0.sort((a, b) => a.h - b.h);
-        let best = null;
-        for (const a of c0.slice(0, 60)) {
-          const core = coreAt(0, a.q, kk) ?? a.q, more = [{ ...core, w: TOKEN_W }];
-          let b1 = null;
-          for (const { d } of [...movesOf(P[1], kk), ...farOf(P[1], kk)]) { const q = at(P[1], kk, d); if (!inSafe(q) || !orderOk(1, q, a.q)) continue; const h = hitOf(q, kk, 1, more); if (!b1 || h < b1.h - 0.5) b1 = { d, h }; }
-          if (b1 && (!best || a.h + b1.h < best.sum - 0.5)) best = { sum: a.h + b1.h, ds: [a.d, b1.d] };
-        }
-        const cand = best ?? { sum: 1e15, ds: [z, z] };
-        if (!bestAll || cand.sum < bestAll.sum * 0.9 - 0.5) bestAll = { k: kk, ds: cand.ds, sum: cand.sum, keep };
+        const cand = splitAt(kk);
+        if (!bestAll || cand.sum < bestAll.sum * 0.9 - 0.5) bestAll = { k: kk, ds: cand.ds, sum: cand.sum, keep, hard: cand.hard };
         continue;
       }
       for (let i = 0; i < P.length; i++) {
-        const p = P[i], more = placed.map((x) => ({ ...x, w: TOKEN_W }));
+        const p = P[i], more = partsAs(placed);
         let best = null;
         for (const { d } of [...movesOf(p, kk), ...farOf(p, kk)]) { const q = at(p, kk, d); if (!inSafe(q) || (keep && !orderOk(i, q, qs[0]))) continue; const h = hitOf(q, kk, i, more); if (!best || h < best.h - 0.5) best = { d, h }; }
         const d = best?.d ?? z;
         sum += best ? best.h : 1e15;   // no place at all (in the view, in order): never chosen over one that has
-        dd.push(d); { const q = at(p, kk, d); placed.push(coreAt(i, q, kk) ?? q); qs.push(q); }
+        dd.push(d); { const q = at(p, kk, d); placed.push([coreAt(i, q, kk) ?? q, i, q, kk]); qs.push(q); }
       }
       if (!bestAll || sum < bestAll.sum * (keep ? 0.9 : 0.5) - 0.5) bestAll = { k: kk, ds: dd, sum, keep };
     }
@@ -1145,15 +1305,15 @@ export function seatPlace(table, seat) {
   if (moved === 'none' && k < 0.999) moved = 'scaled';
   /* apply: every item (and the gauge) with its part */
   const mv = (i, x, y) => { const p = P[i], q = at(p, k, ds[i]); return { x: q.ax + (x + p.tx - q.ax) * k + ds[i].dx, y: q.ay + (y + p.ty - q.ay) * k + ds[i].dy }; };
-  const items = table.items.map((it) => {
-    const i = pOf(it.x, it.y), m = mv(i, it.x, it.y);
+  const items = table.items.map((it, n) => {
+    const i = ipi[n], m = mv(i, it.x, it.y);
     return { ...it, x: Math.round(m.x), y: Math.round(m.y), ...(k !== 1 ? { S: Math.round(it.S * k * 10) / 10, w: it.w * k, h: it.h * k } : {}) };
   });
   let gauge = table.gauge ? { ...table.gauge } : null;
-  if (gauge) { const i = pOf(gauge.x + gauge.w / 2, gauge.y + gauge.h / 2), m = mv(i, gauge.x, gauge.y); Object.assign(gauge, { x: Math.round(m.x), y: Math.round(m.y), w: gauge.w * k, h: gauge.h * k, k: (gauge.k ?? 1) * k }); }
+  if (gauge) { const i = gpi, m = mv(i, gauge.x, gauge.y); Object.assign(gauge, { x: Math.round(m.x), y: Math.round(m.y), w: gauge.w * k, h: gauge.h * k, k: (gauge.k ?? 1) * k }); }
   const parts = P.map((p, i) => { const q = at(p, k, ds[i]); return { l: q.l, t: q.t, r: q.r, b: q.b }; });
   const rect = { l: Math.min(...parts.map((q) => q.l)), t: Math.min(...parts.map((q) => q.t)), r: Math.max(...parts.map((q) => q.r)), b: Math.max(...parts.map((q) => q.b)) };
-  return { ...table, items, rect, ...(parts.length === 2 ? { parts } : {}), gauge, k, moved, d: ds.map((d) => ({ dx: Math.round(d.dx), dy: Math.round(d.dy) })), f: (table.f ?? 1) * k,
+  return { ...table, items, rect, ...(parts.length === 2 ? { parts, pi: ipi, gpi, rel } : {}), gauge, k, moved, d: ds.map((d) => ({ dx: Math.round(d.dx), dy: Math.round(d.dy) })), f: (table.f ?? 1) * k,
     hit: P.reduce((s, p, i) => s + hitOf(at(p, k, ds[i]), k, i), 0) };
 }
 const SP_shiftInto = shiftInto;

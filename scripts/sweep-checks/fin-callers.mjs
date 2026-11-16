@@ -150,7 +150,11 @@ for (const [name, e] of [["crit", crit], ["strong", strong]]) {
   eq(s.Stage.makeRoom(["BESIDE"], performance.now() + 1000), 0, `R: a token beside the block (${Math.round(beside.x - r.r)} px from it): the moment stays (the target's word goes beside it)`);
   ok(!s.ctl.dead, "R: ... still standing");
   const place = { phase: "place", blocks: [] }; s.Stage.onTokenReact(place);
-  ok(place.blocks.length === 1 && Math.abs(place.blocks[0].l - r.l) < 1 && Math.abs(place.blocks[0].b - r.b) < 1, `R: asked where it stands, the landed moment gives its block (${JSON.stringify(place.blocks[0])})`);
+  /* SPLASHBLOCK: what it DRAWS, part by part (each part's letters and standing ink), not its outline: the outline of a split critical is the
+     union of its parts with their entrance room and spans whatever they frame (live: it covered the struck token and most of the view, so the
+     reactions' words shrank to fit beside it and the moment left before every blow). Before: one block, the outline itself */
+  const nP = s.ctl.layout?.parts?.length === 2 ? 2 : 1, inR = (q) => q.l >= r.l - 1 && q.t >= r.t - 1 && q.r <= r.r + 1 && q.b <= r.b + 1;
+  ok(place.blocks.length === nP && place.blocks.every((q) => inR(q) && q.r - q.l > 20 && q.b - q.t > 20) && place.blocks.some((q) => cx > q.l && cx < q.r && cy > q.t && cy < q.b), `R: asked where it stands, the landed moment gives what it draws, part by part, inside its outline (${JSON.stringify(place.blocks)} in ${JSON.stringify(r)})`);
   const at = performance.now() + 1000, before = s.timers.length;
   eq(s.Stage.makeRoom(["UNDER"], at), 1, "R: a token under the block: the moment makes room");
   const t = s.timers.slice(before).find((x) => !x.done);
