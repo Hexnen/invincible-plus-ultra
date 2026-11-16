@@ -56,14 +56,14 @@ const LATIN = [...("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz01234567
 const STR = {
   en: {
     name: "Font: comic lettering",
-    hint: "Typeface of the comic lettering (sheets, chat cards, splash). Anton and Bangers are bundled all-caps display faces: they look best in uppercase, which most of the module's lettering already is. The ActionFigure option needs YOUR OWN licensed copy of ActionFigure BB (Blambot) placed in the module's fonts/user folder as ActionFigureBB.ttf (.otf / .woff2 / .woff also work); see fonts/user/README.txt. The font is never bundled or downloaded. Without the file the default stays in use. Applies at once, this client only.",
+    hint: "Typeface of the comic lettering (sheets, chat cards, splash). Anton and Bangers are bundled all-caps display faces: they look best in uppercase, which most of the module's lettering already is. The ActionFigure option needs YOUR OWN licensed copy of ActionFigure BB (Blambot) placed in the module's fonts/user folder as ActionFigureBB.ttf (.otf / .woff2 / .woff also work); see fonts/user/README.txt. The font is never bundled or downloaded. Without the file the default stays in use. Applies at once.",
     komikah: "Komikah (default, Invincible)",
     anton: "Anton: condensed and heavy (closest to Absolute Batman dialogue)",
     bangers: "Bangers: classic comic shout",
     actionfigure: "ActionFigure (Absolute Batman style) - needs your own file",
     titles: "Condensed sans (Titles)",
     capName: "Font: captions and flavour text",
-    capHint: "Typeface of the italic lines: roll flavour, chat labels, emotes, challenge subtitles and the combat banner caption. \"Default\" keeps whatever the comic lettering font gives. Patrick Hand is a bundled handwriting face. Applies at once, this client only.",
+    capHint: "Typeface of the italic lines: roll flavour, chat labels, emotes, challenge subtitles and the combat banner caption. \"Default\" keeps whatever the comic lettering font gives. Patrick Hand is a bundled handwriting face. Applies at once.",
     capDefault: "Default (same as comic lettering)",
     patrickhand: "Patrick Hand (handwritten)",
     loadFail: "The bundled font {file} could not be loaded. Komikah stays in use.",
@@ -74,14 +74,14 @@ const STR = {
   },
   pl: {
     name: "Font: pismo komiksowe",
-    hint: "Krój pisma komiksowych napisów (karty postaci, czat, splash). Anton i Bangers są dołączone i to kroje wersalikowe: najlepiej wyglądają wielkimi literami, a większość napisów modułu już taka jest. Opcja ActionFigure wymaga TWOJEJ WŁASNEJ, licencjonowanej kopii ActionFigure BB (Blambot) w folderze fonts/user modułu, pod nazwą ActionFigureBB.ttf (działa też .otf / .woff2 / .woff); zob. fonts/user/README.txt. Fontu nie dołączamy ani nie pobieramy. Bez pliku zostaje domyślny. Działa od razu, tylko na tym kliencie.",
+    hint: "Krój pisma komiksowych napisów (karty postaci, czat, splash). Anton i Bangers są dołączone i to kroje wersalikowe: najlepiej wyglądają wielkimi literami, a większość napisów modułu już taka jest. Opcja ActionFigure wymaga TWOJEJ WŁASNEJ, licencjonowanej kopii ActionFigure BB (Blambot) w folderze fonts/user modułu, pod nazwą ActionFigureBB.ttf (działa też .otf / .woff2 / .woff); zob. fonts/user/README.txt. Fontu nie dołączamy ani nie pobieramy. Bez pliku zostaje domyślny. Działa od razu.",
     komikah: "Komikah (domyślny, Invincible)",
     anton: "Anton: wąski i ciężki (najbliższy dialogom z Absolute Batman)",
     bangers: "Bangers: klasyczny komiksowy krzyk",
     actionfigure: "ActionFigure (styl Absolute Batman) - wymaga własnego pliku",
     titles: "Wąski bezszeryfowy (Titles)",
     capName: "Font: podpisy i opisy",
-    capHint: "Krój kursywnych linii: opisy rzutów, etykiety na czacie, emotki, podtytuły wyzwań i podpis banera walki. \"Domyślny\" zostawia krój pisma komiksowego. Patrick Hand to dołączone pismo odręczne. Działa od razu, tylko na tym kliencie.",
+    capHint: "Krój kursywnych linii: opisy rzutów, etykiety na czacie, emotki, podtytuły wyzwań i podpis banera walki. \"Domyślny\" zostawia krój pisma komiksowego. Patrick Hand to dołączone pismo odręczne. Działa od razu.",
     capDefault: "Domyślny (jak pismo komiksowe)",
     patrickhand: "Patrick Hand (odręczny)",
     loadFail: "Nie udało się wczytać dołączonego fontu {file}. Zostaje Komikah.",
@@ -276,12 +276,12 @@ function registerSettings() {
   try {
     if (game.settings.settings.has(`${MOD}.${KEY}`)) return;   // (both settings are registered together)
     game.settings.register(MOD, KEY, {
-      name: tr("name"), hint: tr("hint"), scope: "client", config: true, type: String, default: "komikah",
+      name: tr("name"), hint: tr("hint"), scope: "world", config: false, type: String, default: "komikah",
       choices: Object.fromEntries(MODES.map((m) => [m, tr(m)])),
       onChange: () => { probeCache = null; coverageCache.clear(); apply(); }   // choosing it again is the retry after the user dropped the file in
     });
     game.settings.register(MOD, CAPKEY, {
-      name: tr("capName"), hint: tr("capHint"), scope: "client", config: true, type: String, default: "default",
+      name: tr("capName"), hint: tr("capHint"), scope: "world", config: false, type: String, default: "default",
       choices: { default: tr("capDefault"), patrickhand: tr("patrickhand") },
       onChange: () => apply()
     });

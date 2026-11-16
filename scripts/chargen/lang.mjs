@@ -8,7 +8,7 @@ import { TERMS } from "../i18n/terms.mjs";
 export const EN = {
   /* settings */
   "IPC.Settings.Button.Name": "Character generator: header button",
-  "IPC.Settings.Button.Hint": "Show the wand button in the header of a superhero sheet that opens the character generator. The entry in the three-dot menu stays. This client only.",
+  "IPC.Settings.Button.Hint": "Show the wand button in the header of a superhero sheet that opens the character generator. The entry in the three-dot menu stays.",
   "IPC.Settings.Players.Name": "Character generator: players",
   "IPC.Settings.Players.Hint": "GM only. When off, players cannot open the character generator on their own heroes (the GM still can).",
 
@@ -1025,7 +1025,7 @@ Object.assign(EN, {
 
 export const PL = {
   "IPC.Settings.Button.Name": "Kreator postaci: przycisk w nagłówku",
-  "IPC.Settings.Button.Hint": "Pokazuje przycisk z różdżką w nagłówku karty superbohatera, który otwiera kreator postaci. Wpis w menu z trzema kropkami zostaje. Tylko ten klient.",
+  "IPC.Settings.Button.Hint": "Pokazuje przycisk z różdżką w nagłówku karty superbohatera, który otwiera kreator postaci. Wpis w menu z trzema kropkami zostaje.",
   "IPC.Settings.Players.Name": "Kreator postaci: gracze",
   "IPC.Settings.Players.Hint": "Tylko MG. Po wyłączeniu gracze nie mogą otwierać kreatora na swoich bohaterach (MG nadal może).",
 

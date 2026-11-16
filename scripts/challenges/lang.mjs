@@ -4,7 +4,7 @@
    Wording follows the core rulebook: Challenge Rating (CR) and Time Limit (TL); a success lowers CR, CR 0 before TL runs out = overcome. */
 export const EN = {
   "INCH.Settings.Enabled.Name": "Challenges: show HUD",
-  "INCH.Settings.Enabled.Hint": "Top-right panel listing the challenges (Challenge Rating and Time Limit) on the scene you are viewing (this client only).",
+  "INCH.Settings.Enabled.Hint": "Top-right panel listing the challenges (Challenge Rating and Time Limit) on the scene you are viewing.",
   "INCH.Settings.Scale.Name": "Challenges: scale",
   "INCH.Settings.Scale.Hint": "Size of the HUD. 1 = default.",
   "INCH.Settings.Camera.Name": "Challenges: cinematic camera (Hot Pan & Zoom)",
@@ -60,7 +60,7 @@ export const EN = {
   "INCH.Live.Appeared": "New challenge: {name}",
   "INCH.Live.Gone": "Challenge removed: {name}",
   "INCH.Settings.Visible.Name": "Challenges: visible cards",
-  "INCH.Settings.Visible.Hint": "How many challenge cards the panel lists before the rest fold into a \"+N more\" button (click it to see them all in a scrolling list). Auto shows as many as the screen height allows. This client only.",
+  "INCH.Settings.Visible.Hint": "How many challenge cards the panel lists before the rest fold into a \"+N more\" button (click it to see them all in a scrolling list). Auto shows as many as the screen height allows.",
   "INCH.Settings.Visible.auto": "Auto (fit the screen height)",
   "INCH.Settings.Compact.Name": "Challenges: compact cards",
   "INCH.Settings.Compact.Hint": "A compact card is one short row: name, progress and time, and a small thumbnail to drag from. Auto switches to them when full cards would not fit the screen height.",
@@ -90,7 +90,7 @@ export const EN = {
 
 export const PL = {
   "INCH.Settings.Enabled.Name": "Wyzwania: pokaż panel",
-  "INCH.Settings.Enabled.Hint": "Panel w prawym górnym rogu z wyzwaniami (Stopień wyzwania i Limit czasu) z oglądanej sceny (tylko na tym kliencie).",
+  "INCH.Settings.Enabled.Hint": "Panel w prawym górnym rogu z wyzwaniami (Stopień wyzwania i Limit czasu) z oglądanej sceny.",
   "INCH.Settings.Scale.Name": "Wyzwania: skala",
   "INCH.Settings.Scale.Hint": "Rozmiar panelu. 1 = domyślny.",
   "INCH.Settings.Camera.Name": "Wyzwania: kamera filmowa (Hot Pan & Zoom)",
@@ -146,7 +146,7 @@ export const PL = {
   "INCH.Live.Appeared": "Nowe wyzwanie: {name}",
   "INCH.Live.Gone": "Wyzwanie usunięte: {name}",
   "INCH.Settings.Visible.Name": "Wyzwania: widoczne karty",
-  "INCH.Settings.Visible.Hint": "Ile kart wyzwań panel wyświetla, zanim reszta zwinie się w przycisk \"+N więcej\" (kliknij, by zobaczyć wszystkie na przewijanej liście). Auto pokazuje tyle, ile pozwala wysokość ekranu. Tylko ten klient.",
+  "INCH.Settings.Visible.Hint": "Ile kart wyzwań panel wyświetla, zanim reszta zwinie się w przycisk \"+N więcej\" (kliknij, by zobaczyć wszystkie na przewijanej liście). Auto pokazuje tyle, ile pozwala wysokość ekranu.",
   "INCH.Settings.Visible.auto": "Auto (dopasuj do wysokości ekranu)",
   "INCH.Settings.Compact.Name": "Wyzwania: karty kompaktowe",
   "INCH.Settings.Compact.Hint": "Karta kompaktowa to jeden krótki wiersz: nazwa, postęp i czas oraz mała miniatura do przeciągania. Auto włącza je, gdy pełne karty nie mieszczą się na ekranie.",

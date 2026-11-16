@@ -42,34 +42,34 @@ const get = (key) => { try { return game.settings.get(MOD, key); } catch { retur
 const enabled = () => get(KEY.enabled) !== false;
 const edgesOnly = () => get(KEY.rounds) === "edges";
 
-/* ---------- settings (client scope; registered in init, as Foundry wants) ---------- */
+/* ---------- settings (GMGOVERN: the table's: world scope, the GM chooses in the table settings window; registered in init) ---------- */
 function registerSettings() {
   const has = (key) => game.settings.settings.has(`${MOD}.${key}`);
   if (!has(KEY.enabled)) game.settings.register(MOD, KEY.enabled, {
-    name: t("ICB.Settings.Enabled.Name"), hint: t("ICB.Settings.Enabled.Hint"), scope: "client", config: true, type: Boolean, default: true,
+    name: t("ICB.Settings.Enabled.Name"), hint: t("ICB.Settings.Enabled.Hint"), scope: "world", config: false, type: Boolean, default: true,
     onChange: (v) => { if (!v) Banner.clear(); }
   });
   if (!has(KEY.size)) game.settings.register(MOD, KEY.size, {
-    name: t("ICB.Settings.Size.Name"), hint: t("ICB.Settings.Size.Hint"), scope: "client", config: true, type: String, default: "normal",
+    name: t("ICB.Settings.Size.Name"), hint: t("ICB.Settings.Size.Hint"), scope: "world", config: false, type: String, default: "normal",
     choices: { small: t("ICB.Settings.Size.small"), normal: t("ICB.Settings.Size.normal"), large: t("ICB.Settings.Size.large") },
     onChange: (v) => Banner.setSize(v)
   });
   if (!has(KEY.rounds)) game.settings.register(MOD, KEY.rounds, {
-    name: t("ICB.Settings.Rounds.Name"), hint: t("ICB.Settings.Rounds.Hint"), scope: "client", config: true, type: String, default: "all",
+    name: t("ICB.Settings.Rounds.Name"), hint: t("ICB.Settings.Rounds.Hint"), scope: "world", config: false, type: String, default: "all",
     choices: { all: t("ICB.Settings.Rounds.all"), edges: t("ICB.Settings.Rounds.edges") }
   });
   // the initiative bar (bar.mjs)
   if (!has(Bar.KEY.enabled)) game.settings.register(MOD, Bar.KEY.enabled, {
-    name: t("ICB.Settings.BarEnabled.Name"), hint: t("ICB.Settings.BarEnabled.Hint"), scope: "client", config: true, type: Boolean, default: true,
+    name: t("ICB.Settings.BarEnabled.Name"), hint: t("ICB.Settings.BarEnabled.Hint"), scope: "world", config: false, type: Boolean, default: true,
     onChange: () => Bar.refresh()
   });
   if (!has(Bar.KEY.size)) game.settings.register(MOD, Bar.KEY.size, {
-    name: t("ICB.Settings.BarSize.Name"), hint: t("ICB.Settings.BarSize.Hint"), scope: "client", config: true, type: String, default: "normal",
+    name: t("ICB.Settings.BarSize.Name"), hint: t("ICB.Settings.BarSize.Hint"), scope: "world", config: false, type: String, default: "normal",
     choices: { small: t("ICB.Settings.Size.small"), normal: t("ICB.Settings.Size.normal"), large: t("ICB.Settings.Size.large") },
     onChange: (v) => Bar.setSize(v)
   });
   if (!has(Bar.KEY.res)) game.settings.register(MOD, Bar.KEY.res, {
-    name: t("ICB.Settings.BarRes.Name"), hint: t("ICB.Settings.BarRes.Hint"), scope: "client", config: true, type: String, default: "both",
+    name: t("ICB.Settings.BarRes.Name"), hint: t("ICB.Settings.BarRes.Hint"), scope: "world", config: false, type: String, default: "both",
     choices: { both: t("ICB.Settings.BarRes.both"), health: t("ICB.Settings.BarRes.health"), none: t("ICB.Settings.BarRes.none") },
     onChange: () => Bar.schedule()
   });

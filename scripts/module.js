@@ -26,8 +26,8 @@ function registerSettings() {
   game.settings.register(MODULE_ID, EXPERIMENTAL, {
     name: "Eksperymentalne: krew i pęknięcia",
     hint: "Zakrwawienie kart przy niskim Zdrowiu, pęknięcia przy niskiej Determinacji, błysk rany i krwawe logo. Domyślnie wyłączone.",
-    scope: "client",
-    config: true,
+    scope: "world",      // GMGOVERN: the table's (the GM chooses; shown in the table settings window)
+    config: false,
     type: Boolean,
     default: false,
     onChange: () => foundry.applications.instances.forEach((app) => { if (isSheet(app.element)) app.render(); })
@@ -1407,8 +1407,8 @@ function registerInlineStunts() {
   game.settings.register(MODULE_ID, INLINE_STUNTS, {
     name: "Wyczyny wybierane na karcie rzutu",
     hint: "Zamiast okna dialogowego po ataku wybierasz wyczyny bezpośrednio na karcie czatu (przyciski, licznik, Zastosuj wyczyny). Wyłączone = system działa po staremu, z oknem.",
-    scope: "client",
-    config: true,
+    scope: "world",      // GMGOVERN: the table's (the GM chooses; shown in the table settings window)
+    config: false,
     type: Boolean,
     default: true
   });

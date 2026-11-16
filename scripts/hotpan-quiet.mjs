@@ -12,8 +12,8 @@ const FLAG = Symbol.for(`${MOD}.hotpanQuiet`);
 const TITLE_FALLBACK = "Hot Pan & Zoom!";
 
 const STR = {
-  en: { name: "Hot Pan: hide notices", hint: "Hide the \"Screen is remote controlled by the gamemaster\" / \"Screen control has been released\" notices of Hot Pan & Zoom! (this client only). Other Hot Pan messages and all other notifications are not affected." },
-  pl: { name: "Hot Pan: ukryj komunikaty", hint: "Ukrywa komunikaty Hot Pan & Zoom! o przejęciu i oddaniu kontroli nad ekranem (tylko ten klient). Pozostałe komunikaty Hot Pan i wszystkie inne powiadomienia działają bez zmian." }
+  en: { name: "Hot Pan: hide notices", hint: "Hide the \"Screen is remote controlled by the gamemaster\" / \"Screen control has been released\" notices of Hot Pan & Zoom! Other Hot Pan messages and all other notifications are not affected." },
+  pl: { name: "Hot Pan: ukryj komunikaty", hint: "Ukrywa komunikaty Hot Pan & Zoom! o przejęciu i oddaniu kontroli nad ekranem. Pozostałe komunikaty Hot Pan i wszystkie inne powiadomienia działają bez zmian." }
 };
 const tr = (k) => { const l = globalThis.game?.i18n?.lang === "pl" ? "pl" : "en"; return STR[l][k]; };
 
@@ -67,7 +67,7 @@ function install() {
 function registerSettings() {
   try {
     if (game.settings.settings.has(`${MOD}.${KEY}`)) return;
-    game.settings.register(MOD, KEY, { name: tr("name"), hint: tr("hint"), scope: "client", config: true, type: Boolean, default: true });
+    game.settings.register(MOD, KEY, { name: tr("name"), hint: tr("hint"), scope: "world", config: false, type: Boolean, default: true });
   } catch (err) { console.warn(`${MOD} | hot-pan quiet setting`, err); }
 }
 

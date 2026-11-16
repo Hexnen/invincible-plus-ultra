@@ -34,30 +34,31 @@ const readView = () => ({ visible: get(KEY.visible), compact: get(KEY.compact) }
 
 /* ---------- strings: lang.mjs t() resolves them itself (no game.i18n merge needed) ---------- */
 
-/* ---------- settings (client scope; registered in init, as Foundry wants) ---------- */
+/* ---------- settings (GMGOVERN: the options are the table's: world scope, the GM chooses in the table settings window; only the seat's
+   own fold state of the panel, challengesCollapsed, stays in its browser; registered in init, as Foundry wants) ---------- */
 function registerSettings() {
   const has = (key) => game.settings.settings.has(`${MOD}.${key}`);
   if (!has(KEY.enabled)) game.settings.register(MOD, KEY.enabled, {
-    name: t("INCH.Settings.Enabled.Name"), hint: t("INCH.Settings.Enabled.Hint"), scope: "client", config: true, type: Boolean, default: true,
+    name: t("INCH.Settings.Enabled.Name"), hint: t("INCH.Settings.Enabled.Hint"), scope: "world", config: false, type: Boolean, default: true,
     onChange: () => { if (enabled()) { Drag.start(); schedule(true); } else { Drag.stop(); HUD.destroy(); } }
   });
   if (!has(KEY.scale)) game.settings.register(MOD, KEY.scale, {
-    name: t("INCH.Settings.Scale.Name"), hint: t("INCH.Settings.Scale.Hint"), scope: "client", config: true, type: Number, default: 1,
+    name: t("INCH.Settings.Scale.Name"), hint: t("INCH.Settings.Scale.Hint"), scope: "world", config: false, type: Number, default: 1,
     range: { min: 0.8, max: 1.4, step: 0.1 }, onChange: (v) => HUD.setScale(v)
   });
   // visible cards: "auto" (fit the screen height) or 1..12. The numeric keys are zero-padded on purpose: integer-like keys would be listed before "auto".
   if (!has(KEY.visible)) game.settings.register(MOD, KEY.visible, {
-    name: t("INCH.Settings.Visible.Name"), hint: t("INCH.Settings.Visible.Hint"), scope: "client", config: true, type: String, default: "auto",
+    name: t("INCH.Settings.Visible.Name"), hint: t("INCH.Settings.Visible.Hint"), scope: "world", config: false, type: String, default: "auto",
     choices: Object.fromEntries([["auto", t("INCH.Settings.Visible.auto")], ...Array.from({ length: 12 }, (_, i) => [String(i + 1).padStart(2, "0"), String(i + 1)])]),
     onChange: () => HUD.setView(readView())
   });
   if (!has(KEY.compact)) game.settings.register(MOD, KEY.compact, {
-    name: t("INCH.Settings.Compact.Name"), hint: t("INCH.Settings.Compact.Hint"), scope: "client", config: true, type: String, default: "auto",
+    name: t("INCH.Settings.Compact.Name"), hint: t("INCH.Settings.Compact.Hint"), scope: "world", config: false, type: String, default: "auto",
     choices: { off: t("INCH.Settings.Compact.off"), on: t("INCH.Settings.Compact.on"), auto: t("INCH.Settings.Compact.auto") },
     onChange: () => HUD.setView(readView())
   });
   if (!has(Camera.CAMERA_KEY)) game.settings.register(MOD, Camera.CAMERA_KEY, {
-    name: t("INCH.Settings.Camera.Name"), hint: t("INCH.Settings.Camera.Hint"), scope: "client", config: true, type: String, default: "all",
+    name: t("INCH.Settings.Camera.Name"), hint: t("INCH.Settings.Camera.Hint"), scope: "world", config: false, type: String, default: "all",
     choices: { off: t("INCH.Settings.Camera.off"), lifecycle: t("INCH.Settings.Camera.lifecycle"), all: t("INCH.Settings.Camera.all") }
   });
   if (!has(KEY.collapsed)) game.settings.register(MOD, KEY.collapsed, { scope: "client", config: false, type: Boolean, default: false });

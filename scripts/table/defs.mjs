@@ -15,8 +15,9 @@ import { TABLE as LETR, TABLE_OBJECT } from "../letters/prefs.mjs";
 export const MOD = "invincible-plus-ultra";
 export const NS = "moinen-letters";
 export const MIGRATED_KEY = "tableMigrated";      // world Number: the version of this package's migration the world has run
-/* 1 = GMALL (the GM's own client values became the table's), 2 = UNMIRROR (the engine holds the lettering table; our old copy is carried) */
-export const MIGRATION = 2;
+/* 1 = GMALL (the GM's own client values became the table's), 2 = UNMIRROR (the engine holds the lettering table; our old copy is carried),
+   3 = GMGOVERN (every remaining option of the module became the table's: GOVERNED below) */
+export const MIGRATION = 3;
 /* GMALL's own world copy of the table's engine preferences (1 .. UNMIRROR). Never written by this module any more; read once to carry it
    into the engine's table (legacyCarry), and offered to the engine's own one-time migration while that has not run (legacyNeeded). */
 export const LEGACY_KEY = "lettersTable";
@@ -97,11 +98,57 @@ export function carry(key, v) {
   return v;
 }
 
+/* ---------------------------------------------------------------- GMGOVERN (2026-11-16): the rest of the module
+   The owner's ruling covers EVERYTHING a seat shows or hears, not only the comic effects: a blind review of tag 161 found a player with
+   the dice glow off who saw no marks where the GM saw them, and a player's own font changing the face of the roll card. So every OPTION
+   of this module is the table's now: world scope, chosen by the GM in this window, read-only for the players, live on every seat.
+   GOVERNED = the options this package moved from client to world (migration 3: the GM's own earlier browser value becomes the table's,
+   where the world holds none yet and it differs from the default).
+   What a seat may still differ in is not an option of ours:
+     - its own safeguards: the system's reduced motion (every animated area reads it itself), Foundry's photosensitive mode (the comic
+       slash, the lettering engine), Foundry's performance mode (the token halo's motion), Foundry's interface volume (scales the
+       table's sound volume);
+     - SEAT_MEMORY: what the seat itself did last on its own screen (a panel it folded, a view it switched inside a window, a hint it
+       has seen). Hidden (config: false), written by the seat's own click, never offered as a choice. A check (sweep-checks/gmgovern.mjs)
+       fails when a client-scope setting appears that is not on this list, or one on it becomes a visible option. */
+export const GOVERNED = [
+  "diceFxEnabled", "diceFxStrength", "diceFxSixes", "diceFxOnes", "diceFxOnesPushOnly", "diceFxOneStyle",
+  "tokenHaloEnabled", "tokenHaloHover", "tokenHaloSelected", "tokenHaloTurn", "tokenHaloSize", "tokenHaloMotion", "tokenHaloHideBorder", "tokenHaloHideMarker",
+  "experimental",
+  "combatBannerEnabled", "combatBannerSize", "combatBannerRounds", "combatBarEnabled", "combatBarSize", "combatBarResources",
+  "turnMessage", "turnTray", "turnConfirm", "turnAskAll", "turnGm", "turnSound",
+  "tacticsHints", "tacticsSummary", "tacticsSoundVolume", "tacticsUiScale",
+  "challengesEnabled", "challengesScale", "challengesVisible", "challengesCompact", "challengesCamera",
+  "partyPips", "partySize", "partyStyle",
+  "comicFont", "captionFont", "slashCalm",
+  "baseHeaderButton", "chargenButton", "inlineStunts", "sessionAutoOpen", "hotpanQuiet", "logRevealJournals"
+];
+export const SEAT_MEMORY = {
+  challengesCollapsed: "the Challenges panel folded or open on this screen (its own handle)",
+  partyDisplay: "the party cards hidden, peeking or full on this screen (the panel's own handle cycles it)",
+  chargenRank: "the rank last picked in the character generator on this screen",
+  chargenRoll: "the roll options last used in the character generator on this screen",
+  logDensity: "the density switched inside the Log tab on this screen",
+  logShowMinor: "minor entries switched on inside the Log tab on this screen",
+  tacticsHintsSeen: "which first-fight hints this screen has already shown",
+  migratedFromSheetPlus: "bookkeeping: this browser's old values were copied from the module's earlier id"
+};
+/** GOVERNED: an old browser value as the table takes it (raw: (key) => that browser's stored value or undefined), or undefined. The
+    token halo's motion replaced an earlier boolean "tokenHaloAnimate": a GM who had switched that off keeps "off". */
+export function carryGoverned(key, raw) {
+  const v = raw(key);
+  if (key === "tokenHaloMotion" && v === undefined && raw("tokenHaloAnimate") === false) return "off";
+  return v;
+}
+
 /* ---------------------------------------------------------------- the window's rows, grouped by what they affect
+   A row with own: true takes its name, hint and choice labels from the setting's own registration (its area's strings); the others from
+   this window's IPT.Row.* strings.
    row = { id, src: "mod"|"engine"|"info"|"seat", key, type: "bool"|"pick"|"range", choices?, range?, dep?: { id, is } , wide? }
    Choices and ranges of "mod" rows come from the registered setting (main.mjs), of "engine" rows from the engine's SETTINGS. */
 const E = (k, extra = {}) => ({ id: `letters.${k}`, src: "engine", key: k, ...extra });
 const M = (id, key, extra = {}) => ({ id, src: "mod", key, ...extra });
+const O = (id, key, on = null, extra = {}) => ({ id, src: "mod", key, own: true, ...(on ? { dep: { id: on, is: true } } : {}), ...extra });
 export const TABS = [
   { id: "letters", icon: "fa-solid fa-burst", sections: [
     { id: "look", rows: [E("enabled"), E("face", { dep: { id: "letters.enabled", is: true } }), E("scale", { dep: { id: "letters.enabled", is: true } }), E("palette", { dep: { id: "letters.enabled", is: true } })] },
@@ -116,15 +163,42 @@ export const TABS = [
     { id: "crit", rows: [M("splash.fullscreen", "splashFullscreen", { dep: { id: "splash.enabled", is: true } }), M("splash.fullFrom", "splashFullFrom", { dep: { id: "splash.fullscreen", is: true } }),
       M("splash.backdrop", "splashBackdrop", { dep: { id: "splash.enabled", is: true } }), M("splash.effects", "splashEffects", { dep: { id: "splash.enabled", is: true } }), M("splash.motion", "splashMotion", { dep: { id: "splash.enabled", is: true }, choices: ["auto", "reduced"] })] },
     { id: "narrator", rows: [M("splash.dry", "splashDry"), M("splash.k0", "splashK0"), M("splash.state", "splashState")] },
+    /* GMGOVERN: the marks under the Dice So Nice dice (scripts/diceeffects/) */
+    { id: "dice", rows: [O("dice.enabled", "diceFxEnabled"), O("dice.strength", "diceFxStrength", "dice.enabled"), O("dice.sixes", "diceFxSixes", "dice.enabled"),
+      O("dice.ones", "diceFxOnes", "dice.enabled"), O("dice.onesPush", "diceFxOnesPushOnly", "dice.ones"), O("dice.oneStyle", "diceFxOneStyle", "dice.ones")] },
     { id: "diag", rows: [M("splash.debug", "splashDebug")] }
   ] },
   { id: "reactions", icon: "fa-solid fa-person-falling-burst", sections: [
     { id: "words", rows: [M("reactions.enabled", "tokenReactEnabled"), M("reactions.size", "tokenReactSize", { dep: { id: "reactions.enabled", is: true } }), M("reactions.layer", "tokenReactLayer", { dep: { id: "reactions.enabled", is: true } })] },
-    { id: "anim", panel: "tokenanim" }
+    { id: "anim", panel: "tokenanim" },
+    /* GMGOVERN: the halftone ring under a token (scripts/tokenhalo/) */
+    { id: "halo", rows: [O("halo.enabled", "tokenHaloEnabled"), O("halo.hover", "tokenHaloHover", "halo.enabled"), O("halo.selected", "tokenHaloSelected", "halo.enabled"), O("halo.turn", "tokenHaloTurn", "halo.enabled"),
+      O("halo.size", "tokenHaloSize", "halo.enabled"), O("halo.motion", "tokenHaloMotion", "halo.enabled"), O("halo.hideBorder", "tokenHaloHideBorder", "halo.enabled"), O("halo.hideMarker", "tokenHaloHideMarker", "halo.turn")] }
   ] },
   /* GORE: blood and cracks on the screen (scripts/gore/): the table's too */
   { id: "gore", icon: "fa-solid fa-droplet", sections: [
     { id: "show", rows: [M("gore.blood", "goreBlood"), M("gore.cracks", "goreCracks"), M("gore.seats", "goreSeats"), M("gore.hold", "goreHold")] }
+  ] },
+  /* GMGOVERN: the fight's own surfaces (scripts/combat/, scripts/turn/, scripts/tactics/) */
+  { id: "combat", icon: "fa-solid fa-hand-fist", sections: [
+    { id: "banner", rows: [O("combat.banner", "combatBannerEnabled"), O("combat.bannerSize", "combatBannerSize", "combat.banner"), O("combat.bannerRounds", "combatBannerRounds", "combat.banner")] },
+    { id: "bar", rows: [O("combat.bar", "combatBarEnabled"), O("combat.barSize", "combatBarSize", "combat.bar"), O("combat.barRes", "combatBarResources", "combat.bar")] },
+    { id: "turn", rows: [O("combat.turnMessage", "turnMessage"), O("combat.turnSound", "turnSound", "combat.turnMessage"), O("combat.turnTray", "turnTray"), O("combat.turnConfirm", "turnConfirm"),
+      O("combat.turnAskAll", "turnAskAll"), O("combat.turnGm", "turnGm"), O("combat.turnPlayersEnd", "turnPlayersEnd")] },
+    { id: "tactics", rows: [O("combat.hints", "tacticsHints"), O("combat.summary", "tacticsSummary"), O("combat.volume", "tacticsSoundVolume"), O("combat.uiScale", "tacticsUiScale")] }
+  ] },
+  /* GMGOVERN: the panels at the screen's edges (scripts/challenges/, scripts/party/) */
+  { id: "panels", icon: "fa-solid fa-table-columns", sections: [
+    { id: "challenges", rows: [O("panels.challenges", "challengesEnabled"), O("panels.challengesScale", "challengesScale", "panels.challenges"), O("panels.challengesVisible", "challengesVisible", "panels.challenges"),
+      O("panels.challengesCompact", "challengesCompact", "panels.challenges"), O("panels.challengesCamera", "challengesCamera")] },
+    { id: "party", rows: [O("panels.partySize", "partySize"), O("panels.partyStyle", "partyStyle"), O("panels.partyPips", "partyPips")] }
+  ] },
+  /* GMGOVERN: typefaces, sheets, chat and the rest (scripts/fontoption.mjs, base/, chargen/, module.js, slash/, session/, hotpan-quiet.mjs, log/) */
+  { id: "interface", icon: "fa-solid fa-font", sections: [
+    { id: "fonts", rows: [O("interface.comicFont", "comicFont"), O("interface.captionFont", "captionFont")] },
+    { id: "sheets", rows: [O("interface.headerButton", "baseHeaderButton"), O("interface.chargenButton", "chargenButton"), M("interface.inlineStunts", "inlineStunts"), M("interface.sheetBlood", "experimental")] },
+    { id: "scene", rows: [O("interface.slashCalm", "slashCalm"), O("interface.hotpanQuiet", "hotpanQuiet")] },
+    { id: "session", rows: [O("interface.sessionAutoOpen", "sessionAutoOpen"), O("interface.logRevealJournals", "logRevealJournals")] }
   ] },
   { id: "lang", icon: "fa-solid fa-language", sections: [
     { id: "words", rows: [M("lang.splash", "splashLang"), M("lang.reactions", "tokenReactLang")] }

@@ -21,7 +21,7 @@ export const EN = {
   "IPS.Settings.Default.right": "From the right",
   "IPS.Settings.Default.random": "Random side",
   "IPS.Settings.Calm.Name": "Comic slash: plain fade only",
-  "IPS.Settings.Calm.Hint": "Replace the comic slash with a quick plain fade on this client. Always on when your system asks for reduced motion."
+  "IPS.Settings.Calm.Hint": "Replace the comic slash with a quick plain fade for the whole table. Always on when your system asks for reduced motion."
 };
 
 export const PL = {
@@ -45,7 +45,7 @@ export const PL = {
   "IPS.Settings.Default.right": "Z prawej",
   "IPS.Settings.Default.random": "Losowa strona",
   "IPS.Settings.Calm.Name": "Komiksowe cięcie: tylko zwykłe wygaszenie",
-  "IPS.Settings.Calm.Hint": "Zastępuje komiksowe cięcie szybkim, zwykłym przenikaniem na tym kliencie. Zawsze włączone, gdy system prosi o ograniczenie ruchu."
+  "IPS.Settings.Calm.Hint": "Zastępuje komiksowe cięcie szybkim, zwykłym przenikaniem dla całego stołu. Zawsze włączone, gdy system prosi o ograniczenie ruchu."
 };
 
 /* Local resolver. Language: game.i18n.lang, PL on top of EN. A missing key shows the key (never throws). */

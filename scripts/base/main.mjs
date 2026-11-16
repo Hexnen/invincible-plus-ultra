@@ -18,7 +18,7 @@ function registerSettings() {
   const has = (key) => game.settings.settings.has(`${MOD}.${key}`);
   if (!has("baseHeaderButton")) {
     game.settings.register(MOD, "baseHeaderButton", {
-      name: t("IPB.Settings.HeaderButton.Name"), hint: t("IPB.Settings.HeaderButton.Hint"), scope: "client", config: true, type: Boolean, default: true, onChange: () => Entry.syncAll()
+      name: t("IPB.Settings.HeaderButton.Name"), hint: t("IPB.Settings.HeaderButton.Hint"), scope: "world", config: false, type: Boolean, default: true, onChange: () => Entry.syncAll()
     });
   }
   if (!has(S.SETTING_PLAYERS_CREATE)) {

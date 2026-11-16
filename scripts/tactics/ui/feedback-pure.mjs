@@ -237,3 +237,13 @@ export function hintsUsed(shown, data, own = {}) {
   if (shown === "push") return hintOf(data, [], (k) => k)?.id === "push" ? [] : ["push"];
   return [];
 }
+
+/* GMGOVERN: how loud the two sounds of a fight are is the table's choice (world setting tacticsSoundVolume, 0 = off). What a seat still
+   decides is its own machine's loudness: Foundry's own interface volume (core.globalInterfaceVolume, default 0.5) scales the table's
+   value, so a seat that turned Foundry's interface sounds down or off hears these the same way. At Foundry's default a seat plays the
+   table's value exactly. */
+export function seatVolume(table, iface) {
+  const c = (x) => Math.max(0, Math.min(1, x));
+  const t = c(Number(table) || 0), i = Number(iface);
+  return c(t * (Number.isFinite(i) ? c(i) : 0.5) / 0.5);
+}
