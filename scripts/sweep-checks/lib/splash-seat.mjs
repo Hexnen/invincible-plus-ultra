@@ -94,10 +94,11 @@ function planOf(text, op) {
 /* CAPSTAR: cut = an engine with the impact's cut-in (1.9.23 limits, stepOf): the stage then keeps its blocks off the star's cut-in (no `play`:
    nothing else of the impact runs here) */
 const STEP_AT = [0.35, 0.6, 0.85, 1.35, 1.7];
-const cutImpact = () => ({ limits: { cutMax: 0.44, maxTicks: 24 }, stepOf: (m) => STEP_AT.filter((b) => m >= b).length });
+/* SAKUGATOKEN: cut = "fig" = an engine that draws its figures at their tokens' own size and says so (1.9.27 LIMITS.figScale = 1) */
+const cutImpact = (cut) => ({ limits: { cutMax: 0.44, maxTicks: 24, ...(cut === "fig" ? { figScale: 1 } : {}) }, stepOf: (m) => STEP_AT.filter((b) => m >= b).length });
 function fakeEngine(k = 1, cut = false) {
   const calls = []; let i = 0;
-  return { calls, prefs: { enabled: true, scale: k }, ...(cut ? { impact: cutImpact() } : {}),
+  return { calls, prefs: { enabled: true, scale: k }, ...(cut ? { impact: cutImpact(cut) } : {}),
     planFor: (text, op) => ({ plan: planOf(text, op), opts: op }),
     measure: (text, op) => { const key = keyOf(text, op) + (op.space ?? ""); if (!measCache.has(key)) measCache.set(key, REAL.measure(text, clean(op))); return measCache.get(key); },
     design: (text, op) => ({ sizeK: planOf(text, op).sizeK }),
@@ -170,7 +171,7 @@ export async function seatPlay(o) {
     const corner = (q) => ({ x: q.label.x - 0.4 * GS, y: q.label.y - 0.3 * GS });
     const zapi = { zones: () => ({ zones: b.badges }), look: () => ({ numbers: "always", place: o.badgePlace ?? "center", who: o.badgeWho ?? "all" }), geometry: { cornerPoint: corner } };
     globalThis.game = { user: { isGM: gm }, modules: { get: (id) => (id === "moinen-maps" && (b.badges.length || o.parked) ? { active: true, api: { ...(b.badges.length ? { zones: zapi } : {}), ...(o.parked ? { directorStage: { status: () => ({ home: { x: center.x, y: center.y, scale: zoom }, parked: o.parked }) } } : {}) } } : null) } };
-    const L = fakeEngine(k, !!o.cut); Stage.setLetters(L); Stage.setLayer(o.layer ?? "screen");
+    const L = fakeEngine(k, o.cut === "fig" ? "fig" : !!o.cut); Stage.setLetters(L); Stage.setLayer(o.layer ?? "screen");
     const tag = o.seedTag ?? `${o.bd ?? "empty"}-${o.outcome}`;
     /* SPLASHSEAT: o.told = { user id: report } (seatTell): the table's lists for this roll, as main.mjs would have heard them */
     const shareId = o.told ? "SH-" + runN : null;
@@ -190,7 +191,7 @@ export async function seatPlay(o) {
       return { role: c.o.seed.split(":").pop(), text: c.text, world, layer: c.o.layer ?? (world ? "world" : "screen"), S: Math.round(Sz * px * 10) / 10, x: at.x, y: at.y, w, h,
         l: at.x - w / 2, t: at.y - h / 2, r: at.x + w / 2, b: at.y + h / 2, size: c.o.size, at: c.o.at, startAt: c.o.startAt, reduced: !!c.o.reduced };
     });
-    const res = { star: ctl?.star ? { id: ctl.star.tok.id, step: ctl.star.step } : null, seat: s.name, W, H, zoom, layer: o.layer ?? "screen", outcome: o.outcome, bd: o.bd ?? "empty", drawn, rule: ctl?.seatRule ?? null, same: Stage.sameLog().at(-1) ?? null,
+    const res = { star: ctl?.star ? { id: ctl.star.tok.id, step: ctl.star.step, fig: ctl.star.fig ?? null } : null, seat: s.name, W, H, zoom, layer: o.layer ?? "screen", outcome: o.outcome, bd: o.bd ?? "empty", drawn, rule: ctl?.seatRule ?? null, same: Stage.sameLog().at(-1) ?? null,
       hero: box(b.hero), target: box(b.target), others: b.tokens.filter((x) => !/^(HERO|TARGET|HID)/.test(x.id)).map(box), hidden: b.tokens.filter((x) => /^HID/.test(x.id)).map(box),
       /* SPLASHCLEAR: the zone badges as moinen-maps draws them (radius min(19, max(8, 0.8 r zoom)) CSS px, a shaped badge up to 1.2 of that) */
       badges: b.badges.map((q) => { const c = toClient(o.badgePlace === "corner" ? corner(q) : q.label), rr = Math.min(19, Math.max(8, 0.8 * q.label.r * zoom)) * 1.2; return { l: c.x - rr, t: c.y - rr, r: c.x + rr, b: c.y + rr }; }),

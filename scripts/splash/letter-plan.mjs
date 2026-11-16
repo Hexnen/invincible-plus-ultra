@@ -662,12 +662,19 @@ export const PART_W = 1e4;
    Mirrored from the engine (scripts/letters/impact/draw.mjs CUT_WANT, plan.mjs LIMITS.cutMax / CU_TOP; pinned by sweep-checks/capstar.mjs);
    the running engine's LIMITS.cutMax wins when it gives one. `reach` = the extra the contact's pop and the drift along the blow add (the pop
    multiplies by up to 1 + 0.45 (z - 1) inside the cap, the drift moves the star up to 0.22 of its size on the release while it shrinks back). */
-export const CUT = Object.freeze({ want: 0.34, max: 0.44, min: 1.3, top: Object.freeze([0.5, 0.6, 0.8, 1, 1, 1]), reach: 1.12 });
+/* SAKUGATOKEN (engine 1.9.27, the owner: what belongs to a token stays on the token and its close surroundings, the token does not get
+   bigger): the engine draws every figure at its token's own size (LIMITS.figScale = 1, mirrored as CUT.fig, pinned by capstar C1). With an
+   engine that tells its figScale the star's box is the token's own box x that scale (no pop, no drift): the lettering still frames the
+   struck figure at STAR_W, and the room the enlarged copy took is the board's again. want / min / reach are the 1.9.23-1.9.26 cut-in's
+   numbers, kept for a page whose running engine is one of those (it tells no figScale). */
+export const CUT = Object.freeze({ want: 0.34, max: 0.44, min: 1.3, top: Object.freeze([0.5, 0.6, 0.8, 1, 1, 1]), reach: 1.12, fig: 1 });
 export const STAR_W = 100;
 /* the star's cut-in box: c = its centre, size = its token's drawn size (the larger side), u = the view's short side (all in one unit),
-   step = the impact's strength 0..5 (the engine's stepOf), max = the engine's LIMITS.cutMax when known -> { l, t, r, b, x, y } */
-export function starBox(c, size, u, step, max = CUT.max) {
+   step = the impact's strength 0..5 (the engine's stepOf), max = the engine's LIMITS.cutMax when known, fig = the engine's LIMITS.figScale
+   when it tells one (1.9.27+: the box is then the token's own x fig, whatever the strength) -> { l, t, r, b, x, y } */
+export function starBox(c, size, u, step, max = CUT.max, fig = null) {
   if (!c || !(size > 0) || !(u > 0)) return null;
+  if (Number.isFinite(fig) && fig > 0) { const h = size * fig / 2; return { x: c.x, y: c.y, l: c.x - h, t: c.y - h, r: c.x + h, b: c.y + h }; }   // SAKUGATOKEN: the figure at its token's size
   const top = CUT.top[Math.max(0, Math.min(5, Math.round(Number(step) || 0)))] ?? 1, cap = max * u;
   let s = 1;
   if (size < cap) s = 1 + (Math.min(cap / size, Math.max(CUT.want * u / size, CUT.min)) - 1) * top;
