@@ -618,11 +618,12 @@ export function starOf(ev, ctl) {
     }
     if (!tok) return null;
     const step = typeof I.stepOf === 'function' ? I.stepOf(q.magnitude) : (q.magnitude >= 0.85 ? 3 : 1);
-    return { tok, step, max };
+    const fig = Number(I?.limits?.figScale);   // SAKUGATOKEN: an engine that draws its figures at their tokens' size says so
+    return { tok, step, max, fig: Number.isFinite(fig) && fig > 0 ? fig : null };
   } catch (e) { return null; }
 }
 /* the star's cut-in box: c = its centre, size = its drawn size, u = the view's short side (one unit); weighed STAR_W, marked star */
-const starAvoid = (st, c, size, u) => { const b = st && c ? LP.starBox(c, size, u, st.step, st.max) : null; return b ? { ...b, w: LP.STAR_W, star: true } : null; };
+const starAvoid = (st, c, size, u) => { const b = st && c ? LP.starBox(c, size, u, st.step, st.max, st.fig) : null; return b ? { ...b, w: LP.STAR_W, star: true } : null; };
 function sharedScreenAvoid(hero, full, targets = [], star = null, cv = null) {
   const out = [];
   const C = globalThis.canvas, gs = C?.dimensions?.size ?? C?.grid?.size ?? 100;
