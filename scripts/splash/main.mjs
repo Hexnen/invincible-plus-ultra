@@ -523,12 +523,14 @@ function stageOpts(message, ev, resolve) {
    entrance, its impact frame cut or lost): the moment is laid out ahead, from what this seat will have at its instant (Stage.prepare keeps
    the measuring and the layout by their input; play() then only takes them). `when`: 'idle' while the dice roll (an idle slot of the page),
    'now' once the table's instant is known. -> nothing; dbg says what it cost */
-function prepareAhead(message, rd, when = 'now') {
+function prepareAhead(message, rd, when = 'now', at = null) {
   const run = () => {
     try {
       if (!game.messages.has(message.id) || document.visibilityState === 'hidden' || !visibleToMe(message)) return;
       const ev = eventFor(message, readRoll(message) ?? rd);
-      const ms = Stage.prepare(ev, stageOpts(message, ev, ev.stress ? resolveReader(message, ev) : null), when === 'idle');
+      /* ROLLSTALL: with the moment's instant (at, this page's clock) the stage also asks the engine for the impact now, ahead of its word */
+      const so = stageOpts(message, ev, ev.stress ? resolveReader(message, ev) : null);
+      const ms = Stage.prepare(ev, Number.isFinite(at) ? { ...so, at } : so, when === 'idle');
       dbg('ułożone zawczasu (' + when + '):', ms == null ? '-' : Math.round(ms) + ' ms');
     } catch (e) { /* the moment lays itself out at its instant, as before */ }
   };
@@ -587,7 +589,9 @@ hook('createChatMessage', async (message, options, userId) => {
        instant on every seat), and the moment starts as they go (beat.at already holds the fade when any seat letters on the map) */
     /* CALLERS2 (manual 6a): a seat that reloaded a moment ago may hold a clock ~280 ms off; it waits for a good one (pinging) before it puts
        the moment's instants on its page clock, at most until the moment is near */
-    prepareAhead(message, rd);   // CRITLATE: again with the final inputs (kept: nothing new is laid out unless something changed)
+    /* CRITLATE: again with the final inputs (kept: nothing new is laid out unless something changed).
+       ROLLSTALL: and with the instant, once this page's clock is good (a clock still settling would put the impact on another instant) */
+    prepareAhead(message, rd, 'now', Clock.good() ? Clock.toPage(at) : null);
     if (!Clock.good()) await Clock.settle(Math.max(0, Math.min(at, beat.base) - Clock.serverNow() - 40));
     if (Stage.lettersOn() && Stage.onMapLayer()) { await Clock.sleepUntil(Math.min(at, beat.base)); Stage.hurryDice(); }
     else if (beat.late) Stage.hurryDice();
