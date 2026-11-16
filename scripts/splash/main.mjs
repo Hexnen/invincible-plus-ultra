@@ -8,6 +8,7 @@ import { readRoll, classify, heroSpeaker, publicResolve } from './reader.mjs';
 import * as S from './splash.mjs';
 import * as Stage from './stage.mjs';
 import * as Beat from './beat.mjs';
+import * as Share from './seat-share.mjs';   // SPLASHSEAT: what stands on every seat's screen, told round the table
 import * as IP from './impact-plan.mjs';
 import { EN, PL } from './lang.mjs';
 import { registerMigrationSettings, migrateSettings } from './migrate.mjs';
@@ -22,6 +23,8 @@ const SYSTEM = 'invincible';
 const LOG = `${MOD} (splash) |`;
 const CHANNEL = `module.${MOD}`;
 const BEAT_K = 'insbeat';
+const SHARE_K = 'insseat';   // SPLASHSEAT: a seat's list of what stands on its screen, for one roll
+export const SHARE_WAIT_MS = 350;   // the layout made while the dice roll waits this long at most for the other seats' lists
 const shown = new Set();           // id wiadomości, dla których splash już poszedł (ten klient)
 const stressShown = new Set();
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -142,7 +145,7 @@ function onReady() {
   window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => Stage.refreshArea(), 120); });
   Hooks.on('collapseSidebar', () => { setTimeout(() => Stage.refreshArea(), 60); setTimeout(() => Stage.refreshArea(), 500); });
   /* FXLD2 (ADVD2 8): each seat says when its dice stopped (beat.mjs); the module's own socket channel, a message kind of its own */
-  try { game.socket?.on?.(CHANNEL, (msg) => { if (msg?.k === BEAT_K && typeof msg.id === 'string' && typeof msg.u === 'string') Beat.note(msg.id, msg.u, Number(msg.at), Number(msg.x) || 0, msg.p2 === true); }); } catch (e) { /* no socket: each seat starts on its own dice */ }
+  try { game.socket?.on?.(CHANNEL, (msg) => { if (msg?.k === BEAT_K && typeof msg.id === 'string' && typeof msg.u === 'string') Beat.note(msg.id, msg.u, Number(msg.at), Number(msg.x) || 0, msg.p2 === true); else if (msg?.k === SHARE_K) Share.note(msg.id, msg.u, msg.r); }); } catch (e) { /* no socket: each seat starts on its own dice */ }
   Clock.start();   // SYNC: the table's clock (the first pings now, so the first roll already has it)
   const api = { preview, resetState, clear: Stage.clearAll, impacts: Stage.impactLog };
   const mod = game.modules.get(MOD);
@@ -426,6 +429,7 @@ const settledAt = new Map();
 function settled(message) {
   let p = settledAt.get(message.id);
   if (!p) {
+    shareSeat(message);   // SPLASHSEAT: its list first
     p = (document.visibilityState === 'hidden' ? Promise.resolve() : waitDice(message)).then(() => {   // SYNC: a background tab reports at once
       const at = serverNow(), plays = playsHere(message), x = plays ? diceExtra() : 0, p2 = plays && phaseTwo(message);
       Beat.note(message.id, game.user.id, at, x, p2);
@@ -436,6 +440,20 @@ function settled(message) {
     if (settledAt.size > 200) settledAt.delete(settledAt.keys().next().value);
   }
   return p;
+}
+/* SPLASHSEAT: this seat tells the table what stands on its screen as the roll arrives (stage.mjs seatReport: its panels, its open windows,
+   its chat pop-up column), once per roll; a seat that will show nothing (the splash off, another's roll it does not show, a hidden tab,
+   words not lettered) says so, and nobody keeps anything off its screen. Sent BEFORE this seat's dice report (by settled(), as its first
+   step): a seat that has every dice report has every list */
+function shareSeat(message) {
+  try {
+    const id = message.id, me = game.user.id;
+    if (Share.has(id, me)) return;
+    const shows = playsHere(message) && document.visibilityState !== 'hidden' && Stage.lettersOn();
+    const r = shows ? Stage.seatReport() : { v: Share.VERSION, none: true };
+    if (!Share.note(id, me, r)) return;
+    game.socket?.emit?.(CHANNEL, { k: SHARE_K, id, u: me, r: Share.heard(id).get(me) });
+  } catch (e) { /* without the list this seat keeps the block off its own panels, as before */ }
 }
 /* every seat reports, also one with the splash off (the others would wait for it in vain) */
 hook('createChatMessage', (message) => {
@@ -561,7 +579,10 @@ hook('createChatMessage', async (message, options, userId) => {
     Stage.tellMoment({ phase: 'start', id });
     let handed = false;
     try {
-    prepareAhead(message, rd, 'idle');   // CRITLATE: laid out while the dice roll
+    /* SPLASHSEAT: ... once the other seats' lists are in (they come within a socket round trip; the dice roll ~3 s), so the layout made
+       ahead is made from the table's whole list and is the one played */
+    shareSeat(message);
+    Share.wait(id, seatsFor(message), SHARE_WAIT_MS, { sleep, now: () => performance.now() }).then(() => prepareAhead(message, rd, 'idle'), () => prepareAhead(message, rd, 'idle'));   // CRITLATE: laid out while the dice roll
 
     const tw = performance.now();
     /* SYNC (ADVX 5): the bound every seat knows is the roll's server stamp + Beat.WINDOW; a seat whose dice still roll then does not hold
@@ -629,7 +650,7 @@ hook('updateChatMessage', async (message, changes, options, userId) => {
     const ev = { stress: rd.stress, stressPending: false, pushed: true, rb: Number.isFinite(f.rb) ? f.rb : null, rmax: Number.isFinite(f.rmax) ? f.rmax : null };
     const resolve = resolveReader(message, ev);
     announce({ ...ev, stressOnly: true }, message, resolve);
-    Stage.playStress(ev, { token: Stage.onMapLayer() && Stage.lettersOn() ? boardToken(message) : resolveToken(message), scale: scaleK(), hold: holdK(), backdrop: cs('backdrop'), resolve, seed: message.id });
+    Stage.playStress(ev, { token: Stage.onMapLayer() && Stage.lettersOn() ? boardToken(message) : resolveToken(message), scale: scaleK(), hold: holdK(), backdrop: cs('backdrop'), shareId: message.id, resolve, seed: message.id });   // SPLASHSEAT (shareId): the roll's list
   } catch (e) { console.warn(`${LOG} updateChatMessage failed`, e); }
 });
 
