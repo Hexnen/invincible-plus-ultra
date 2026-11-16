@@ -47,7 +47,8 @@ function fakeDom(W, H, ui = {}) {
     "#sidebar": R(W - side, 0, side, H),
     "#hotbar": R(W * 0.3, H - 66, 560, 58),
     "#scene-controls": R(16, 16, 72, H - 260),
-    ...(ui.nav ? { "#scene-navigation li": R(104, 16, 170, ui.nav) } : {}),
+    /* (SPLASHSEAT: ui.ghosts = rows of the scene list that are in the page but not drawn, as the GM's folded list has them live) */
+    ...(ui.nav ? { "#scene-navigation li": ui.ghosts ? [R(104, 16, 170, ui.nav), ...Array.from({ length: ui.ghosts }, (_, i) => ({ ...R(104, 144 + i * 40, 170, 32), hidden: true }))] : R(104, 16, 170, ui.nav) } : {}),
     ...(ui.vram ? { ".mm-vram": R(96, 92, 264, 52) } : {}),
     ...(ui.dock ? { "#ich-dock": R(W - side - 312, 48, 310, 233) } : {}),
     ...(ui.party ? { "#invincible-party li": [R(96, H - 400, 230, 70), R(96, H - 325, 230, 70)] } : {}),
@@ -60,7 +61,7 @@ function fakeDom(W, H, ui = {}) {
   };
   const els = {};
   /* SPLASHCLEAR: a panel remembers whether it ever stepped back (ins-yield) during the moment (the stage takes the class off at its end) */
-  const el = (sel, r, i) => (els[sel + i] ??= { sel, className: "", yielded: false, getBoundingClientRect: () => r,
+  const el = (sel, r, i) => (els[sel + i] ??= { sel, className: "", yielded: false, getBoundingClientRect: () => r, checkVisibility: () => !r.hidden,
     get classList() { const c = cls(this), self = this; return { ...c, add: (...x) => { if (x.includes("ins-yield")) self.yielded = true; c.add(...x); } }; } });
   const doc = { all, body: mk("body"), createElement: mk, createTextNode: (t) => ({ textContent: t }), createElementNS: (_, t) => mk(t), els, rects,
     getElementById: (id) => (id === "sidebar" ? { getBoundingClientRect: () => rects["#sidebar"], offsetWidth: side } : null),

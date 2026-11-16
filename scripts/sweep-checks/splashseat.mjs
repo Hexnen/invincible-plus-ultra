@@ -15,6 +15,7 @@
 //   S4 a window open on the player's seat only (a sheet beside the roller) moves the block on BOTH seats: the same picture, off the window;
 //   S5 a player with a smaller window: each seat's block is off its own boxes (told boxes are set round each window's middle);
 //   S6 without the exchange (a preview, a seat alone) a seat places as before: nothing told, its own panels kept off;
+//   S7 rows of a folded list that are in the page but not drawn are no panels (told or alone);
 //   W  main.mjs: the list is sent before the dice report, the layout made ahead waits for the lists, the late stress line uses the roll's.
 // Fails on tactics-integrated-161 (no exchange: S1 differs in 10 of 28); passes after.
 import { readFileSync } from "node:fs";
@@ -126,6 +127,17 @@ else {
       const a = await seatPlay({ seat: gm, bd, outcome, told: toldS }), b = await seatPlay({ seat: small, bd, outcome, told: toldS });
       if (!least(a)) ok(near(a, boxes(toldS.GM), 0) === 0, `S5 ${bd}/${outcome}: the GM's block on its own box (${a.same?.moved})`);
       if (!least(b)) ok(near(b, boxes(toldS.P1), 0) === 0, `S5 ${bd}/${outcome}: the small window's block on its own box (${b.same?.moved})`);
+    }
+  }
+
+  /* S7: rows that are in the page but not drawn are no panels (live: the GM's folded scene list, twelve hidden rows down his left side) */
+  {
+    const ghost = { ...gm, ui: { ...UI_GM, ghosts: 12 } };
+    const tg = await seatTell(ghost);
+    ok(JSON.stringify(tg.o) === JSON.stringify(told.GM.o), `S7a a row that is not drawn is not told (${tg.o.length} boxes against ${told.GM.o.length})`);
+    for (const outcome of ["strong", "critical"]) {
+      const a = await seatPlay({ seat: ghost, bd: "warehouse", outcome }), b = await seatPlay({ seat: gm, bd: "warehouse", outcome });
+      ok(JSON.stringify(a.drawn.map(key)) === JSON.stringify(b.drawn.map(key)), `S7b ${outcome}: a seat alone is moved by rows that are not drawn`);
     }
   }
 

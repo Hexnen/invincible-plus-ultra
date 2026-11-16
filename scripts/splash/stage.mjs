@@ -432,6 +432,10 @@ export function sharedFrame(hero, targets = [], star = null) {
   return { vh, freeW: vh * 16 / 9, safe, wide, token, avoid, gap: Math.round(0.12 * gs), focus: { x: token.x, y: token.y }, zoom };
 }
 /* the bars and panels that are not at an edge: the party cards, the map's VRAM meter and pins panel, the GM's desk, the tactics dock */
+/* SPLASHSEAT (live, the GM's seat: twelve rows of his scene list that are not drawn, visibility hidden with their folded menu, were kept
+   off as panels: 33 "own" boxes, the left third of his view, so his block went another way than a player's): only what is really shown
+   counts as a panel */
+const seenEl = (e) => { try { return typeof e.checkVisibility === 'function' ? e.checkVisibility({ visibilityProperty: true }) : true; } catch (x) { return true; } };
 export const UI_AVOID = ['#invincible-party li', '.mm-vram', '#mm-filter', '#invincible-tactics-desk:not(.igd-collapsed) .igd', '#ich-dock'];
 function uiAvoid() {
   const out = [];
@@ -439,7 +443,7 @@ function uiAvoid() {
     try {
       for (const e of document.querySelectorAll(sel)) {
         const q = e.getBoundingClientRect();
-        if (q && q.width > 0 && q.height > 0) out.push({ l: q.left - 6, t: q.top - 6, r: q.right + 6, b: q.bottom + 6, w: UI_WEIGHT });
+        if (q && q.width > 0 && q.height > 0 && seenEl(e)) out.push({ l: q.left - 6, t: q.top - 6, r: q.right + 6, b: q.bottom + 6, w: UI_WEIGHT });
       }
     } catch (e) { /* a selector this Foundry does not know */ }
   }
@@ -687,7 +691,7 @@ function seatWide(lay) {
 export const UI_WINDOWS = ['#invincible-tactics-desk:not(.igd-collapsed) .igd'];
 function boxesOf(sels, pad = 6) {
   const out = [];
-  for (const sel of sels) { try { for (const e of document.querySelectorAll(sel)) { const q = e.getBoundingClientRect(); if (q && q.width > 0 && q.height > 0) out.push({ l: q.left - pad, t: q.top - pad, r: q.right + pad, b: q.bottom + pad }); } } catch (e) { /* none */ } }
+  for (const sel of sels) { try { for (const e of document.querySelectorAll(sel)) { const q = e.getBoundingClientRect(); if (q && q.width > 0 && q.height > 0 && seenEl(e)) out.push({ l: q.left - pad, t: q.top - pad, r: q.right + pad, b: q.bottom + pad }); } } catch (e) { /* none */ } }
   return out;
 }
 /* this seat's band: its window minus the SAME reserve every seat keeps and minus its own core bars where those are wider (client px) */
@@ -899,8 +903,21 @@ function compose(ctl, items, extra = {}) {
        anything, a place clean of the boxes themselves (on a seat whose roller stands off his cell's middle its edge may then reach up to
        SHARE_REACH into a panel's edge: less than lying on it whole, which the least-covering search chose in the node harness) */
     if (loc.told && worst(c1.moved)) {
-      const c2 = seatPlaceKept(T1, { hero: cs.hero, safe: cs.safe, wide: null, avoid: cs.avoid.filter((q) => !q.rim), own: loc.own, gap: frame.gap });
+      const noRim = cs.avoid.filter((q) => !q.rim);
+      const c2 = seatPlaceKept(T1, { hero: cs.hero, safe: cs.safe, wide: null, avoid: noRim, own: loc.own, gap: frame.gap });
       if (!worst(c2.moved)) c1 = c2;
+      else {
+        /* ... and where nothing is clean of the boxes either: the least covering of three, weighed ONE way (every part's box against the
+           tokens, pins, stars and the told boxes; the roller as a star): this block, the one found without the rims, and the one the
+           canonical seat finds without the table's list at all (live, a critical on a crowded view: the search weighed with the list
+           ended on the star's cut-in, 611 000, where the search without it stood in a corner on one panel, 1 500 + the panel) */
+        const c0 = seatPlaceKept(T1, { hero: cs.hero, safe: cs.safe, wide: null, avoid: cs.avoid.filter((q) => !q.at), own: [], gap: frame.gap });
+        const onHero = (q) => Math.max(0, Math.min(q.r, cs.hero.r) - Math.max(q.l, cs.hero.l)) * Math.max(0, Math.min(q.b, cs.hero.b) - Math.max(q.t, cs.hero.t)) * LP.TOKEN_W;
+        const cost = (c) => partBoxes(c).reduce((sum, q) => sum + LP.blockHits(q, noRim) + onHero(q), 0);
+        let best = c1, bc = cost(c1);
+        for (const c of [c2, c0]) { const v = cost(c); if (v < bc - 0.5) { best = c; bc = v; } }
+        c1 = best;
+      }
     }
     /* SPLASHBLOCK 1: else the block the canonical seat places (c1); SPLASHBLOCK 2: shown here as it is, or moved in one piece (never searched again from where the canonical seat left it: two
        searches one after the other carried a block from over the roller to beside him) */
