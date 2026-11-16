@@ -611,7 +611,7 @@ async function land(ids, ready) {
        changes no other seat's picture) */
     const staff = !!game.user?.isGM, badges = view.badges();
     const fixed = view.ok() ? [...tokenRects(new Set()).map((r) => ({ ...r, kind: "tok" })), ...pins.shared.map((r) => ({ ...r, kind: "pin" })), ...badges.shared.map((r) => ({ ...r, kind: "pin" })),
-      ...view.blocks().map((r) => ({ ...r, kind: "panel" })), ...view.zones().map((r) => ({ ...r, kind: "panel" }))] : [];
+      ...view.blocks().map((r) => ({ ...r, kind: "panel", map: true })), ...view.zones().map((r) => ({ ...r, kind: "panel" }))] : [];
     const gmOnly = staff && view.ok() ? [...hiddenRects(), ...pins.local.map((r) => ({ ...r, kind: "pin" })), ...badges.local.map((r) => ({ ...r, kind: "pin" }))] : [];
     const ownPanels = view.ok() ? view.ownPanels().map((r) => ({ ...r, kind: "panel" })) : [];
     /* the crowd members whose numbers fold into their crowd's tag (decided on shared data: the same on every seat) */
@@ -717,29 +717,76 @@ function cleanPlace(it, fit, o, kf, ctx) {
   const sweep = reach ? base.filter((q) => q.kind === "tok") : null;
   const minK = Math.min(1, Lay.CLEAN.minCap / cap);
   const ks = Number.isFinite(kf) ? [kf, ...Lay.CLEAN.ks.filter((k) => k < kf - 1e-6)] : Lay.CLEAN.ks;
+  /* a crowd's word may stand by one of its members (layout crowdSpot); its place is then kept as an offset from the crowd's box slot */
+  const member = !!it.inCluster && it.mode === "number";      // a crowd member's number stays right by its token (else it folds)
+  const mem = it.cluster ? it.members.filter((m) => m.tok && !m.tok.destroyed).map((m) => ({ ...view.tokRect(m.tok), id: m.tok.id })) : [];
+  /* REACTPLACE: a place is clean only when it is tied to its token (layout tie: near it, and nearer to it than to any other token); a
+     token off the view letters at the view's edge (no tie can hold) */
+  const tMax = it.cluster ? Lay.TETHER.crowdMax : Lay.TETHER.max;
+  /* (a crowd member's number is held right by its token already: CLEAN.numOuts; between two members it is still that member's) */
+  const tieOf = (t, an, sv, sf) => (!member && an.length && P.onView(t, sv) && P.onView(t, sf) ? { anchors: an, max: tMax } : null);
+  const anchors = it.cluster ? mem : [{ ...tr, id: it.tok.id }];
   const at = (slot, k, sf, panels, obs, c0 = null, sv = std) => {
     const box = { w: g.w * k, h: g.h * k }, e = { w: eb.w * k, h: eb.h * k }, p0 = c0 ?? P.slotPoint(slot, tr, box);
     const c = Lay.restCentre(p0, tr, box, e, sv, sf, panels), rr = Lay.standAt(c, g, k);
-    return { slot, k, c0: p0, c, r: rr, ...Lay.covers(rr, obs, own, sf) };
+    return { slot, k, c0: p0, c, r: rr, ...Lay.covers(rr, obs, own, sf, false, tieOf(tr, anchors, sv, sf)) };
   };
-  /* a crowd's word may stand by one of its members (layout crowdSpot); its place is then kept as an offset from the crowd's box slot */
-  const member = !!it.inCluster && it.mode === "number";      // a crowd member's number stays right by its token (else it folds)
-  const mem = it.cluster ? it.members.filter((m) => m.tok && !m.tok.destroyed).map((m) => view.tokRect(m.tok)) : [];
   const spot = (sf, panels, obs, first, sv = std, far = false) => {
-    const a = { tok: tr, own, g, eb, reach, sweep, ks, minK, std: sv, safe: sf, panels, obs, tokPx: plan.tokPx, first, ...(member && !far ? { outs: Lay.CLEAN.numOuts } : {}) };
+    const a = { tok: tr, own, g, eb, reach, sweep, ks, minK, std: sv, safe: sf, panels, obs, tokPx: plan.tokPx, first, keepSlot: first?.slot ?? null, ...(member ? { outs: far ? Lay.CLEAN.outs : Lay.CLEAN.numOuts, untied: true } : {}) };
     const q = it.cluster ? Lay.crowdSpot(a, mem) : Lay.cleanSpot(a);
     return { ...q, r: Lay.standAt(q.c, g, q.k) };
   };
   const groupAt = (c, k) => ({ x: c.x - g.w * k / 2, y: c.y - g.h * k / 2, w: g.w * k, h: g.h * k });
   const nudgeOf = (q) => { const p = P.slotPoint(q.slot, tr, { w: g.w * q.k, h: g.h * q.k }); return Math.hypot(q.c0.x - p.x, q.c0.y - p.y) < 0.5 ? null : { x: q.c0.x - p.x, y: q.c0.y - p.y }; };
+  /* REACTPLACE (seen live, lane 20, both seats: a 568 px Resolve word was laid out to the LEFT of its token on the centred frame, where the
+     token stands in the middle of the view; on the live view the token stood 88 px further left, so follow() pushed the word back into the
+     view: it began at the tool column and its "-10" lay on its own token; a seat on another view drew the same word by another hero). The
+     moment is laid out on a view every seat shares (KOSAME); the place it gives is now also judged where THIS seat will really draw it
+     (its live view: the tokens' real places, the view's real edges), while that view is the user's own (the action camera is not away:
+     its shot is no user's view and is gone in a moment). Kept when it stands clean and tied there (the same picture on every seat with
+     room for it); else the nearest clean, tied place on this view, on the table's side while it can (never bigger than the table's). */
+  const onLive = (dec) => {
+    try {
+      /* (a place that is not clean on the shared view either stays: a second search here would only make the seats differ) */
+      if (!view.frame || dec?.fold || (dec && !dec.clean)) return dec;
+      let home = null;
+      try { const mm = game.modules?.get?.("moinen-maps"); home = mm?.active ? P.cleanFrame(mm.api?.directorStage?.status?.()?.home) : null; } catch { home = null; }
+      if (home) return dec;
+      const cur = dec?.slot ? { slot: dec.slot, k: dec.k, nudge: dec.nudge ?? null } : { slot: fit.slot, k: fit.k, nudge: null };
+      if (!P.SLOTS.includes(cur.slot)) return dec;
+      const z = view.zoom();
+      const V = inFrame(null, () => { const t = plan.rect ? plan.rect() : view.tokRect(it.tok), sf = view.safe(); return { tr: t, safe: sf, std: dec?.ownView ? sf : view.std(t), z: view.zoom() }; });
+      if (!V.tr || Math.abs(V.z / z - 1) > 0.02) return dec;
+      const d = { x: V.tr.x - tr.x, y: V.tr.y - tr.y };
+      if (Math.hypot(d.x, d.y) < 1) return dec;
+      /* what stands on the map moves with the view; this seat's panels and the corner zones do not */
+      const mv = (q) => (q.kind === "panel" && !q.map ? q : { ...q, x: q.x + d.x, y: q.y + d.y });
+      const panelsV = inFrame(null, () => view.panels());
+      const obsV = obsL.map(mv), memV = mem.map(mv), ownV = own ? V.tr : null, anV = it.cluster ? memV : [{ ...V.tr, id: it.tok.id }];
+      const box = { w: g.w * cur.k, h: g.h * cur.k }, e = { w: eb.w * cur.k, h: eb.h * cur.k }, p = P.slotPoint(cur.slot, V.tr, box);
+      const c = Lay.restCentre(cur.nudge ? { x: p.x + cur.nudge.x, y: p.y + cur.nudge.y } : p, V.tr, box, e, V.std, V.safe, panelsV);
+      const v0 = Lay.covers(Lay.standAt(c, g, cur.k), obsV, ownV, V.safe, false, tieOf(V.tr, anV, V.std, V.safe));
+      if (v0.clean) return dec;
+      const a = { tok: V.tr, own: ownV, g, eb, reach, sweep: sweep?.map(mv) ?? null, ks: [cur.k, ...ks.filter((k) => k < cur.k - 1e-6)], minK, std: V.std, safe: V.safe, panels: panelsV, obs: obsV,
+        tokPx: plan.tokPx, first: null, keepSlot: cur.slot, ...(member ? { outs: Lay.CLEAN.numOuts, untied: true } : {}) };
+      const q = it.cluster ? Lay.crowdSpot(a, memV) : Lay.cleanSpot(a);
+      if (!q?.slot || (!q.clean && !(q.cost < v0.cost - 1e-6))) return dec;
+      const pq = P.slotPoint(q.slot, V.tr, { w: g.w * q.k, h: g.h * q.k }), n = { x: q.c0.x - pq.x, y: q.c0.y - pq.y };
+      const r = Lay.standAt(q.c, g, q.k);
+      if (ctx.placedL.length) ctx.placedL[ctx.placedL.length - 1] = { ...r, x: r.x - d.x, y: r.y - d.y, kind: "word" };
+      return { slot: q.slot, k: q.k, kS: S?.k ?? q.k, nudge: Math.hypot(n.x, n.y) < 0.5 ? null : n, same: false, moved: "view", clean: q.clean, rectS, ownView: !!dec?.ownView };
+    } catch (err) { once(err); return dec; }
+  };
+  let S = null, rectS = null;
+  const decide = () => {
   /* 1. shared: the side search's own shared choice (fitSame's first step), clean where it stands? */
   const a0 = P.fitSlot(tr, plan.box, std, plan.blocked, { ...o, slide: true });
   const s0 = at(a0.slot, a0.k, std, panelsS, obsS);
   const kept = s0.clean;
-  const S = kept ? s0 : spot(std, panelsS, obsS, null);
+  S = kept ? s0 : spot(std, panelsS, obsS, null);
   if (!S.clean && ctx.allowFold && it.inCluster?.mode === "full" && it.mode === "number") return { fold: true };
   ctx.placedS.push({ ...S.r, kind: "word" });
-  const rectS = groupAt(S.c, S.k);
+  rectS = groupAt(S.c, S.k);
   /* 2. this seat: the place as follow() draws it here */
   const l0 = kept ? at(fit.slot, fit.k, safe, panelsL, obsL) : at(S.slot, S.k, safe, panelsL, obsL, S.c0);
   if (l0.clean) {
@@ -759,6 +806,8 @@ function cleanPlace(it, fit, o, kf, ctx) {
   }
   ctx.placedL.push({ ...l0.r, kind: "word" });
   return kept ? null : { slot: S.slot, k: S.k, kS: S.k, nudge: nudgeOf(S), same: true, moved: null, clean: S.clean, rectS };
+  };
+  return onLive(decide());
 }
 /* the gathered changes of a moment leave the waiting list once lettered (or failed) */
 function unflight(ready) {

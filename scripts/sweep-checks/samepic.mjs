@@ -301,7 +301,11 @@ for (const target of [{ x: 1000, y: 300 }, { x: 1100, y: 330 }]) {
   const a = tr({ ...base, name: "gm", gm: true, side: 40, desk: [cx - 60, cy - 30, 120, 60] });
   ok(sigT(a) !== sigT(b), `T3 the desk over the shared spot moves the GM's word (GM ${sigT(a)}, P1 ${sigT(b)})`);
   const wa = wordOf(a);
-  ok(!!wa && Math.abs(wa.cap - w.cap) <= Math.max(1, 0.2 * w.cap), `T3 and keeps its size about the same (${wa?.cap} vs ${w.cap})`);
+  /* REACTPLACE (restated; before: "and keeps its size about the same", within 20 %): the GM's word kept its size by standing two tokens
+     off, above-left beside the neighbour above (a word nobody could attribute: blind review ADVS3 D4, D12). It now stays by its own token,
+     where the desk leaves less room: smaller (0.58 here), never under half, and its ink begins within a token of its token's middle */
+  ok(!!wa && wa.cap <= w.cap + 0.1 && wa.cap >= 0.5 * w.cap, `T3 and keeps a size that reads (${wa?.cap} vs ${w.cap}: at least half)`);
+  ok(!!wa && Math.hypot(wa.dx, wa.dy - 50) < 320, `T3 and stays by its own token (its middle ${wa ? Math.round(Math.hypot(wa.dx, wa.dy - 50)) : "?"} px from the token's)`);
 }
 /* the pure parts */
 {
