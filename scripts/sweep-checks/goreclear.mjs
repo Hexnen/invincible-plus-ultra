@@ -35,13 +35,18 @@ const T = P.TICK_MS;
     const g = P.grid(vw, vh, 1);
     for (let i = 0; i < 60; i++) {
       const s = [0.25, 0.5, 0.8, 1, 1.25][i % 5];
+      /* GOREUI restated this pin (honestly: the behaviour changed on purpose). It used to take all 180 plans; a third of them stand
+         beside a token drawn at 4.5 % of the short side, which GOREUI's far rule now sizes smaller (the blind review of tag 161, D10:
+         blood several token widths wide beside a small token; those sizes are checked in goreui.mjs, FAR). The pin now holds the 120
+         plans that rule does not touch (no token, or a token at 9 %): still byte for byte what they were. */
+      if (i % 3 === 1) continue;
       const near = i % 3 === 0 ? null : { fx: 0.08 + 0.84 * ((i * 37) % 100) / 100, fy: 0.08 + 0.84 * ((i * 61) % 100) / 100, fr: [0.02, 0.045, 0.09][i % 3] };
       const at = i % 7 === 3 ? { fx: 0.3, fy: 0.6 } : null;
       h.update(JSON.stringify(P.bloodPlan(g, { strength: s, seed: `fp|${i}`, dir: i % 4 === 0 ? null : i * 0.7, near, at, hold: 1 })));
     }
   }
-  /* the fingerprint of these 180 plans on tag tactics-integrated-160 (GORE4 + GOREPINK), taken before this change */
-  ck("a splash with no keep-outs is laid out exactly as before (180 plans, pinned fingerprint)", h.digest("hex") === "3277a1ca5cf93fe2ce24028a2a33f5fa62686b65");
+  /* the fingerprint of these 120 plans on tag tactics-integrated-161 (the same plans as on 160: GORE4 + GOREPINK), taken before GOREUI */
+  ck("a splash with no keep-outs, away from the far rule, is laid out exactly as before (120 plans, pinned fingerprint)", h.digest("hex") === "b4757598ec4b0d4f2122ce4c31b8c85d20449a1b");
   const g = P.grid(1600, 900, 1);
   const a = P.bloodPlan(g, { strength: 0.8, seed: "e", dir: 1, near: { fx: 0.5, fy: 0.5, fr: 0.05 } });
   const b = P.bloodPlan(g, { strength: 0.8, seed: "e", dir: 1, near: { fx: 0.5, fy: 0.5, fr: 0.05 }, keep: [] });

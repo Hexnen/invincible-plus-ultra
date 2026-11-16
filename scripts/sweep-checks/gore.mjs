@@ -459,8 +459,8 @@ const T = P.TICK_MS;
   globalThis.window = { innerWidth: 1600, innerHeight: 900, devicePixelRatio: 1, addEventListener() {} };
   globalThis.matchMedia = () => ({ matches: false });
   globalThis.ImageData = class { constructor(d, w, h) { this.data = d; this.width = w; this.height = h; } };
-  const el = () => ({ style: {}, setAttribute() {}, appendChild() {}, after() {}, isConnected: true, getContext: () => ({ putImageData() {}, clearRect() {} }) });
   const made = [];
+  const el = () => ({ style: {}, setAttribute() {}, appendChild() {}, after(c) { if (this.id) made.push([`after ${this.id}`, c]); }, isConnected: true, getContext: () => ({ putImageData() {}, clearRect() {} }) });
   const body = { ...el(), appendChild: (c) => made.push(["body", c]) };
   const board = { ...el(), after: (c) => made.push(["board", c]) };
   globalThis.document = { getElementById: (id) => (id === "board" ? board : null), createElement: () => el(), body };
@@ -595,8 +595,12 @@ const T = P.TICK_MS;
   ck("a new splash on the same token: its older one starts to clear as it lands (another token's stays)", !!h1 && !!h2 && !!h3 && api.state().cleared === 1);
   api.clear({ quick: true });
   const pane = (id) => made.find(([, c]) => c.id === id);
-  ck("two panes (GORE2): blood right after #board (under the interface), cracks on the body over the bars (z over 30, under windows)",
-    pane("ipu-gore")?.[0] === "board" && pane("ipu-gore-cracks")?.[0] === "body" && Number(pane("ipu-gore-cracks")[1].style.zIndex) > 31 && Number(pane("ipu-gore-cracks")[1].style.zIndex) < 100
+  /* GOREUI restated this check on purpose. It asked for the cracks' pane on the body at a z over the interface's bars (GORE2's choice:
+     the bars would hide a corner). The blind review of tag 161 (D6) found what that costs: hairlines across the toolbar's and the
+     sidebar's icons and, at level 3, across a panel's header. The pane is now right after the blood's, in the board's own stacking
+     place: under the whole interface on every seat (which corner is broken answers what the bars hide: sweep-checks/goreui.mjs) */
+  ck("two panes: blood right after #board, the cracks' pane right after the blood's (GOREUI: both under the interface, nothing on the body, no z of its own over the bars)",
+    pane("ipu-gore")?.[0] === "board" && pane("ipu-gore-cracks")?.[0] === "after ipu-gore" && !made.some(([where]) => where === "body") && pane("ipu-gore-cracks")[1].style.zIndex === pane("ipu-gore")[1].style.zIndex
     && [pane("ipu-gore"), pane("ipu-gore-cracks")].every((p) => p[1].style.pointerEvents === "none"));
   /* GOREPINK: the shade pane, under the blood's, blended "darken" (no light map shines through a splash as pink) */
   ck("the shade pane (GOREPINK): right after #board and put there AFTER the blood's pane (so under it), blended 'darken', the same place and size, ignores the pointer", (() => {

@@ -18,6 +18,12 @@
        other tokens this seat sees and of the token reactions' standing words and numbers (asked on the reactions' hook, phase "ink":
        plan.mjs keep-outs); while it stays, the glass draws no blood over a token under it (the camera moved, a token walked in:
        raster.mjs cutOut) and a splash that later lettering comes to stand on crumbles away at once (CLEAR_FAST);
+     - GOREUI (blind review of tag 161, D6 and D10): neither effect lies over anything a seat reads. The cracks' pane sits UNDER the
+       interface like the blood's (it was over the bars: hairlines across the toolbar's and the sidebar's icons and a panel's header),
+       each seat breaks the corner that shows the web best (plan.mjs pickCorner: the share of each corner's quarter the interface, the
+       tokens and the markers take on this seat), and both panes are cut round the tokens AND the map's markers this seat draws: the
+       zone badges and the note pins (markShapes); a splash is also laid out clear of them, as of the other tokens and round every control
+       of the interface (uiRects: much of it is see-through, so being under it is not enough);
      - the public API (game.modules.get("invincible-plus-ultra").api.gore, also globalThis.PlusUltraGore). Nothing here throws. */
 import * as P from "./plan.mjs";
 import * as R from "./raster.mjs";
@@ -35,6 +41,8 @@ export const IMPACT_MAX = 1500;     // ms the blood waits at most for an impact 
 /* GORECLEAR: on (the rule above). api.debug({ clear: false }) lays blood out as before it (GORE4's plan, no mask, no guard) on THIS page
    only, so a live take can count what the rule changes; nothing stores it */
 let CLEAR = true;
+/* GOREUI: on. api.debug({ marks: false }) forgets the map's markers and the choice of corner on THIS page only (a take's "before") */
+let MARKS = true;
 const LOG_MAX = 80;
 const glog = [];                     // this seat's last splashes: how each was placed and what of it lay on a token or on lettering
 let engineL = null;                  // the lettering engine on this page (its impact frames)
@@ -62,10 +70,11 @@ function osReduced() { try { return !!globalThis.matchMedia?.("(prefers-reduced-
 
 /* ---------------- the glass ---------------- */
 /* two panes of the same grid (GORE2): the BLOOD pane right after #board (over the scene, under the interface: a splash never hides the
-   chat or a button), the CRACKS pane over the interface's bars and panels (z CRACK_Z: over #ui-left/#ui-right 30, under the windows,
-   tooltips and notifications): the cracks are in the screen's own glass and sit in its corners, which the bars would otherwise hide.
+   chat or a button) and the CRACKS pane right after it. GOREUI: the cracks' pane was over the interface's bars and panels (z 32), so
+   its hairlines crossed the toolbar's and the sidebar's icons and, at level 3, a panel's header; it is under the interface now, in
+   the board's own stacking place: a button, a panel or a window is always drawn over a crack, on every seat and at every level. What
+   the bars hide of a corner is answered by breaking the corner this seat shows best (cornerScores).
    Both ignore the pointer, so the board and every button stay playable. */
-export const CRACK_Z = "32";
 /* GOREPINK: the SHADE, a third pane right under the blood's (same grid, same place in the page): every blood pixel's colour at full
    alpha, blended "darken" with the map: each channel of the ground under a splash is cut down to the blood's (blood soaks the light
    out of what it lies on). Red at a low alpha over a light map is pink; with the shade a shown pixel is never lighter than the colour
@@ -93,8 +102,9 @@ function ensureGlass() {
   for (const name of ["blood", "cracks"]) {
     const L = G.L[name];
     if (L.wrap?.isConnected) continue;
-    const m = make(name === "blood" ? "ipu-gore" : "ipu-gore-cracks", name === "blood" ? zBoard : CRACK_Z);
-    if (name === "blood") { board.after(m.wrap); moved = true; } else (document.body ?? board.parentElement)?.appendChild(m.wrap);
+    const m = make(name === "blood" ? "ipu-gore" : "ipu-gore-cracks", zBoard);
+    /* the order after #board: shade, blood, cracks (each later one over the earlier; all under the interface) */
+    if (name === "blood") { board.after(m.wrap); moved = true; } else (G.L.blood.wrap?.isConnected ? G.L.blood.wrap : board).after(m.wrap);
     Object.assign(L, m);
   }
   /* the shade goes in right after #board, so UNDER the blood's pane (made again whenever the blood's pane is, to keep that order) */
@@ -189,6 +199,142 @@ export function inkBoxes() {
   } catch (err) { once(err); }
   return out;
 }
+/* ---------------- GOREUI: the map's markers this seat draws, and what fills a corner ---------------- */
+/* world px -> this window's client px, from the stage's own pivot and scale (as tokScreen: a frame ahead of the drawn transform) */
+function toClient(x, y) {
+  const st = canvas.stage, o = boardOrigin(), sx = st.scale.x, sy = st.scale.y ?? sx;
+  return [(x - st.pivot.x) * sx + st.position.x + o.left, (y - st.pivot.y) * sy + st.position.y + o.top];
+}
+/* the markers in WORLD px, read at most once a second (and again when the zoom changes: a badge keeps its size on the screen):
+   a note pin as the box of what it draws { id, x0, y0, x1, y1 }, a zone badge as its point and its zone's label radius { id, x, y, lr } */
+export const MARK_MS = 1000;
+/* a zone badge's radius on the screen, CSS px (moinen-maps zones/display.mjs: min(19, max(8, 0.8 x label radius x zoom)), a shaped
+   badge up to 1.2 of that) */
+export const badgeCss = (lr, zoom) => Math.min(19, Math.max(8, (Number(lr) || 40) * 0.8 * zoom)) * 1.2;
+const marksW = { at: -1e9, zoom: 0, scene: null, list: [] };
+function readMarks() {
+  const out = [];
+  try {
+    for (const n of canvas.notes?.placeables ?? []) {
+      const d = n.document;
+      if (!d || n.destroyed || n.visible === false || n.renderable === false || !Number.isFinite(d.x) || !Number.isFinite(d.y)) continue;
+      /* what the pin draws round its point (its art may be taller than its icon size; a label shown under it counts) */
+      let b = null;
+      try { const lb = n.getLocalBounds?.(); if (lb && lb.width > 0 && lb.height > 0) { const k = Math.abs(n.scale?.x ?? 1) || 1; b = { x0: d.x + lb.x * k, y0: d.y + lb.y * k, x1: d.x + (lb.x + lb.width) * k, y1: d.y + (lb.y + lb.height) * k }; } } catch { /* its size instead */ }
+      if (!b) { const h = (Number(d.iconSize) || 40) / 2; b = { x0: d.x - h, y0: d.y - h, x1: d.x + h, y1: d.y + h }; }
+      out.push({ id: `note:${d.id}`, ...b });
+    }
+  } catch (err) { once(err); }
+  try {
+    const mm = game.modules?.get?.("moinen-maps"), za = mm?.active ? mm.api?.zones : null;
+    const Z = za?.zones?.(), lk = za?.look?.();
+    /* numbered badges shown all the time, to everyone or to the GM (then only the GM's seat draws them) */
+    if (Z?.zones?.length && lk && lk.numbers === "always" && (lk.who === "all" || (lk.who === "gm" && !!game.user?.isGM))) {
+      const corner = lk.place === "corner", cp = za?.geometry?.cornerPoint, gs = canvas.dimensions?.size ?? canvas.grid?.size ?? 100;
+      if (!corner || typeof cp === "function") for (const q of Z.zones) {
+        const l = q?.label;
+        if (!l || !Number.isFinite(l.x) || !Number.isFinite(l.y)) continue;
+        let pt = l;
+        if (corner) { try { pt = cp(q, Math.min((Number(l.r) || 40) * 0.9, gs * 0.55)); } catch { pt = null; } }
+        if (pt && Number.isFinite(pt.x) && Number.isFinite(pt.y)) out.push({ id: `zone:${q.id}`, x: pt.x, y: pt.y, lr: Number(l.r) || 40 });
+      }
+    }
+  } catch (err) { once(err); }
+  return out;
+}
+/** the map's markers this seat draws now, in fractions of its view: a zone badge as a disc { id, fx, fy, fr }, a note pin as a box
+    { id, l, t, r, b }; only those that touch the view */
+export function markShapes() {
+  const out = [];
+  try {
+    if (!MARKS || !canvas?.ready || !canvas.stage?.pivot) return out;
+    const z = Math.abs(canvas.stage.scale?.x ?? 1) || 1, t = pnow();
+    if (t - marksW.at > MARK_MS || marksW.zoom !== z || marksW.scene !== canvas.scene?.id) { marksW.list = readMarks(); marksW.at = t; marksW.zoom = z; marksW.scene = canvas.scene?.id ?? null; }
+    const vw = window.innerWidth, vh = window.innerHeight, m = Math.min(vw, vh);
+    for (const q of marksW.list) {
+      if (q.lr !== undefined) {
+        const [x, y] = toClient(q.x, q.y), r = badgeCss(q.lr, z);
+        if (x + r < 0 || y + r < 0 || x - r > vw || y - r > vh) continue;
+        out.push({ id: q.id, fx: x / vw, fy: y / vh, fr: r / m });
+      } else {
+        const [x0, y0] = toClient(q.x0, q.y0), [x1, y1] = toClient(q.x1, q.y1);
+        if (x1 < 0 || y1 < 0 || x0 > vw || y0 > vh) continue;
+        out.push({ id: q.id, l: x0 / vw, t: y0 / vh, r: x1 / vw, b: y1 / vh });
+      }
+    }
+  } catch (err) { once(err); }
+  return out;
+}
+/** how much of each corner's quarter (a web of `reach` x the view's short side) is taken on this seat: by the interface, a token or
+    a marker -> [0..1] x 4 (plan.mjs CORNERS), or null when this page cannot tell */
+export function cornerScores(reach) {
+  try {
+    if (!MARKS || !document.body?.children) return null;
+    const vw = window.innerWidth, vh = window.innerHeight, m = Math.min(vw, vh), ui = uiRects(0);
+    const shapes = [...tokDiscs(), ...markShapes()];
+    const inShape = (q, fx, fy) => (q.fr !== undefined ? ((fx - q.fx) * vw) ** 2 + ((fy - q.fy) * vh) ** 2 < (q.fr * m) ** 2 : fx > q.l && fx < q.r && fy > q.t && fy < q.b);
+    return [0, 1, 2, 3].map((c) => {
+      const pts = P.cornerProbe(c, reach, vw, vh);
+      let n = 0;
+      for (const q of pts) { const x = q.fx * vw, y = q.fy * vh; if (ui.some((b) => x >= b.l && x < b.r && y >= b.t && y < b.b) || shapes.some((sh) => inShape(sh, q.fx, q.fy))) n++; }
+      return pts.length ? n / pts.length : 0;
+    });
+  } catch (err) { once(err); return null; }
+}
+/* GOREUI: the interface over an effect. The glass lies under the interface, but much of Foundry's interface is see-through (faded
+   controls, the scene bar, the sidebar's tabs): a white hairline or a blot under a faded icon is still a line through the icon. So
+   every control the page draws is cut out of the panes by its own box. The boxes are READ (one pass over the page's panels and the
+   interface's controls at most every UI_MS, no hit testing: a hit test of this page costs about 0.3 ms, a grid of them is a dropped
+   frame); a panel under half the window is one box, a larger one (the interface, the HUD) gives the boxes of its controls. */
+export const UI_MS = 1000;
+const UI_SEL = 'button, a, input, textarea, select, li, label, h1, h2, h3, h4, h5, h6, p, img, [data-action], [data-tooltip], [role="button"]';
+const uiW = { at: -1e9, list: [] };
+/** the boxes of the interface on this page now, window px: [{ l, t, r, b }] */
+export function uiRects(fresh = UI_MS) {
+  const now = pnow();
+  if (now - uiW.at <= fresh) return uiW.list;
+  const out = [];
+  uiW.at = now; uiW.list = out;
+  try {
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const large = (r) => r.width > vw * 0.5 && r.height > vh * 0.5;
+    const push = (r) => { if (r && r.width > 0 && r.height > 0 && r.right > 0 && r.bottom > 0 && r.left < vw && r.top < vh && !large(r)) out.push({ l: r.left, t: r.top, r: r.right, b: r.bottom }); };
+    for (const c of document.body?.children ?? []) {
+      if (c.id === "board" || String(c.id ?? "").startsWith("ipu-gore") || /^(SCRIPT|TEMPLATE|STYLE|LINK)$/.test(c.tagName ?? "")) continue;
+      const st = typeof getComputedStyle === "function" ? getComputedStyle(c) : null;
+      if (st && (st.display === "none" || st.visibility === "hidden" || Number(st.opacity) === 0)) continue;
+      const r = c.getBoundingClientRect?.();
+      if (!r) continue;
+      if (r.width > 0 && r.height > 0 && !large(r)) { push(r); continue; }
+      for (const e of c.querySelectorAll?.(UI_SEL) ?? []) push(e.getBoundingClientRect?.());
+    }
+  } catch (err) { once(err); }
+  return out;
+}
+/* the part of the window an item may draw in (window px): a web's corner, a splash's surroundings */
+function uiRegion(it) {
+  const vw = window.innerWidth, vh = window.innerHeight, k = vw / G.g.w;
+  if (it.kind === "cracks") {
+    const R = (it.log?.reach ?? 0.3 * Math.min(vw, vh)) * 1.08 + 6, c = P.CORNERS[it.plan.corner] ?? [0, 0];
+    return { l: c[0] ? vw - R : 0, t: c[1] ? vh - R : 0, r: c[0] ? vw : R, b: c[1] ? vh : R };
+  }
+  if (it.plan.none) return null;
+  const d = it.tok ? tokDiscs().find((q) => q.id === it.tok) : null;
+  if (!d) return { l: 0, t: 0, r: vw, b: vh };
+  const e = d.fr * Math.min(vw, vh) + (it.plan.R ?? 0) * k * 8 + 12, x = d.fx * vw, y = d.fy * vh;
+  return { l: x - e, t: y - e, r: x + e, b: y + e };
+}
+/** the interface's boxes (fractions of the view) that the items of one pane may reach */
+function uiShapes(items) {
+  const out = [];
+  try {
+    if (!MARKS || !G.g || !items.length) return out;
+    const vw = window.innerWidth, vh = window.innerHeight, regs = items.map(uiRegion).filter(Boolean);
+    for (const b of uiRects()) if (regs.some((q) => b.r > q.l && b.l < q.r && b.b > q.t && b.t < q.b)) out.push({ l: b.l / vw, t: b.t / vh, r: b.r / vw, b: b.b / vh });
+    for (const it of items) if (it.log) it.log.ui = Math.max(it.log.ui ?? 0, out.length);
+  } catch (err) { once(err); }
+  return out;
+}
 const discsPx = (ds, gap = 0) => { const g = G.g, m = Math.min(g.w, g.h); return ds.map((d) => (d.fr !== undefined ? { id: d.id, x: d.fx * g.w, y: d.fy * g.h, r: d.fr * m + gap } : { id: d.id, x0: d.l * g.w - gap, y0: d.t * g.h - gap, x1: d.r * g.w + gap, y1: d.b * g.h + gap })); };
 const boxesPx = (bs) => { const g = G.g; return bs.map((b) => ({ x0: b.l * g.w, y0: b.t * g.h, x1: b.r * g.w, y1: b.b * g.h })); };
 function quicken(plan) { for (const q of plan.second ? [plan, plan.second.plan] : [plan]) q.life = { ...q.life, dissolve: Math.min(q.life.dissolve, P.CLEAR_FAST) }; }
@@ -228,9 +374,11 @@ function frame() {
       for (const [name, L] of Object.entries(G.L)) {
         const mine = G.items.filter((it) => layerOf(it.kind) === name);
         if (!mine.length && !L.sf.box && !L.dirtyAll) continue;
-        /* GORECLEAR: the tokens under the glass at this tick (every one this seat sees, the struck one too): no blood over them */
-        const mask = name === "blood" && CLEAR && mine.length ? discsPx(tokDiscs(), P.MASK_GAP) : null;
+        /* GORECLEAR: the tokens under the glass at this tick (every one this seat sees, the struck one too): no blood over them.
+           GOREUI: nor over the map's markers this seat draws, and the cracks' pane is cut by the same list */
+        const mask = mine.length && (name === "blood" ? CLEAR : MARKS) ? [...discsPx([...tokDiscs(), ...markShapes()], P.MASK_GAP), ...discsPx(uiShapes(mine), 0)] : null;
         const out = R.render(L.sf, mine, now, mask);
+        if (name === "cracks" && L.sf.cut) for (const it of mine) if (it.log) it.log.masked = Math.max(it.log.masked, L.sf.cut);
         if (name === "blood" && mine.length) {
           if (L.sf.cut) for (const it of mine) if (it.log) it.log.masked = Math.max(it.log.masked, L.sf.cut);
           if (tick % P.GUARD_TICKS === 0) guard(now);
@@ -323,8 +471,17 @@ function play(kind, o = {}) {
     const seed = o.seed ?? `${kind}|${++uid}|${Math.random()}`;
     /* GORECLEAR: beside a token the blood keeps clear of the other tokens this seat sees and of the lettering standing now */
     const others = kind === "blood" && tok ? tokDiscs(tok.id) : [], ink = kind === "blood" && tok ? inkBoxes() : [];
-    const keep = CLEAR && others.length + ink.length ? [...others, ...ink] : null;
+    /* GOREUI: ... and of the map's markers this seat draws (zone badges, note pins) */
+    const marks = kind === "blood" && tok && CLEAR ? markShapes() : [];
+    const keep = CLEAR && others.length + ink.length + marks.length ? [...others, ...marks, ...ink] : null;
     const spec = { strength: s, seed, dir: Number.isFinite(o.dir) ? o.dir : null, at: o.at ?? null, near: kind === "blood" ? near : null, safe, still, hold: op.hold, ...(keep ? { keep } : {}) };
+    /* GOREUI: a break is sized by the table's level and breaks the corner this seat shows best (the seed's own when it is as free) */
+    let scores = null;
+    if (kind === "cracks") {
+      spec.level = o.raw ? 2 : level;
+      scores = Number.isInteger(o.corner) ? null : cornerScores(P.crackReachOf(s, spec.level, safe));
+      spec.corner = Number.isInteger(o.corner) ? o.corner : P.pickCorner(seed, scores);
+    }
     const make = (g) => (kind === "blood" ? P.bloodPlan(g, spec) : P.crackPlan(g, spec));
     if (!ensureGlass()) return null;
     fit();
@@ -332,8 +489,14 @@ function play(kind, o = {}) {
     if (kind === "blood" && tok) {
       /* the seat's log: how it was placed, and what of its standing ink lies on another token or on lettering as laid out */
       const on = it.plan.none ? { ink: 0, discs: 0, boxes: 0 } : R.inkOn(it.plan, discsPx(others), boxesPx(ink));
-      it.log = { id: it.id, tok: tok.id, name: tok.name ?? null, at: Date.now(), strength: s, clear: CLEAR, how: it.plan.none ? "none" : it.plan.keepHow ?? "free", tokens: others.length, words: ink.length,
-        r: Math.round(it.plan.R * 10) / 10, ink: on.ink, onTok: on.discs, onInk: on.boxes, maxTok: on.discs, maxInk: on.boxes, masked: 0, gaveWay: null };
+      const onMark = it.plan.none || !marks.length ? 0 : R.inkOn(it.plan, discsPx(marks), []).discs;
+      it.log = { id: it.id, tok: tok.id, name: tok.name ?? null, at: Date.now(), strength: s, clear: CLEAR, how: it.plan.none ? "none" : it.plan.keepHow ?? "free", tokens: others.length, words: ink.length, marks: marks.length,
+        r: Math.round(it.plan.R * 10) / 10, tokR: Math.round((near?.fr ?? 0) * Math.min(G.g.w, G.g.h) * 10) / 10, ink: on.ink, onTok: on.discs, onInk: on.boxes, onMark, maxTok: on.discs, maxInk: on.boxes, masked: 0, gaveWay: null };
+      glog.push(it.log); if (glog.length > LOG_MAX) glog.shift();
+    }
+    if (kind === "cracks") {
+      it.log = { id: it.id, kind: "cracks", at: Date.now(), strength: s, level: spec.level, corner: it.plan.corner, seedCorner: P.seedCorner(seed), scores: scores ? scores.map((v) => Math.round(v * 100) / 100) : null,
+        reach: Math.round(P.crackReachOf(s, spec.level, safe) * Math.min(window.innerWidth, window.innerHeight)), masked: 0 };
       glog.push(it.log); if (glog.length > LOG_MAX) glog.shift();
     }
     /* GORE4: no room beside the token in this view (it fills the screen): no blood here rather than blood on it */
@@ -571,9 +734,12 @@ export const api = {
       tokens), gaveWay (ms after landing it started to crumble for lettering) }; { clear: true } empties it */
   log: (o) => { if (o?.clear) glog.length = 0; return glog.map((e) => ({ ...e })); },
   /** what the blood would keep clear of on this seat now: { tokens: discs, words: boxes } in fractions of the view */
-  keepOuts: () => ({ tokens: tokDiscs(), words: inkBoxes() }),
+  keepOuts: () => ({ tokens: tokDiscs(), words: inkBoxes(), marks: markShapes(), ui: uiRects(0).length }),
+  /** GOREUI: how much of each corner's quarter is taken on this seat for a web of `reach` (share of the view's short side; default a
+      level 2 break of strength 0.6) -> [top left, top right, bottom right, bottom left] 0..1, or null */
+  corners: (reach) => cornerScores(Number.isFinite(reach) ? reach : P.crackReachOf(0.6, 2)),
   /** a take's switch, this page only, never stored: { clear: false } lays blood out as before GORECLEAR */
-  debug: (o) => { if (o && typeof o.clear === "boolean") CLEAR = o.clear; return { clear: CLEAR }; }
+  debug: (o) => { if (o && typeof o.clear === "boolean") CLEAR = o.clear; if (o && typeof o.marks === "boolean") MARKS = o.marks; return { clear: CLEAR, marks: MARKS }; }
 };
 
 function registerHooks() {
@@ -598,7 +764,7 @@ function registerHooks() {
      beat), so the part of it over a token goes in the same frame the token arrives under it */
   Hooks.on("canvasPan", () => {
     try {
-      if (!CLEAR || !G.items.some((it) => it.kind === "blood")) return;
+      if (!(CLEAR && G.items.some((it) => it.kind === "blood")) && !(MARKS && G.items.some((it) => it.kind !== "blood"))) return;
       clearTimeout(G.idle);
       if (G.raf) { try { cancelAnimationFrame(G.raf); } catch { /* none */ } G.raf = 0; }
       G.lastTick = -1;

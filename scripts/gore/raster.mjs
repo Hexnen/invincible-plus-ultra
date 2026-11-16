@@ -120,6 +120,7 @@ export function render(sf, items, now, mask = null) {
   }
   /* GORECLEAR: the tokens under the glass now (discs, art px): no blood is drawn there. Cut out of the coverage BEFORE the colours, so the
      blood ends at a token's rim with its own dark outline, as at any other edge of it (never a raw cut through its shading) */
+  /* GOREUI: the same list also holds the map's markers this seat draws (zone badges, note pins), and a pane of cracks is cut by it too */
   sf.cut = mask?.length && box.x1 >= 0 ? cutOut(sf, box, mask) : 0;
   colour(sf, box, items.some((it) => it.plan.safe) ? RAMP_SAFE : RAMP);
   sf.box = box.x1 >= 0 ? box : null;
@@ -127,14 +128,14 @@ export function render(sf, items, now, mask = null) {
   return { box: dirty, live, moving };
 }
 function cutOut(sf, b, shapes) {
-  const { w, T, G } = sf;
+  const { w, T, G, C } = sf;      // GOREUI: the cracks' pane is cut the same way (its class map C): no crack over a token or a map marker
   let n = 0;
   for (const d of shapes) {
     if (d.r === undefined) {      // a box (a token whose art fills its square)
       for (let y = Math.max(b.y0, Math.ceil(d.y0 - 0.5)); y <= Math.min(b.y1, Math.floor(d.y1 - 0.5)); y++) {
         if (sf.hi[y] < 0) continue;
         const x0 = Math.max(sf.lo[y], Math.ceil(d.x0 - 0.5)), x1 = Math.min(sf.hi[y], Math.floor(d.x1 - 0.5));
-        for (let x = x0, i = y * w + x0; x <= x1; x++, i++) if (T[i] > 0) { T[i] = 0; G[i] = 0; n++; }
+        for (let x = x0, i = y * w + x0; x <= x1; x++, i++) if (T[i] > 0 || C[i]) { T[i] = 0; G[i] = 0; C[i] = 0; n++; }
       }
       continue;
     }
@@ -144,7 +145,7 @@ function cutOut(sf, b, shapes) {
       const dy = y + 0.5 - d.y, half = d.r * d.r - dy * dy;
       if (half <= 0) continue;
       const hw = Math.sqrt(half), x0 = Math.max(sf.lo[y], Math.ceil(d.x - hw - 0.5)), x1 = Math.min(sf.hi[y], Math.floor(d.x + hw - 0.5));
-      for (let x = x0, i = y * w + x0; x <= x1; x++, i++) if (T[i] > 0) { T[i] = 0; G[i] = 0; n++; }
+      for (let x = x0, i = y * w + x0; x <= x1; x++, i++) if (T[i] > 0 || C[i]) { T[i] = 0; G[i] = 0; C[i] = 0; n++; }
     }
   }
   return n;

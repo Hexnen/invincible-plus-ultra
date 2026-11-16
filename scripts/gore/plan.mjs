@@ -37,6 +37,17 @@ export const SAFE_AREA = 0.025;            // photosensitive seat: one arrival c
 export const MAX_LIVE = 6;                 // splashes alive at once; the oldest dissolves early beyond (GORE3: 8 -> 6, no piling)
 export const NEAR_K = 1.1;                 // GORE3: a splash's body radius at most this x the struck token's radius on this screen
 export const R_MIN = 0.02;                 // ... but never under this share of the view's short side (pixel art stays readable)
+/* GOREUI (blind review of tag 161, D10: at zoom 0.2 a knock-down's blood spanned about three token widths): beside a token drawn
+   small the body was as wide as the token (NEAR_K), a knock-down's second blow as big again beside it, and the drops as many and
+   flying as far (5.6 body radii) as at full size, so the whole splash was four to five token widths. `far` says how small the struck
+   token is on this screen: 0 from a token radius of FAR.from of the view's short side up (there NEAR_K does not bind a full blow and
+   every plan is what it was), 1 at FAR.full and under. As far grows the body's cap goes from NEAR_K to NEAR_K x FAR.body token radii
+   (never under R_FLOOR art px: a blot of five art pixels still reads as pixel art), the drops, mist and trails thin out to FAR.thin
+   of their number and fly FAR.spread as far past the body's rim, the drops' size follows the body, a knock-down's second blow is at
+   most FAR.second of the first's cap (it is the weaker blow: 0.67 is its size against the first where nothing caps them) and is left
+   out from far = FAR.noSecond on (two blots side by side were most of the width). */
+export const R_FLOOR = 2.5;                // art px: the smallest body radius beside a token at any zoom
+export const FAR = { from: 0.057, full: 0.027, body: 0.75, second: 0.67, noSecond: 0.5, thin: 0.4, spread: 0.5 };
 export const EDGE = 2;                     // art px: nothing of a splash is drawn closer to the view's edge (never cut by it)
 export const TOK_GAP = 1.5;                // GORE4, art px: nothing of a splash is drawn closer to the struck token's rim (beside it, never on it)
 /* GORECLEAR (live 2026-11-16: a knock-down's splash lay over the neighbouring token and over the sound word of its own blow): the blood
@@ -155,7 +166,13 @@ export function bloodPlan(g, opts = {}) {
   const near = opts.near && Number.isFinite(opts.near.fx) && Number.isFinite(opts.near.fy) ? opts.near : null;
   const tokR = near ? Math.max(1, (Number(near.fr) || 0.03) * m) : 0;
   const Rfree = R;
-  if (near) R = Math.min(R, Math.max(R_MIN * m, NEAR_K * tokR));
+  /* GOREUI: far = how small the struck token is drawn (0 = FAR.from of the short side and over, 1 = FAR.full and under) */
+  const Rk = R_MIN * m, cap = NEAR_K * tokR;
+  const far = near ? clamp((FAR.from * m - tokR) / ((FAR.from - FAR.full) * m), 0, 1) : 0;
+  if (near) {
+    if (far > 0) { const c = Math.max(R_FLOOR, cap * lerp(1, FAR.body, far)); R = Math.min(R, opts.second ? Math.max(R_FLOOR, FAR.second * c) : c); }
+    else R = Math.min(R, Math.max(Rk, cap));
+  }
   /* GORE4 (GORE3's own weak point: a splash beside a token at the view's edge was pushed back by the edge ONTO the token's rim): the
      blood stands BESIDE the struck token, never on it. tok = the disc nothing of the splash may enter (its rim + TOK_GAP art px).
      When the side the blood flies to has no room between the token and the view's edge, the whole splash turns to the nearest side
@@ -299,14 +316,22 @@ export function bloodPlan(g, opts = {}) {
   /* a drop's size follows the blow, not the (smaller) body: the drops carry the splash */
   /* GORE4: ... but beside a small token (a far zoom) the drops shrink with the body (GORE3 kept them full size: drops as big as the
      body itself, their tails longer than the way they had flown) */
-  const unit = Math.max(0.85, ((0.03 + 0.085 * sm) * m / 14) ** 0.5 * 0.95) * clamp((R / Rfree) ** 0.5, 0.5, 1);
+  /* GOREUI: at a far zoom (far > 0) the drops go on shrinking with the body (linear under Rk), single art pixels at the floor */
+  const unit = Math.max(0.85, ((0.03 + 0.085 * sm) * m / 14) ** 0.5 * 0.95) * clamp((Math.max(R, far > 0 ? Rk : 0) / Rfree) ** 0.5, 0.5, 1) * (far > 0 ? Math.min(1, R / Rk) : 1);
+  /* ... and fewer of them: of every list thrown below the i-th stays while floor((i + 1) q) > floor(i q) (the seeded numbers are all
+     drawn as before, so the splash is the same one, thinner) */
+  const thinQ = far > 0 ? lerp(1, FAR.thin, far) : 1;
+  /* ... and they land nearer: a distance d from the body's middle becomes R + (d - R) x spread */
+  const spread = far > 0 ? lerp(1, FAR.spread, far) : 1;
+  const flown = (d) => (spread < 1 ? R + (d - R) * spread : d);
+  const thin = (list) => { if (thinQ >= 1) return; for (let i = list.length - 1; i >= 0; i--) if (!(Math.floor((i + 1) * thinQ) > Math.floor(i * thinQ))) list.splice(i, 1); };
   for (let i = 0; i < ns; i++) {
     const fwd = r() < 0.78;
     const a = fwd ? dir + (r() - 0.5) * Math.PI * 0.8 : r() * Math.PI * 2;
     const k = fwd ? lerp(1.3, 5.6, r() ** 0.9) : lerp(1.2, 2.6, r());
-    const dist = R * k;
+    const dist = flown(R * k);
     const big = r() < 0.3;
-    const rad = Math.max(0.6, (big ? lerp(1.9, 3.2, r()) : lerp(0.7, 1.8, r())) * unit * lerp(1.15, 0.7, (k - 1.15) / 3.5));
+    const rad = Math.max(far > 0 ? 0.5 : 0.6, (big ? lerp(1.9, 3.2, r()) : lerp(0.7, 1.8, r())) * unit * lerp(1.15, 0.7, (k - 1.15) / 3.5));
     /* a tail points home and ends before the body (GORE4: never through it and out of its far side) */
     const tail = k > 1.9 && r() < 0.7 ? Math.min(Math.max(2, rad * lerp(2.2, 4.2, r())), dist - R) : 0;
     const x = cx + Math.cos(a) * dist, y = cy + Math.sin(a) * dist;
@@ -322,11 +347,13 @@ export function bloodPlan(g, opts = {}) {
     while (d < end) {
       const a = a0 + curve * (d / R);
       const k = d / R;
-      sats.push({ x: cx + Math.cos(a) * d, y: cy + Math.sin(a) * d, r: rad, a, tail: rad > 1.4 && r() < 0.35 ? Math.min(rad * 2.5, Math.max(0, d - R)) : 0, at: 1 + Math.min(5, Math.floor((k - 1.1) * 1.4)), h: 0.82, k, trail: true });
+      const fd = flown(d);
+      sats.push({ x: cx + Math.cos(a) * fd, y: cy + Math.sin(a) * fd, r: rad, a, tail: rad > 1.4 && r() < 0.35 ? Math.min(rad * 2.5, Math.max(0, fd - R)) : 0, at: 1 + Math.min(5, Math.floor((k - 1.1) * 1.4)), h: 0.82, k, trail: true });
       d += Math.max(2.2, rad * lerp(2.2, 3.6, r()));
       rad = Math.max(0.6, rad * lerp(0.82, 0.95, r()));
     }
   }
+  thin(sats);
   /* GORE3: nothing reaches the view's edge (a drop or a tendril cut by it would end in a straight line) and no drop lands on the struck
      token (it stays readable); a tendril too long for the room is shortened, a drop that would not fit is not thrown */
   const fits = (x, y, rad) => x - rad >= EDGE && y - rad >= EDGE && x + rad <= g.w - 1 - EDGE && y + rad <= g.h - 1 - EDGE;
@@ -350,9 +377,10 @@ export function bloodPlan(g, opts = {}) {
   const mist = [];
   const nm = Math.round(8 + 60 * sm);
   for (let i = 0; i < nm; i++) {
-    const a = dir + (r() - 0.5) * Math.PI * 1.2, dist = R * lerp(1.3, 5.6, r());
+    const a = dir + (r() - 0.5) * Math.PI * 1.2, dist = flown(R * lerp(1.3, 5.6, r()));
     mist.push({ x: cx + Math.cos(a) * dist, y: cy + Math.sin(a) * dist, two: r() < 0.25, at: 2 + Math.floor(r() * 4) });
   }
+  thin(mist);
   /* the burst frame (tick 0): spray lines out of the hit, the way it flies (no glob in flight) */
   const streaks = [];
   for (let i = 0; i < 5 + Math.round(6 * sm); i++) { const a = dir + (r() - 0.5) * Math.PI * 0.9; streaks.push({ a, d0: R * lerp(0.5, 0.9, r()), len: R * lerp(0.9, 2.2, r()), w: Math.max(1, R * lerp(0.05, 0.1, r())) }); }
@@ -374,6 +402,7 @@ export function bloodPlan(g, opts = {}) {
     drips.push(dripOf(r, x0, y0, R * lerp(0.7, 2.3, r()) * (0.6 + 0.4 * Math.min(s, 1)), lerp(450, 1100, r()), R > 14 ? 2 : 1, dripRoom(x0, y0)));
   }
   for (const sat of sats) if (sat.r >= 1.9 && !sat.tail && r() < 0.45) drips.push(dripOf(r, sat.x, sat.y + sat.r * 0.8, sat.r * lerp(3, 7, r()), lerp(700, 1600, r()), 1, dripRoom(sat.x, sat.y + sat.r * 0.8)));
+  thin(drips);
   /* life: wet, drying, dried, cleared (ms after contact). GORE2 (the owner: «Krew bardzo słabo znika»): it clears by CRUMBLING, not by a
      screen-door dither: the dried crust erodes from its thin parts inward (mist and small drops first, the body's heart last) on twos,
      flakes of crust break off the eroding edge and fall (raster.mjs drawBlood) */
@@ -390,7 +419,7 @@ export function bloodPlan(g, opts = {}) {
   if (none) Object.assign(plan, { none: true, blobs: [], tendrils: [], sats: [], mist: [], streaks: [], drips: [], glints: [] });
   /* GORECLEAR: what it kept clear of and how it was placed (only among keep-outs: a plan without them is exactly GORE4's) */
   if (obs.length) Object.assign(plan, { keep: obs, keepHow: keepHow ?? (none ? "none" : "clean") });
-  if (s >= 0.98 && !opts.second && !opts.safe && !none) {
+  if (s >= 0.98 && !opts.second && !opts.safe && !none && far < FAR.noSecond) {
     const sg = r() < 0.5 ? 1 : -1, a2 = dir + sg * lerp(0.6, 1.1, r());
     /* GORECLEAR: among keep-outs the second blow tries the other ways round the first when its own place is taken */
     for (const turn of obs.length ? [0, -1.4, 0.7, -2.1, 1.4, -2.8, 2.1] : [0]) {
@@ -457,18 +486,59 @@ export function dripAt(d, ms) {
    same corner's edges. It ends by FALLING OUT (GORE2): the cracked glass breaks into the shards its own cracks drew and they drop out
    one after another, the crushed corner first (raster.mjs shardsOf). */
 export const CORNERS = [[0, 0], [1, 0], [1, 1], [0, 1]];      // top left, top right, bottom right, bottom left (fractions of the view)
+/* GOREUI (blind review of tag 161, D6: level 3 was not visibly bigger than level 2). The table's level reached a break only through its
+   strength (x LEVEL), and a web's reach grew by 0.13 of the short side over the WHOLE strength range, capped at strength 1: the same
+   blow at level 2 and 3 differed by 13 % in reach, a broken Resolve by nothing. The level now also sizes the web itself:
+   CRACK_LEVEL x its reach (and the stretch of the corner's edges it starts on), so one blow at the three levels is a small break by the
+   corner / today's web / a web about a third as far again with one more ring. All three are the same hairlines (the same colours and
+   alphas: none is louder, a higher level is only larger); level 2 is exactly the web it was. */
+export const CRACK_LEVEL = [0, 0.66, 1, 1.35];
+/** a web's reach from its corner as a share of the view's short side: strength (already x the table's LEVEL), the table's level, a
+    photosensitive seat */
+export function crackReachOf(strength, level = 2, safe = false) {
+  const sm = Math.min(clamp(Number(strength) || 0.5, 0.12, 1.25), 1);
+  return (0.1 + 0.13 * sm) * (safe ? 0.8 : 1) * CRACK_LEVEL[clamp(Math.round(Number.isFinite(level) ? level : 2), 1, 3)];
+}
+/** the corner a seed breaks (0..3: CORNERS) when nothing else decides */
+export const seedCorner = (seed) => Math.floor(rng(`cracks|${seed ?? "x"}`)() * 4);
+/* GOREUI (D6: the web lay over the toolbar's and the sidebar's icons and over a panel's header): the cracks are drawn UNDER the
+   interface now (main.mjs), so nothing of the interface is ever under them; a corner that the interface, a token or a map marker fills
+   would hide the web or be crossed by it, so each seat breaks the corner that shows the web best. scores = for each corner the share
+   (0..1) of the web's quarter that is taken there on this seat. The seed's corner is kept whenever it is within CORNER_TOL of the
+   freest (seats with alike screens still break the same corner); else the next such corner clockwise from it. */
+export const CORNER_TOL = 0.12;
+export function pickCorner(seed, scores = null) {
+  const c0 = seedCorner(seed);
+  if (!Array.isArray(scores) || scores.length !== 4 || !scores.every((v) => Number.isFinite(v))) return c0;
+  const best = Math.min(...scores);
+  for (let k = 0; k < 4; k++) { const c = (c0 + k) % 4; if (scores[c] <= best + CORNER_TOL) return c; }
+  return c0;
+}
+/** the points (fractions of the view) a seat probes to score a corner: a grid over the quarter disc of the web's reach (share of the
+    view's short side) round that corner */
+export function cornerProbe(corner, reach, vw, vh, n = 9) {
+  const [kx, ky] = CORNERS[((corner % 4) + 4) % 4], R = reach * Math.min(vw, vh), out = [];
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    const dx = ((i + 0.5) / n) * R, dy = ((j + 0.5) / n) * R;
+    if (dx * dx + dy * dy > R * R) continue;
+    out.push({ fx: (kx ? vw - dx : dx) / vw, fy: (ky ? vh - dy : dy) / vh });
+  }
+  return out;
+}
 export function crackPlan(g, opts = {}) {
   const r = rng(`cracks|${opts.seed ?? "x"}`);
   const s = clamp(Number(opts.strength) || 0.5, 0.12, 1.25);
   const sm = Math.min(s, 1);
   const m = Math.min(g.w, g.h);
-  const corner = Number.isInteger(opts.corner) ? ((opts.corner % 4) + 4) % 4 : Math.floor(r() * 4);
+  const seeded = Math.floor(r() * 4);      // (always drawn: the web's own numbers do not depend on which corner it breaks)
+  const corner = Number.isInteger(opts.corner) ? ((opts.corner % 4) + 4) % 4 : seeded;
+  const level = clamp(Math.round(Number.isFinite(opts.level) ? opts.level : 2), 1, 3), lk = CRACK_LEVEL[level];
   const [kx, ky] = CORNERS[corner];
   const sx = kx ? -1 : 1, sy = ky ? -1 : 1;                   // the way into the view from that corner
   const ox = kx * g.w, oy = ky * g.h;                         // the corner: the web's centre (a pixel's edge, not inside the view)
   /* a direction into the view by its angle across the corner's quarter: u 0 = along the horizontal edge, 1 = along the vertical one */
   const way = (u) => Math.atan2(sy * Math.sin(u * Math.PI / 2), sx * Math.cos(u * Math.PI / 2));
-  const reach = (0.1 + 0.13 * sm) * m * (opts.safe ? 0.8 : 1);
+  const reach = (0.1 + 0.13 * sm) * m * (opts.safe ? 0.8 : 1) * lk;      // = crackReachOf x m (in this order: level 2 is the web it was, to the last bit)
   const rc = Math.max(1.6, lerp(1.8, 3.4, sm));
   const strikes = [{ x: ox, y: oy, at: 0, s, corner: true }];
   const craters = [{ x: ox, y: oy, r: rc, at: 0, seed: r() * 1e9 }];
@@ -485,7 +555,7 @@ export function crackPlan(g, opts = {}) {
          out along them), never inside the view */
       const u = clamp((i + 0.5) / n + (r() - 0.5) * (0.6 / n), 0.06, 0.94);
       const onEdge = wv ? 1 : r() < 0.55 ? 1 : 0;
-      const e = onEdge ? (wv ? lerp(0.09, 0.2, r()) : lerp(0.02, 0.07, r())) * m : 0;
+      const e = onEdge ? (wv ? lerp(0.09, 0.2, r()) : lerp(0.02, 0.07, r())) * m * lk : 0;
       const alongX = u < 0.5;                                 // a crack aiming low in the quarter starts on the horizontal edge
       let x0 = ox + sx * (alongX ? e : 0), y0 = oy + sy * (alongX ? 0 : e);
       if (!onEdge) { const a0 = way(u); x0 += Math.cos(a0) * rc; y0 += Math.sin(a0) * rc; }
@@ -511,7 +581,7 @@ export function crackPlan(g, opts = {}) {
   const angOf = (q) => { const e = q.pts[q.pts.length - 1]; return Math.atan2(e[1] - oy, e[0] - ox); };
   radial.sort((p, q) => angOf(p) - angOf(q));
   const angs = radial.map(angOf);
-  const nr = 1 + (sm > 0.55 ? 1 : 0);
+  const nr = 1 + (sm > 0.55 ? 1 : 0) + (level >= 3 ? 1 : 0);      // GOREUI: the largest web has one more ring
   const rhos = [];
   for (let k = 0; k < nr; k++) {
     const rho = reach * lerp(0.28, 0.62, (k + 0.3 + r() * 0.5) / nr);
@@ -542,7 +612,7 @@ export function crackPlan(g, opts = {}) {
   const hold = clamp(Number(opts.hold) || 1, 0.5, 2);
   const life = { gone: (4500 + 4000 * sm) * hold, fall: FALL };
   const maxD = Math.max(1, ...lines.map((l) => l.pts[l.pts.length - 1][2]));
-  return { kind: "cracks", seed: opts.seed ?? "x", s, corner, origin: { x: ox, y: oy }, waves, strikes, craters, lines, chips, facets, life, maxD, safe: !!opts.safe, still: !!opts.still, g: { w: g.w, h: g.h } };
+  return { kind: "cracks", seed: opts.seed ?? "x", s, level, corner, origin: { x: ox, y: oy }, waves, strikes, craters, lines, chips, facets, life, maxD, safe: !!opts.safe, still: !!opts.still, g: { w: g.w, h: g.h } };
 }
 /* a wandering crack from (x, y) along a, L px; d = its distance from `from` (the corner) when given, else its path length */
 function walk(r, x, y, a, L, jit, d0, from = null, into = null) {
