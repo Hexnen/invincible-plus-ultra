@@ -2,6 +2,7 @@
 // fake page (window, panels, canvas at this seat's zoom and pan, Dice So Nice absent). Used by sweep-checks/splashsame.mjs and by the per-seat
 // plan logs (node scripts/sweep-checks/lib/splash-seat.mjs dump <out.json>). Not a suite itself (lib/ is not scanned by check-everything).
 import * as SL from "../../splash/logic.mjs";
+import * as Share from "../../splash/seat-share.mjs";
 
 export const GS = 350;   // The Warehouse's grid
 const seq = (vals) => { let i = 0; return () => vals[i++ % vals.length]; };
@@ -46,21 +47,30 @@ function fakeDom(W, H, ui = {}) {
     "#sidebar": R(W - side, 0, side, H),
     "#hotbar": R(W * 0.3, H - 66, 560, 58),
     "#scene-controls": R(16, 16, 72, H - 260),
-    ...(ui.nav ? { "#scene-navigation li": R(104, 16, 170, ui.nav) } : {}),
+    /* (SPLASHSEAT: ui.ghosts = rows of the scene list that are in the page but not drawn, as the GM's folded list has them live) */
+    ...(ui.nav ? { "#scene-navigation li": ui.ghosts ? [R(104, 16, 170, ui.nav), ...Array.from({ length: ui.ghosts }, (_, i) => ({ ...R(104, 144 + i * 40, 170, 32), hidden: true }))] : R(104, 16, 170, ui.nav) } : {}),
     ...(ui.vram ? { ".mm-vram": R(96, 92, 264, 52) } : {}),
     ...(ui.dock ? { "#ich-dock": R(W - side - 312, 48, 310, 233) } : {}),
     ...(ui.party ? { "#invincible-party li": [R(96, H - 400, 230, 70), R(96, H - 325, 230, 70)] } : {}),
     ...(ui.card ? { "#chat-notifications .chat-log > li": R(W - side - 310, H * 0.35, 300, 260) } : {}),
+    /* SPLASHSEAT: the column the chat cards pop up in (measured live, lane 8, 1600 x 900, the sidebar folded: 1236..1536 x 16..886) and the
+       GM's director bar (418..862 x 784..816) */
+    ...(ui.col ? { "#chat-notifications": R(W - side - 316, 16, 300, H - 30) } : {}),
+    ...(ui.pill ? { "#mm-dir-bar": R(W * 0.26, H - 116, 444, 32) } : {}),
     ...(ui.desk ? { "#invincible-tactics-desk:not(.igd-collapsed) .igd": R(...ui.desk) } : {})
   };
   const els = {};
   /* SPLASHCLEAR: a panel remembers whether it ever stepped back (ins-yield) during the moment (the stage takes the class off at its end) */
-  const el = (sel, r, i) => (els[sel + i] ??= { sel, className: "", yielded: false, getBoundingClientRect: () => r,
+  const el = (sel, r, i) => (els[sel + i] ??= { sel, className: "", yielded: false, getBoundingClientRect: () => r, checkVisibility: () => !r.hidden,
     get classList() { const c = cls(this), self = this; return { ...c, add: (...x) => { if (x.includes("ins-yield")) self.yielded = true; c.add(...x); } }; } });
   const doc = { all, body: mk("body"), createElement: mk, createTextNode: (t) => ({ textContent: t }), createElementNS: (_, t) => mk(t), els, rects,
     getElementById: (id) => (id === "sidebar" ? { getBoundingClientRect: () => rects["#sidebar"], offsetWidth: side } : null),
     querySelector: () => null, querySelectorAll: (s) => { const r = rects[s]; return r ? (Array.isArray(r) ? r : [r]).map((q, i) => el(s, q, i)) : []; } };
   globalThis.getComputedStyle = (e) => ({ zIndex: e.style?.zIndex ?? "auto", display: "block", visibility: "visible", opacity: "1" });
+  /* SPLASHSEAT: this seat's open windows (ui.wins: [[l, t, w, h, class?]]), as Foundry's registry of applications has them */
+  const wins = (ui.wins ?? []).map(([l, t, w, h, c]) => ({ rendered: true, minimized: false, hasFrame: true, options: { window: { frame: true } },
+    element: { classList: { contains: (x) => x === (c ?? "sheet") }, getBoundingClientRect: () => R(l, t, w, h) } }));
+  globalThis.foundry = { applications: { instances: new Map(wins.map((a, i) => [i, a])) } };
   return doc;
 }
 
@@ -162,7 +172,10 @@ export async function seatPlay(o) {
     globalThis.game = { user: { isGM: gm }, modules: { get: (id) => (id === "moinen-maps" && (b.badges.length || o.parked) ? { active: true, api: { ...(b.badges.length ? { zones: zapi } : {}), ...(o.parked ? { directorStage: { status: () => ({ home: { x: center.x, y: center.y, scale: zoom }, parked: o.parked }) } } : {}) } } : null) } };
     const L = fakeEngine(k, !!o.cut); Stage.setLetters(L); Stage.setLayer(o.layer ?? "screen");
     const tag = o.seedTag ?? `${o.bd ?? "empty"}-${o.outcome}`;
-    const ctl = Stage.play(out.e, { token: b.hero, scale: 1, hold: 1, fx: 1, fullFrom: out.full ? 0.7 : null, seed: "SS-" + tag, resolve: () => ({ now: 5, max: 8 }), targets: [b.target.id], from: b.hero, at: 0, ...(o.probe ? { momentId: "SB-" + runN } : {}) });
+    /* SPLASHSEAT: o.told = { user id: report } (seatTell): the table's lists for this roll, as main.mjs would have heard them */
+    const shareId = o.told ? "SH-" + runN : null;
+    if (shareId) for (const [u, r] of Object.entries(o.told)) Share.note(shareId, u, r);
+    const ctl = Stage.play(out.e, { token: b.hero, scale: 1, hold: 1, fx: 1, fullFrom: out.full ? 0.7 : null, seed: "SS-" + tag, resolve: () => ({ now: 5, max: 8 }), targets: [b.target.id], from: b.hero, at: 0, ...(o.probe ? { momentId: "SB-" + runN } : {}), ...(shareId ? { shareId } : {}) });
     let t, probed;
     if (o.probe) { while ((t = timers.filter((x) => !x.done && x.ms <= (o.probeAt ?? 1500)).sort((a, b2) => a.ms - b2.ms)[0])) { t.done = true; t.fn(); } probed = o.probe({ Stage, ctl, toClient, board: b }); }
     while ((t = timers.filter((x) => !x.done).sort((a, b2) => a.ms - b2.ms)[0])) { t.done = true; t.fn(); }
@@ -182,10 +195,19 @@ export async function seatPlay(o) {
       ui: Object.fromEntries(Object.entries(document.rects).map(([kk, v]) => [kk, v])), yielded: [...new Set(Object.values(document.els).filter((e) => e.yielded).map((e) => e.sel))] };
     if (o.probe) res.probe = probed;
     Stage.clearAll(); Stage.setLayer("screen"); S.setReduced(false);
+    if (shareId) Share.forget(shareId);
     return res;
-  } finally { globalThis.setTimeout = st; globalThis.clearTimeout = ct; delete globalThis.canvas; delete globalThis.game; }
+  } finally { globalThis.setTimeout = st; globalThis.clearTimeout = ct; delete globalThis.canvas; delete globalThis.game; delete globalThis.foundry; }
 }
 
+/* SPLASHSEAT: what one seat tells the table when a roll arrives (stage.mjs seatReport), from its page alone */
+export async function seatTell(seat) {
+  const s = typeof seat === "string" ? SEATS[seat] : seat;
+  globalThis.document = fakeDom(s.W, s.H, s.ui ?? {});
+  globalThis.window = { innerWidth: s.W, innerHeight: s.H, matchMedia: () => ({ matches: !!s.reduced }) };
+  const Stage = await import(`../../splash/stage.mjs?splashsame-${++runN}`);
+  return Stage.seatReport();
+}
 /* SPLASHCLEAR: the Resolve gauges the stage put on the page (fake box 150 x 60 at its left / top, scaled), client px */
 function gaugesOf(all = []) {
   const out = [];

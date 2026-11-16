@@ -1193,6 +1193,8 @@ export function seatPlace(table, seat) {
     /* the wider room is for CLEAN places only: the least covering stays in the band (its weights already weigh a bystander against a panel) */
     if (!ds) safe = seat.safe;
   }
+  /* (SPLASHSEAT: a caller that asks only for a CLEAN place: the least-covering search below, the dear one, is its own to decide) */
+  if (!ds && seat.cleanOnly) return null;
   if (!ds) {
     /* at each allowed size the parts' least covering places; the size that covers least wins (the bigger one on a tie) */
     moved = 'least';
