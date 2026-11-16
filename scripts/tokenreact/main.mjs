@@ -660,6 +660,8 @@ async function land(ids, ready) {
         it.plan.same = fit.same; it.plan.moved = fit.moved ?? null;
         if (Array.isArray(globalThis.__samepicFit)) globalThis.__samepicFit.push({ pass: kOf ? "plan2" : "plan", name: it.cluster ? keyOf(it) : it.tok.name, tok: it.plan.tokRect, box: it.plan.box, std: view.std(it.plan.tokRect), real: view.safe(), shared: it.plan.blocked, mine, keep: it.plan.keep, fit, ck: dec ?? null });
         if (fit.k < 0.999) shrink(it.plan, fit.k);
+        /* SIZEDEAD: a step under 1 ("small") is drawn, not planned: the group placed at "normal" shrinks by its token (pure stepDrawK) */
+        shrink(it.plan, P.stepDrawK(get(KEY.size, "normal")));
         /* SAMEPIC (live, take W: a 1366 x 768 seat's local guard shrank a word to 0.84 on the letter-count estimate, 1059 px wide where the drawn
            word was 618, and the shrink stayed): what this seat's guard took off is given back once the drawn box is known (measure) */
         it.plan.kLoc = fit.same ? 1 : Math.min(1, fit.k / (fit.kShared || fit.k));

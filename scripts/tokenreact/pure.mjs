@@ -281,8 +281,14 @@ export function wordScale(ratio, u = 1, held = true) {
   const k = u > 0 ? u : 1;
   return Math.max(held ? SCALE_STOP.lo * k : SCALE_STOP.min, Math.min(SCALE_STOP.hi * Math.max(1, k), ratio));
 }
+/* SIZEDEAD (seen live on two seats: beside a big token a knock-down drew 50.9 px at "small" and 48.2 at "normal": both took the room's size,
+   a rung apart): a step under 1 is not planned smaller. The moment is planned, judged and placed at "normal" (planK = 1) and the whole
+   group (word, numbers, box) is then drawn at the step (drawK) by its token: "small" is 0.8 of what "normal" draws in the same spot,
+   everywhere, also where room is short. A step over 1 is planned bigger (planK) and held by the same limits as every word */
+export const stepPlanK = (step) => Math.max(1, SIZE_STEP[step] ?? 1);
+export const stepDrawK = (step) => Math.min(1, SIZE_STEP[step] ?? 1);
 export function tableSize(step, letteringScale = 1) {
-  const s = SIZE_STEP[step] ?? 1, e = Number(letteringScale) > 0 ? Number(letteringScale) : 1;
+  const s = stepPlanK(step), e = Number(letteringScale) > 0 ? Number(letteringScale) : 1;
   return Math.max(SIZE_TABLE.lo, Math.min(SIZE_TABLE.hi, s * e));
 }
 /** the ceilings of one word at the table's size u: { capH (cap height, px), width (the word's width, px) } */

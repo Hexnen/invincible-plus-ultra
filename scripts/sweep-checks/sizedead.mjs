@@ -31,11 +31,14 @@ const VH = P.REF_VH, VW = P.REF_VW;
   ck("A1 the steps and the limits are there", P.SIZE_STEP?.small < 1 && P.SIZE_STEP?.normal === 1 && P.SIZE_STEP?.large > 1 && typeof P.tableSize === "function" && typeof P.sizeCeil === "function"
     && P.SIZE_TABLE?.lo <= 0.5 && P.SIZE_TABLE?.hi >= 2.5 * 1.25);
   if (typeof P.tableSize === "function" && typeof P.sizeCeil === "function") {
+    ck("A0 a step under 1 is drawn, not planned: small plans as normal and draws at 0.8; large plans at 1.25 and draws whole", P.stepPlanK("small") === 1 && P.stepDrawK("small") === 0.8 && P.stepPlanK("large") === 1.25 && P.stepDrawK("large") === 1
+      && P.stepPlanK("normal") === 1 && P.stepDrawK("normal") === 1 && P.stepDrawK("nonsense") === 1 && P.tableSize("small", 1) === P.tableSize("normal", 1)
+      && /shrink\(it\.plan, P\.stepDrawK\(get\(KEY\.size, "normal"\)\)\)/.test(src("../tokenreact/main.mjs")));
     ck("A1 the table's size = the step x the lettering's Size, held to its limits", P.tableSize("normal", 1) === 1 && Math.abs(P.tableSize("large", 2) - 2.5) < 1e-9 && Math.abs(P.tableSize("small", 0.5) - P.SIZE_TABLE.lo) < 1e-9
       && P.tableSize("large", 2.5) <= P.SIZE_TABLE.hi && P.tableSize("nonsense", "x") === 1);
     /* the review's word: a knock-down by a 100 px and a 160 px token (it stood AT the width cap at "normal": "large" drew the same) */
     for (const tp of [100, 160, 175]) {
-      const [s, m, l] = ["small", "normal", "large"].map((st) => P.targetPx("down", 1, "KA-THOOM!!", tp, VH, VW, 1, P.tableSize(st, 1)));
+      const [s, m, l] = ["small", "normal", "large"].map((st) => P.stepDrawK(st) * P.targetPx("down", 1, "KA-THOOM!!", tp, VH, VW, 1, P.tableSize(st, 1)));      // "small" is drawn, not planned (stepDrawK)
       ck(`A2 the review's knock-down word by a ${tp} px token: small ${s.toFixed(1)} < normal ${m.toFixed(1)} < large ${l.toFixed(1)} px, a real step each`, l >= m * 1.2 && s <= m * 0.84);
     }
     /* every kind of reaction word, short and long, small and big tokens, light and heavy amounts */
@@ -43,7 +46,7 @@ const VH = P.REF_VH, VW = P.REF_VW;
     let flat = [], uneven = [], floorBad = [];
     for (const kind of kinds) for (const w of words) for (const tp of [20, 40, 70, 100, 175, 350, 560]) for (const amt of [0, 0.3, 1]) for (const k of [1, 0.6]) {
       const at = (u) => P.targetPx(kind, amt, w, tp, VH, VW, k, u);
-      const s = at(P.tableSize("small", 1)), m = at(1), l = at(P.tableSize("large", 1));
+      const s = P.stepDrawK("small") * at(P.tableSize("small", 1)), m = at(1), l = at(P.tableSize("large", 1));
       /* (a word whose ceiling at the normal size is already past the hard one, a 17-letter roar beside a 350 px token, grows only up to
          that ceiling: no view has room for more) */
       const c1w = P.sizeCeil(tp, VH, VW, 1).width / (P.SIZE_RULE.aspect * (Math.max(2, [...w].filter((ch) => /[\p{L}\p{N}]/u.test(ch)).length) + 0.5));
@@ -81,7 +84,7 @@ const VH = P.REF_VH, VW = P.REF_VW;
      biggest word, and every one stood bigger than the box the layout had judged */
   if (typeof P.stopPx === "function" && typeof P.wordScale === "function") {
     const nat = 401;
-    const [fs, fm, fl] = ["small", "normal", "large"].map((st) => P.stopPx(nat, P.tableSize(st, 1)));
+    const [fs, fm, fl] = ["small", "normal", "large"].map((st) => P.stepDrawK(st) * P.stopPx(nat, P.tableSize(st, 1)));
     ck(`A9 a word's legible floor is the table's size too: small ${fs.toFixed(1)} < normal ${fm.toFixed(1)} < large ${fl.toFixed(1)} px (0.8 / 1 / 1.25), the old 0.2 of the engine's size at the default`,
       Math.abs(fm - 0.2 * nat) < 1e-9 && Math.abs(fs / fm - 0.8) < 1e-9 && Math.abs(fl / fm - 1.25) < 1e-9 && P.stopPx(0, 1) === 0);
     ck("A9 a word is drawn at its planned size (not held over it where it is drawn); a number keeps the stop, moved with the table's size", P.wordScale(0.05, 1, false) === 0.05 && P.wordScale(0.05, 2, false) === 0.05
@@ -197,6 +200,7 @@ for (const [key, by] of Object.entries(R)) {
     if (by.old) ck(`${key}: an older engine's own Size (each screen's) is not counted: the word as at the default (${cap("old")} px)`, Math.abs(cap("old") - cap("normal")) < 0.6);
   } else {
     /* in a crowd the room decides: a bigger choice is never drawn smaller, the smallest is smaller than the biggest */
+    ck(`${key}: in a crowd "small" is drawn at 0.8 of "normal" in the same spot (${cap("small")} / ${cap("normal")} px): never dead where room is short`, Math.abs(cap("small") / cap("normal") - P.stepDrawK("small")) < 0.02);
     ck(`${key}: in a crowd small ${cap("small")} <= normal ${cap("normal")} <= large ${cap("large")} px, and small < large`, cap("small") <= cap("normal") + 0.5 && cap("normal") <= cap("large") + 0.5 && cap("small") < cap("large") - 2);
     ck(`${key}: in a crowd the lettering's Size 0.5 <= 1 <= 2 (${cap("half")} / ${cap("normal")} / ${cap("twice")} px), and half < twice`, cap("half") <= cap("normal") + 0.5 && cap("normal") <= cap("twice") + 0.5 && cap("half") < cap("twice") - 2);
   }
