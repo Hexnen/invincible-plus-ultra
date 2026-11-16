@@ -42,7 +42,7 @@ const TN = await import("../gore/tone.mjs");      // GOREPINK: the glass as show
   for (let to = 5; to >= 1; to--) { const s = e({ stat: "health", from: 6, to }).strength; if (s < prev) mono = false; prev = s; }
   ck("a heavier blow is never a smaller splash", mono && e({ stat: "health", from: 6, to: 5 }).strength < e({ stat: "health", from: 6, to: 1 }).strength);
   ck("the table's 0 = none, 2 = as is, 3 = more", P.scaled(0.5, 0) === 0 && P.scaled(0.5, 2) === 0.5 && P.scaled(0.5, 3) > 0.5 && P.scaled(0.5, 1) < 0.5);
-  ck("options are cleaned (defaults, range)", JSON.stringify(P.cleanOpts({})) === JSON.stringify({ blood: 2, cracks: 2, seats: "all", hold: 1 }) && P.cleanOpts({ goreBlood: 9, goreSeats: "x", goreHold: 7 }).blood === 3 && P.cleanOpts({ goreSeats: "x" }).seats === "all" && P.cleanOpts({ goreHold: 7 }).hold === 2);
+  ck("options are cleaned (defaults, range)", JSON.stringify(P.cleanOpts({})) === JSON.stringify({ blood: 2, cracks: 2, seats: "owner", hold: 1 }) && P.cleanOpts({ goreBlood: 9, goreWho: "x", goreHold: 7 }).blood === 3 && P.cleanOpts({ goreWho: "x" }).seats === "owner" && P.cleanOpts({ goreHold: 7 }).hold === 2);
 }
 
 /* ---------------- the grid: crisp at every DPR ---------------- */
@@ -483,7 +483,12 @@ const T = P.TICK_MS;
   const api = game.modules.get("invincible-plus-ultra").api?.gore;
   ck("the api is on the module and on globalThis", !!api && globalThis.PlusUltraGore === api && typeof api.blood === "function" && typeof api.net?.blood === "function");
   const reg = (k) => settings.get(`invincible-plus-ultra.${k}`);
-  ck("the table's options: world, not in Foundry's list (the Comic effects window shows them)", ["goreBlood", "goreCracks", "goreSeats", "goreHold"].every((k) => reg(k)?.scope === "world" && reg(k)?.config === false));
+  ck("the table's options: world, not in Foundry's list (the Comic effects window shows them)", ["goreBlood", "goreCracks", "goreWho", "goreHold"].every((k) => reg(k)?.scope === "world" && reg(k)?.config === false));
+  /* GOREOWN changed the table's default to the owner rule (the owner, 2026-11-16) and moved the choice to the key goreWho. The checks
+     below are about WHEN and HOW an effect plays on a seat that is shown it (this seat is a player's, and most of its tokens are not
+     his), so they run with the table set to "every screen that sees the character", as they did while that was the default. The
+     who-sees rules have their own suite: sweep-checks/goreown.mjs */
+  values["invincible-plus-ultra.goreWho"] = "all";
   const hurt = (tok, stat, to, opt = {}) => { tok.actor.system.derived[stat].value = to; for (const fn of hooks.updateActor ?? []) fn(tok.actor, { system: { derived: { [stat]: { value: to } } } }, { modifiedTime: 12345, ...opt }); };
   const live = () => api.state().live;
   const reset = () => { api.clear({ quick: true }); for (const t of toks) { t.actor.system.derived.health.value = 6; t.actor.system.derived.resolve.value = 6; } for (const fn of hooks.canvasReady ?? []) fn(); };
@@ -544,7 +549,7 @@ const T = P.TICK_MS;
   ck("a token out of this seat's sight: nothing", live() === 0);
   toks[1].visible = toks[1].isVisible = true;
   reset();
-  values["invincible-plus-ultra.goreSeats"] = "owners";
+  values["invincible-plus-ultra.goreWho"] = "owners";
   hurt(toks[1], "health", 2);
   advance(M.QUIET + 10);
   const notOwner = live();
@@ -552,7 +557,7 @@ const T = P.TICK_MS;
   hurt(toks[0], "health", 2);
   advance(M.QUIET + 10);
   ck("'owners': only the character's owner (and the GM) sees it", notOwner === 0 && live() === 1);
-  values["invincible-plus-ultra.goreSeats"] = "all";
+  values["invincible-plus-ultra.goreWho"] = "all";
   reset();
   values["invincible-plus-ultra.goreBlood"] = 0;
   hurt(toks[0], "health", 2);
@@ -641,7 +646,7 @@ const T = P.TICK_MS;
   const src = (p) => readFileSync(join(root, p), "utf8");
   ck("module.js starts the area by a guarded import", /import\("\.\/gore\/main\.mjs"\)\s*\.then\(\(gore\) => gore\.start/.test(src("module.js")));
   const D = await import("../table/defs.mjs");
-  ck("the Comic effects window has the tab with the four options", JSON.stringify(D.TABS.find((t) => t.id === "gore")?.sections.flatMap((s) => s.rows.map((r) => r.key))) === JSON.stringify(["goreBlood", "goreCracks", "goreSeats", "goreHold"]));
+  ck("the Comic effects window has the tab with the four options", JSON.stringify(D.TABS.find((t) => t.id === "gore")?.sections.flatMap((s) => s.rows.map((r) => r.key))) === JSON.stringify(["goreBlood", "goreCracks", "goreWho", "goreHold"]));
   ck("the window's Preview plays it, and says so when both levels are 0", /tab === "gore"\) \{ if \(\(game\.modules\.get\(MOD\)\?\.api\?\.gore \?\? globalThis\.PlusUltraGore\)\?\.preview\?\.\(\) === 0\) ui\.notifications\?\.info\(t\("IPT\.Notice\.goreOff"\)\)/.test(src("table/app.mjs")));
   ck("the glass lies over the map and under the interface, crisp (pixelated, right after #board)", /if \(name === "blood"\) \{ board\.after\(m\.wrap\)/.test(src("gore/main.mjs")) && /imageRendering: "pixelated"/.test(src("gore/main.mjs")) && /pointerEvents: "none"/.test(src("gore/main.mjs")));
 }
