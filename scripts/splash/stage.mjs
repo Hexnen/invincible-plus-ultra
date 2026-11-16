@@ -835,11 +835,11 @@ function compose(ctl, items, extra = {}) {
     const seat = { hero: T2, safe: loc.safe, wide: seatWide(lay), avoid: [...cs.avoid.map(mvq), ...loc.avoid], own: loc.own ?? [], gap: frame.gap };   // the table's gap to the roller
     /* SPLASHBLOCK 0: a seat on which the table's block holds where the table set it shows exactly that (SPLASHSAME: every such seat the
        same block round the roller); the steps below are for a seat that has to move it */
-    let own = LP.seatPlace(T1, { ...seat, plainOnly: true });
-    const c1 = own ?? LP.seatPlace(T1, { hero: cs.hero, safe: cs.safe, wide: null, avoid: cs.avoid, own: [], gap: frame.gap });
+    let own = seatPlaceKept(T1, { ...seat, plainOnly: true });
+    const c1 = own ?? seatPlaceKept(T1, { hero: cs.hero, safe: cs.safe, wide: null, avoid: cs.avoid, own: [], gap: frame.gap });
     /* SPLASHBLOCK 1: else the block the canonical seat places (c1); SPLASHBLOCK 2: shown here as it is, or moved in one piece (never searched again from where the canonical seat left it: two
        searches one after the other carried a block from over the roller to beside him) */
-    out = own ?? LP.seatPlace({ ...c1, hero: cs.hero, ref: frame.ref, scale: frame.scale, tsafe: cs.safe, avoid1: cs.avoid, rigid: true },
+    out = own ?? seatPlaceKept({ ...c1, hero: cs.hero, ref: frame.ref, scale: frame.scale, tsafe: cs.safe, avoid1: cs.avoid, rigid: true },
       /* (weighed here: the documents, moved with the roller, and this seat's own panels; the window's shared corner zone was weighed on
          the canonical seat, a few px away) */
       { ...seat, avoid: cs.avoid.filter((q) => !q.at).map(mvq), rigidOnly: true, slack: SNAP / 2 + CELL_HOLD + 1, asIs: worst(c1.moved) });
@@ -849,7 +849,7 @@ function compose(ctl, items, extra = {}) {
        for the few per cent less it covered there, and two seats on one shot showed two arrangements) ... */
     let dbg = null;
     if (!out || worst(c1.moved)) {
-      const alt = LP.seatPlace(T1, seat), toks = { token: seat.hero, avoid: seat.avoid.filter((q) => q.x != null && !q.at) };
+      const alt = seatPlaceKept(T1, seat), toks = { token: seat.hero, avoid: seat.avoid.filter((q) => q.x != null && !q.at) };
       /* (... unless this seat's own search keeps every token free, CANON_FREE of a token's box at most, where the canonical block lies
          on one, over CANON_COVER of it: the roller a few px off his cell's middle can leave the canonical seat less room than this seat has) */
       if (Array.isArray(globalThis.__splashFit)) dbg = { rigid: out ? out.moved : null, c1hit: c1.hit ?? null, alt: alt.moved, althit: alt.hit ?? null, cov: [LP.coverMax(alt, toks), out ? LP.coverMax(out, toks) : null], own: seat.own.length };
@@ -889,8 +889,45 @@ function compose(ctl, items, extra = {}) {
    instant play() finds the same input and takes the kept layout (a copy: the caller moves its parts). Any input that changed (a token moved,
    the view panned, another window) is a new key: laid out afresh, as before. */
 const LAYOUT_MEMO = new Map(), LAYOUT_MAX = 24;
-export const layoutStats = { fresh: 0, reused: 0, ms: 0 };
+export const layoutStats = { fresh: 0, reused: 0, ms: 0, seatFresh: 0, seatKept: 0, seatMs: 0, seatUnkeyed: 0 };
 const plainItem = (it) => { const o = {}; for (const k of Object.keys(it)) if (k[0] !== '_') o[k] = it[k]; return o; };
+/* ROLLSTALL (live, two seats, a crowded board: the table's block was kept by its input since CRITLATE, but its PLACING on the seat
+   (LP.seatPlace: the canonical seat's search, then this seat's) was worked out again on every layout: while the dice rolled, again when the
+   instant was known, and a third time ON the instant, 0.2-0.8 s in one task each; the critical's word and its impact were called 0.2-1 s
+   after their start, 5-14 of the impact's 19 drawings shown). LP.seatPlace is a pure function of the table's block and the seat it is given:
+   its answer is kept by that exact input, like the layout itself. At the instant play() takes what prepare() worked out; an input that
+   changed (the roller moved, the view panned, a panel opened) is a new key: placed afresh, as before. What is kept is only what seatPlace
+   itself sets (a copy each time: the caller writes on it); everything else of the answer is the table handed in, as seatPlace returns it.
+   A live probe of the placing (globalThis.__splashFit) always places afresh. */
+const SEAT_MEMO = new Map(), SEAT_MAX = 96;
+const SEAT_SET = ['items', 'rect', 'parts', 'pi', 'gpi', 'rel', 'gauge', 'k', 'moved', 'd', 'f', 'hit'];
+const seatCopy = (v) => (Array.isArray(v) ? v.map(seatCopy) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).map((k) => [k, seatCopy(v[k])])) : v);
+function seatPlaceKept(table, seat) {
+  let key = null;
+  if (!Array.isArray(globalThis.__splashFit)) {
+    try { key = memoKey([{ ...table, items: table.items.map(plainItem) }, seat]); } catch (e) { key = null; }
+    if (!key) layoutStats.seatUnkeyed++;
+  }
+  const kept = key ? SEAT_MEMO.get(key) : undefined;
+  if (kept !== undefined) {
+    SEAT_MEMO.delete(key); SEAT_MEMO.set(key, kept);
+    layoutStats.seatKept++;
+    if (kept === null) return null;
+    /* each line is the one handed in now (its engine marks and inner objects as seatPlace passes them on), at its kept place and size */
+    return { ...table, ...seatCopy(kept), items: table.items.map((it, n) => ({ ...it, ...kept.items[n] })) };
+  }
+  if (prepDeadline != null && performance.now() > prepDeadline) throw PREP_YIELD;   // a sliced prepare goes on in its next slot
+  const t0 = performance.now();
+  const out = LP.seatPlace(table, seat);
+  layoutStats.seatFresh++; layoutStats.seatMs += performance.now() - t0;
+  if (key) {
+    let v = null;
+    if (out) { v = {}; for (const k of SEAT_SET) if (Object.prototype.hasOwnProperty.call(out, k) && out[k] !== table[k]) v[k] = out[k]; v = seatCopy(v); v.items = out.items.map((it, n) => { const src = table.items[n], o = {}; for (const k of ['x', 'y', 'S', 'w', 'h']) if (it[k] !== src[k]) o[k] = it[k]; return o; }); }
+    SEAT_MEMO.set(key, v);
+    if (SEAT_MEMO.size > SEAT_MAX) SEAT_MEMO.delete(SEAT_MEMO.keys().next().value);
+  }
+  return out;
+}
 const copyLayout = (out) => out && {
   ...out, items: out.items.map((it) => ({ ...it })), rect: out.rect && { ...out.rect }, gauge: out.gauge && { ...out.gauge },
   ...(out.parts ? { parts: out.parts.map((q) => ({ ...q })) } : {}), ...(out.foot ? { foot: { ...out.foot } } : {})
@@ -951,7 +988,8 @@ function contactOf(text, o) {
   const key = memoKey([engineKey(), text, { ...o, startAt: undefined, parent: !!o.parent, token: o.token?.id ?? o.token ?? null }]);
   if (key && CONTACT_MEMO.has(key)) return CONTACT_MEMO.get(key);
   const r = LE?.planFor ? LE.planFor(text, o) : null;
-  const v = r?.plan ? { c: IP.contactMs(r.plan) } : null;
+  /* (p: what L.contactAt reads of that plan, for the impact asked ahead: ROLLSTALL, armEarly) */
+  const v = r?.plan ? { c: IP.contactMs(r.plan), p: { timeline: true, contactMs: r.plan.contactMs, motion: r.plan.motion ? { mode: r.plan.motion.mode, in: r.plan.motion.in } : undefined } } : null;
   if (key) { CONTACT_MEMO.set(key, v); if (CONTACT_MEMO.size > CONTACT_MAX) CONTACT_MEMO.delete(CONTACT_MEMO.keys().next().value); }
   return v;
 }
@@ -981,25 +1019,10 @@ function letterOpts(ctl, it, lw) {
   if (struck && ctl.impactTiming) tableOpts.flash = false; else if (!struck) delete tableOpts.flash;
   return { o, world, struck, tableOpts };
 }
-function letterOne(ctl, it) {
-  if (!LE || ctl.dead) return null;
-  const lw = letterWrap(ctl);
-  overDice();   // CRITPEAK (ADVX 3: resting dice drew over the critical's captions): the dice canvas may come up after the moment opened
-  const { o, world, struck, tableOpts } = letterOpts(ctl, it, lw);
-  /* FXI-SPLASH (ADVI 2): every lettering starts on a known instant a little ahead (its first picture is painted meanwhile), so the impact
-     frame can be put on the very tick the word hits. The impact is asked for FIRST: it owns the flash budget of that instant and the
-     word's own flash frame gives way to it (one accent, the impact's guard). */
-  /* SYNC (ADVX 5): on the moment's zero (the table's instant), never on "now": the item's own delay after it, plus the lead */
-  o.startAt = (Number.isFinite(ctl.t0) ? ctl.t0 + (Number(it.delay) || 0) : performance.now()) + LEAD_MS;
-  /* ALIGN (engine 1.9.1 recipe, owner: one accent): the result word that gets the roll's impact does not flash on its own (`flash: false`);
-     the impact is its accent, landing on its contact. Every seat decides it from the event alone, so the word's contact is one rule. Before,
-     the impact was asked for first so that it took the flash budget from the word: that worked only while the impact had two flashes.
-     SYNC: the word's timing follows the table's impact (impactTiming), also on a seat whose Effects setting draws none */
-  /* SYNC (live: a seat with Effects off struck 42 ms after the others, one 24 Hz tick): the word's entrance depends on this seat's settings.
-     The struck word of a seat that draws the impact gives up its own flash frame (`flash: false`, one tick shorter), a seat with Effects off
-     keeps it; reduced motion may draw another entrance. The TABLE's contact is the one drawn with the table's options (full motion, and no
-     flash frame when the table's impact strikes this word); on this seat every lettering starts earlier or later by the difference, so ITS
-     contact lands on the table's instant and its own look stays */
+/* ROLLSTALL: when a lettering starts against the table's contact, and its impact's shot (letterOne's own lines, moved here unchanged so
+   that the impact asked ahead, armEarly, reads the very same instants). Sets o.startAt (given as the moment's zero + the item's delay + the
+   lead); for the struck word also ctl.wordAt and ctl.contactAt. -> { shot } */
+function strikeAt(ctl, it, o, tableOpts, struck) {
   const rm = {};
   if (LE?.planFor && (o.reduced || o.flash !== tableOpts.flash)) try {
     const a = contactOf(LP.letterable(it.text), o), b = contactOf(LP.letterable(it.text), tableOpts);
@@ -1021,6 +1044,28 @@ function letterOne(ctl, it) {
     if (shot?.shift > 0) o.startAt += shot.shift;
     ctl.wordAt = o.startAt; ctl.contactAt = o.startAt + own;
   }
+  return { shot };
+}
+function letterOne(ctl, it) {
+  if (!LE || ctl.dead) return null;
+  const lw = letterWrap(ctl);
+  overDice();   // CRITPEAK (ADVX 3: resting dice drew over the critical's captions): the dice canvas may come up after the moment opened
+  const { o, world, struck, tableOpts } = letterOpts(ctl, it, lw);
+  /* FXI-SPLASH (ADVI 2): every lettering starts on a known instant a little ahead (its first picture is painted meanwhile), so the impact
+     frame can be put on the very tick the word hits. The impact is asked for FIRST: it owns the flash budget of that instant and the
+     word's own flash frame gives way to it (one accent, the impact's guard). */
+  /* SYNC (ADVX 5): on the moment's zero (the table's instant), never on "now": the item's own delay after it, plus the lead */
+  o.startAt = (Number.isFinite(ctl.t0) ? ctl.t0 + (Number(it.delay) || 0) : performance.now()) + LEAD_MS;
+  /* ALIGN (engine 1.9.1 recipe, owner: one accent): the result word that gets the roll's impact does not flash on its own (`flash: false`);
+     the impact is its accent, landing on its contact. Every seat decides it from the event alone, so the word's contact is one rule. Before,
+     the impact was asked for first so that it took the flash budget from the word: that worked only while the impact had two flashes.
+     SYNC: the word's timing follows the table's impact (impactTiming), also on a seat whose Effects setting draws none */
+  /* SYNC (live: a seat with Effects off struck 42 ms after the others, one 24 Hz tick): the word's entrance depends on this seat's settings.
+     The struck word of a seat that draws the impact gives up its own flash frame (`flash: false`, one tick shorter), a seat with Effects off
+     keeps it; reduced motion may draw another entrance. The TABLE's contact is the one drawn with the table's options (full motion, and no
+     flash frame when the table's impact strikes this word); on this seat every lettering starts earlier or later by the difference, so ITS
+     contact lands on the table's instant and its own look stays */
+  const { shot } = strikeAt(ctl, it, o, tableOpts, struck);
   let h = null;
   /* DIRECT: the result word of an attack travels the action's way on its own clock (Dir.travelAt: in from the roller's side, strikes on its
      contact, drifts on, leaves the same way), kept inside this seat's view; the moves of the block (followPan, the shake) set its place */
@@ -1055,6 +1100,7 @@ function letterOne(ctl, it) {
     try { const c = h && LE.contactAt ? LE.contactAt(h) : null; if (Number.isFinite(c)) ctl.contactAt = c; } catch (e) { /* the planned one */ }
     fireImpact(ctl, shot, ctl.contactAt, h);
   }
+  if (it.role === 'word' && ctl.early) { stopEarly(ctl.early); ctl.early = null; earlyStats.dropped++; }   // ROLLSTALL: asked ahead, not taken
   if (it.role === 'word' && ctl.bdLater) enterBackdrop(ctl, shot);
   /* FIN-CALLERS (FXIT-S1, ADVI 8): the result word strikes now: the token reactions wait until it and its impact are over */
   if (it.role === 'word') {
@@ -1287,6 +1333,7 @@ function playLetters(ev, o) {
      instant this seat got here: the layout's measuring, a late timer or a busy frame no longer move the word; a seat that comes late joins the
      same timeline (the engine plays a word whose start is past from where it stands by then) */
   ctl.t0 = Number.isFinite(o.at) ? o.at : performance.now();
+  { const id = ctl.momentId ?? ctl.seed, e = EARLY.get(id); if (e) { EARLY.delete(id); clearTimeout(e.dog); ctl.early = e; } }   // ROLLSTALL: the impact asked ahead is this moment's
   const at = (fn, ms) => later(fn, Math.max(0, ctl.t0 + ms - performance.now()));
   letterWrap(ctl);
   overDice();
@@ -1467,6 +1514,55 @@ function impactShot(ctl, it, contact) {
     return { spec, map, lead, tableMs, shift: Math.max(0, lead - contact), contact, fire: draws, where: !spec ? 'none' : tok ? 'target' : (fire ? 'word' : 'none'), why: spec ? pick.why : 'effects-off', target: pick.id };
   } catch (e) { console.warn('invincible-plus-ultra (splash) | impact frame failed', e); return null; }
 }
+/* ROLLSTALL (live, two seats, lane 5: the impact of a roll was asked for in the result word's own task, 53-98 ms before its first drawing;
+   the engine works a figure's art off and paints its full-view drawings one per task from the call on, 20-40 ms each, so that work fell into
+   the frames that show the impact's first drawings: 50-117 ms frames at its start, where a token reaction's blow, asked 160-216 ms ahead,
+   runs 17-32 ms frames on the same pages). The impact is asked for as soon as the table's instant is known (main.mjs: the last layout ahead,
+   up to Beat.MARGIN before the instant; LEAD_MS more before the word starts): the same spec, on the same blow instant (the word's contact as
+   the engine will read it: L.contactAt of the same plan and start), so nothing of the picture or its timing changes; only the engine's
+   preparation moves out of the impact's first frames. play() claims it and fireImpact takes it. Only where it is exactly the call letterOne
+   would make: the result word is the moment's first lettering (a pushed roll's prefix comes first and changes the word's hand: as before),
+   on a screen layer (a map word is handed to the engine as `keep`, and it does not exist yet: as before). A moment that never plays
+   (its message deleted, the tab hidden) drops it (tellMoment 'done'; EARLY_HOLD_MS after its instant at the latest). */
+const EARLY = new Map();
+export const EARLY_HOLD_MS = 400;
+export const earlyStats = { armed: 0, taken: 0, redone: 0, dropped: 0 };
+function stopEarly(e) { try { clearTimeout(e.dog); if (e.h?.alive) e.h.stop(); } catch (x) { /* already over */ } }
+export function dropEarly(id) {
+  const e = EARLY.get(id);
+  if (!e) return false;
+  EARLY.delete(id); stopEarly(e); earlyStats.dropped++;
+  return true;
+}
+const plainObj = (x) => !!x && typeof x === 'object' && !Array.isArray(x) && (Object.getPrototypeOf(x) === Object.prototype || Object.getPrototypeOf(x) === null);
+function sameVal(a, b) {
+  if (a === b) return true;
+  if (typeof a === 'number' && typeof b === 'number') return Math.abs(a - b) < 0.01;
+  if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((x, i) => sameVal(x, b[i]));
+  return plainObj(a) && plainObj(b) && sameSpec(a, b);
+}
+/* two impact specs are one call: the same keys, tokens the same objects, numbers within 0.01 (ms, px) */
+export function sameSpec(a, b) {
+  const ka = Object.keys(a).filter((k) => a[k] !== undefined), kb = Object.keys(b).filter((k) => b[k] !== undefined);
+  return ka.length === kb.length && ka.every((k) => sameVal(a[k], b[k]));
+}
+function armEarly(ctl, it, q, t0, items) {
+  const I = LE?.impact, id = ctl.momentId ?? ctl.seed;
+  if (!I?.play || !q?.struck || id == null || !Number.isFinite(t0) || EARLY.has(id)) return null;
+  if ((ctl.shared && it.sceneAt) || items.some((x) => x !== it && !((Number(x.delay) || 0) > (Number(it.delay) || 0)))) return null;
+  ctl.t0 = t0;
+  q.o.startAt = t0 + (Number(it.delay) || 0) + LEAD_MS;   // as letterOne sets it
+  const { shot } = strikeAt(ctl, it, q.o, q.tableOpts, true);
+  if (!shot?.fire || shot.map || !shot.spec) return null;
+  let blowAt = ctl.contactAt;
+  try { const p = contactOf(LP.letterable(it.text), q.o)?.p, c = p && LE.contactAt ? LE.contactAt(p, q.o.startAt) : null; if (Number.isFinite(c)) blowAt = c; } catch (e) { /* the planned one */ }
+  if (!Number.isFinite(blowAt) || blowAt - shot.lead <= performance.now()) return null;   // its first drawing is due already: asked with its word, as before
+  const spec = { ...shot.spec, blowAt }, e = { spec, h: null, dog: 0 };
+  e.h = I.play(spec);
+  EARLY.set(id, e); earlyStats.armed++;
+  e.dog = setTimeout(() => { if (EARLY.get(id) === e) dropEarly(id); }, Math.max(0, t0 - performance.now()) + EARLY_HOLD_MS);
+  return e;
+}
 /* blowAt = the word's contact on this page's clock; word = its handle (kept readable on a map layer) */
 function fireImpact(ctl, shot, blowAt, word) {
   const I = LE?.impact;
@@ -1479,7 +1575,12 @@ function fireImpact(ctl, shot, blowAt, word) {
        drawing (a hole cut round it, followed while it moves). The map's own frames (IP.MAP_FRAMES, drawings that leave its spot clear) stay
        too: keep is the second guard, not a licence for the full kinds there (ALIGN-1). On the screen layers the word is above the impact. */
     if (shot.map && word && word.alive !== false) spec.keep = word;
-    ctl.impact = I.play(spec);
+    /* ROLLSTALL: the impact asked ahead for this moment (armEarly) IS this call when its spec and its blow's instant are the same; anything
+       else (the clock corrected meanwhile, the target left this seat's view, the block moved) and it is stopped before its first drawing
+       (the engine frees its window and its flash instants) and the impact is asked now, as before */
+    const e = ctl.early; ctl.early = null;
+    if (e && sameSpec(e.spec, spec)) { ctl.impact = e.h; earlyStats.taken++; }
+    else { if (e) { stopEarly(e); earlyStats.redone++; } ctl.impact = I.play(spec); }
     const start = blowAt - shot.lead;
     ctl.impactPeak = blowAt;
     /* FIN-CALLERS (FXIT-S1): when the impact's last drawing is over (the token reactions wait for it) */
@@ -1503,6 +1604,7 @@ function fireImpact(ctl, shot, blowAt, word) {
 export const MOMENT_HOOK = 'invincible-plus-ultra.splashMoment', REACT_HOOK = 'invincible-plus-ultra.tokenReact';
 export const ROOM_MS = 240, COVER_K = 0.1;
 export function tellMoment(data) {
+  if (data?.phase === 'done' && data.id != null) dropEarly(data.id);   // ROLLSTALL: a moment that is over before it played takes the impact asked ahead with it
   try { globalThis.Hooks?.callAll?.(MOMENT_HOOK, data); } catch (e) { /* a listener's failure is not the splash's */ }
 }
 function tellLand(ctl, landAt, impactMs) {
@@ -1724,6 +1826,7 @@ function endCtl(ctl, quick) {
   if (active.get(ctl.key) === ctl) active.delete(ctl.key);
   if (ctl.lw) stopLetters(ctl, quick);   // LDIC: a newer splash on the same place, the limit, a scene change: the words exit (quick = at once)
   if (quick && ctl.impact?.alive) { try { ctl.impact.stop(); } catch (e) { /* already over */ } }   // WIRE1: a moment cut short takes its impact frame with it
+  if (ctl.early) { stopEarly(ctl.early); ctl.early = null; earlyStats.dropped++; }   // ROLLSTALL: asked ahead and never taken
   for (const x of ctl.extras || []) {
     if (quick || S.isReduced()) { x.remove(); continue; }
     const a = x.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 600, fill: 'forwards' });
@@ -1782,6 +1885,8 @@ export function prepare(ev, o, slice = false, round = 0) {
         if (q.o.reduced || q.o.flash !== q.tableOpts.flash) contactOf(LP.letterable(wp.text), q.tableOpts);
         contactOf(LP.letterable(wp.text), q.o);
         if (wp.en && wp.en !== wp.text) contactOf(LP.letterable(wp.en), q.tableOpts);
+        /* ROLLSTALL: the table's instant is known (o.at, this page's clock): the impact is asked for now */
+        if (!slice && Number.isFinite(o.at)) armEarly(ctl, wp, q, o.at, lay.items);
       }
     }
     return performance.now() - t;
@@ -1950,5 +2055,5 @@ export function playStress(ev, o) {
   return ctl;
 }
 
-export function clearAll() { for (const c of Array.from(active.values())) endCtl(c, true); }
+export function clearAll() { for (const c of Array.from(active.values())) endCtl(c, true); for (const id of [...EARLY.keys()]) dropEarly(id); }
 export function activeCount() { return active.size; }
