@@ -552,6 +552,21 @@ function canonSeat(hero, targets, star, zq, W, H, at, keep = null, sh = null) {
 /* SPLASHBLOCK: what a block really draws, part by part (the layout's px): each part's letters' boxes and their standing ink. The block's
    outline (rect) is the union of its parts with their entrance room: a split block's outline spans whatever its parts frame (live: the
    roll's critical framed the fighters, word above and caption below, and its outline covered the struck token and most of the view) */
+/* SPLASHSEAT: a placed block moved in one piece (its items, its parts, its outline, its gauge) */
+export const NUDGE = 16, NUDGE_MAX = 128, PART_NUDGE_MAX = 192;
+function shiftPart(lay, i, dx, dy) {
+  const mv = (q) => ({ ...q, l: q.l + dx, t: q.t + dy, r: q.r + dx, b: q.b + dy });
+  const parts = lay.parts.map((q, j) => (j === i ? mv(q) : q));
+  return { ...lay, items: lay.items.map((it, n) => (lay.pi[n] === i && it.x != null ? { ...it, x: it.x + dx, y: it.y + dy } : { ...it })), parts,
+    rect: { ...lay.rect, l: Math.min(parts[0].l, parts[1].l), t: Math.min(parts[0].t, parts[1].t), r: Math.max(parts[0].r, parts[1].r), b: Math.max(parts[0].b, parts[1].b) },
+    ...(lay.gauge && lay.gpi === i ? { gauge: { ...lay.gauge, x: lay.gauge.x + dx, y: lay.gauge.y + dy } } : {}),
+    ...(Array.isArray(lay.d) && lay.d.length === 2 ? { d: lay.d.map((d, j) => (j === i ? { dx: d.dx + dx, dy: d.dy + dy } : d)) } : {}) };
+}
+function shiftLay(lay, dx, dy) {
+  const mv = (q) => (q && Number.isFinite(q.l) ? { ...q, l: q.l + dx, t: q.t + dy, r: q.r + dx, b: q.b + dy } : q);
+  return { ...lay, items: lay.items.map((it) => (it.x == null ? { ...it } : { ...it, x: it.x + dx, y: it.y + dy })), rect: mv(lay.rect), ...(lay.parts ? { parts: lay.parts.map(mv) } : {}),
+    ...(lay.gauge ? { gauge: { ...lay.gauge, x: lay.gauge.x + dx, y: lay.gauge.y + dy } } : {}), ...(Array.isArray(lay.d) ? { d: lay.d.map((d) => ({ dx: d.dx + dx, dy: d.dy + dy })) } : {}) };
+}
 export function partBoxes(lay) {
   if (!lay?.items?.length) return lay?.rect && Number.isFinite(lay.rect.l) ? [{ ...lay.rect }] : [];
   const parts = lay.parts?.length === 2 ? lay.parts : [lay.rect], out = parts.map(() => ({ l: Infinity, t: Infinity, r: -Infinity, b: -Infinity }));
@@ -897,26 +912,68 @@ function compose(ctl, items, extra = {}) {
        view, a few px off another seat's, never chooses between two places) and shown here moved with the roller; this seat searches by
        itself only when it cannot show that block at all (its letters outside its view) */
     let own = loc.told ? null : seatPlaceKept(T1, { ...seat, plainOnly: true });
-    /* (SPLASHSEAT: the canonical seat never keeps the table's place on a box of the table's list either) */
-    let c1 = own ?? seatPlaceKept(T1, { hero: cs.hero, safe: cs.safe, wide: null, avoid: cs.avoid, own: loc.told ? loc.own : [], gap: frame.gap });
-    /* SPLASHSEAT: nothing clean of the boxes AND their rims (a sheet open beside the roller, a crowded board): before the block lies on
-       anything, a place clean of the boxes themselves (on a seat whose roller stands off his cell's middle its edge may then reach up to
-       SHARE_REACH into a panel's edge: less than lying on it whole, which the least-covering search chose in the node harness) */
-    if (loc.told && worst(c1.moved)) {
-      const noRim = cs.avoid.filter((q) => !q.rim);
-      const c2 = seatPlaceKept(T1, { hero: cs.hero, safe: cs.safe, wide: null, avoid: noRim, own: loc.own, gap: frame.gap });
-      if (!worst(c2.moved)) c1 = c2;
+    const placeC2 = (avoid, ownL, more = {}) => seatPlaceKept(T1, { hero: cs.hero, safe: cs.safe, wide: null, avoid, own: ownL, gap: frame.gap, ...more });
+    const placeC = (avoid, ownL) => placeC2(avoid, ownL);
+    let c1;
+    if (own) c1 = own;
+    else if (!loc.told) c1 = placeC(cs.avoid, []);
+    else {
+      /* SPLASHSEAT, with the table's list:
+         1 the block the canonical seat places WITHOUT the list (what every seat showed before, from the documents alone): where it
+           stands off every told box and rim, that is the block (the same picture as without any panel, one search);
+         2 else a CLEAN place off the list, the told boxes (OWN_W; never kept on one: own) and their rims;
+         3 else a clean place off the boxes themselves (on a seat whose roller stands off his cell's middle its edge may then reach up
+           to SHARE_REACH into a panel's edge);
+         4 nothing clean of the boxes: the block of step 1 moved in ONE piece the least way (steps of NUDGE px, NUDGE_MAX at most) to
+           where it covers least, weighed one way (every part's box against the tokens, pins, stars and the told boxes; the roller as
+           a star); then a block in two parts has each part moved by itself the same way (PART_NUDGE_MAX), and a block in one part
+           that still lies on a told box takes the least-covering search with the boxes, where that covers less.
+         Steps 2 and 3 are skipped where step 1 found nothing clean (a place clean with the list is clean without it). The
+         least-covering search with the list is the dear one for a block in two parts (live, a critical: 1.9-3 s in one task while the
+         dice rolled, its pair search prunes by the best sum, which the zones raise everywhere; 0.14 s without the list): it is never
+         run for one; for a block in one part once at most, without the rims, and only where it would otherwise lie on a panel */
+      const noList = cs.avoid.filter((q) => !q.at), noRim = cs.avoid.filter((q) => !q.rim), zones = cs.avoid.filter((q) => q.at), boxes = zones.filter((q) => !q.rim);
+      const on = (c, list) => partBoxes(c).reduce((sum, q) => sum + LP.blockHits(q, list), 0);
+      const c0 = placeC(noList, []);
+      if (on(c0, zones) <= 0.5) c1 = c0;
       else {
-        /* ... and where nothing is clean of the boxes either: the least covering of three, weighed ONE way (every part's box against the
-           tokens, pins, stars and the told boxes; the roller as a star): this block, the one found without the rims, and the one the
-           canonical seat finds without the table's list at all (live, a critical on a crowded view: the search weighed with the list
-           ended on the star's cut-in, 611 000, where the search without it stood in a corner on one panel, 1 500 + the panel) */
-        const c0 = seatPlaceKept(T1, { hero: cs.hero, safe: cs.safe, wide: null, avoid: cs.avoid.filter((q) => !q.at), own: [], gap: frame.gap });
-        const onHero = (q) => Math.max(0, Math.min(q.r, cs.hero.r) - Math.max(q.l, cs.hero.l)) * Math.max(0, Math.min(q.b, cs.hero.b) - Math.max(q.t, cs.hero.t)) * LP.TOKEN_W;
-        const cost = (c) => partBoxes(c).reduce((sum, q) => sum + LP.blockHits(q, noRim) + onHero(q), 0);
-        let best = c1, bc = cost(c1);
-        for (const c of [c2, c0]) { const v = cost(c); if (v < bc - 0.5) { best = c; bc = v; } }
-        c1 = best;
+        c1 = worst(c0.moved) ? null : (placeC2(cs.avoid, loc.own, { cleanOnly: true }) ?? placeC2(noRim, loc.own, { cleanOnly: true }));
+        if (!c1) {
+          const onHero = (q) => Math.max(0, Math.min(q.r, cs.hero.r) - Math.max(q.l, cs.hero.l)) * Math.max(0, Math.min(q.b, cs.hero.b) - Math.max(q.t, cs.hero.t)) * LP.TOKEN_W;
+          const costOf = (qs) => qs.reduce((sum, q) => sum + LP.blockHits(q, noRim) + onHero(q), 0);
+          const pb = partBoxes(c0), inBand = (q) => q.l >= cs.safe.l - 1 && q.t >= cs.safe.t - 1 && q.r <= cs.safe.r + 1 && q.b <= cs.safe.b + 1;
+          let best = { dx: 0, dy: 0, v: costOf(pb) };
+          for (let dy = -NUDGE_MAX; dy <= NUDGE_MAX; dy += NUDGE) for (let dx = -NUDGE_MAX; dx <= NUDGE_MAX; dx += NUDGE) {
+            if (!dx && !dy) continue;
+            const qs = pb.map((q) => ({ l: q.l + dx, t: q.t + dy, r: q.r + dx, b: q.b + dy }));
+            if (!qs.every(inBand)) continue;
+            const v = costOf(qs);
+            if (v < best.v - 0.5 || (Math.abs(v - best.v) <= 0.5 && Math.hypot(dx, dy) < Math.hypot(best.dx, best.dy) - 0.5)) best = { dx, dy, v };
+          }
+          c1 = best.dx || best.dy ? shiftLay(c0, best.dx, best.dy) : c0;
+          const split = c1.parts?.length === 2 && c1.pi?.length === c1.items.length;
+          if (split) {
+            /* a block in two parts (a critical): each part in turn (the caption first) moved by itself the least way to where the two
+               cover least, never onto the other part (its box weighs like a star) nor past it (the caption stays on its side of the
+               word, up or down). Cheap: boxes only */
+            for (const i of [1, 0]) {
+              const qb = partBoxes(c1), me = qb[i], other = qb[1 - i], side = Math.sign((me.t + me.b) - (other.t + other.b));
+              const onOther = (q) => Math.max(0, Math.min(q.r, other.r) - Math.max(q.l, other.l)) * Math.max(0, Math.min(q.b, other.b) - Math.max(q.t, other.t)) * LP.TOKEN_W;
+              const cost1 = (q) => costOf([q]) + onOther(q);
+              let b1 = { dx: 0, dy: 0, v: cost1(me) };
+              for (let dy = -PART_NUDGE_MAX; dy <= PART_NUDGE_MAX; dy += NUDGE) for (let dx = -PART_NUDGE_MAX; dx <= PART_NUDGE_MAX; dx += NUDGE) {
+                if (!dx && !dy) continue;
+                const q = { l: me.l + dx, t: me.t + dy, r: me.r + dx, b: me.b + dy };
+                if (!inBand(q) || Math.sign((q.t + q.b) - (other.t + other.b)) !== side) continue;
+                const v = cost1(q);
+                if (v < b1.v - 0.5 || (Math.abs(v - b1.v) <= 0.5 && Math.hypot(dx, dy) < Math.hypot(b1.dx, b1.dy) - 0.5)) b1 = { dx, dy, v };
+              }
+              if (b1.dx || b1.dy) c1 = shiftPart(c1, i, b1.dx, b1.dy);
+            }
+          } else if (on(c1, boxes) > 0.5) { const cL = placeC2(noRim, loc.own); if (costOf(partBoxes(cL)) < costOf(partBoxes(c1)) - 0.5) c1 = cL; }
+          /* (it stands on something told, or by a rim: 'least' for the log, the checks and this seat, which shows it as it is) */
+          if (!worst(c1.moved)) c1 = { ...c1, moved: 'least' };
+        }
       }
     }
     /* SPLASHBLOCK 1: else the block the canonical seat places (c1); SPLASHBLOCK 2: shown here as it is, or moved in one piece (never searched again from where the canonical seat left it: two
