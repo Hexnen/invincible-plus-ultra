@@ -12,6 +12,9 @@
 // GORE4 (what GORE3 itself reported as still weak): no blood pixel ever lies on the struck token (any side, edge, zoom, strength; the
 // splash turns to a side with room at the view's edge), the dried crust holds no pale shape, the cracks read on a dark and on a light
 // ground while staying as small as before, a glint comes back along them while they hold, the table's levels 1 / 2 / 3 grow in order.
+// GOREPINK (the owner's standing rule: no pink): the crumbling front is checked as LIGHTER than the crust and not pink (restated from
+// "pale by its red channel"), the smooth dimming is measured through the glass as it is now shown (the shade pane under the blood); the
+// pink checks themselves are scripts/sweep-checks/gorepink.mjs.
 // Runtime on a fake Foundry (scripts/gore/main.mjs): a Health drop plays blood on the token reaction's blow (or after the wait when the
 // reactions are off), Resolve plays cracks, a pushed roll's stress none, a hidden token nothing on a player's seat, "owners" only on
 // the owner's seat, the table's 0 = none, a heal nothing; the settings are world and hidden from Foundry's list; the window has the tab.
@@ -23,6 +26,7 @@ const ck = (name, c) => { n++; if (!c) { f++; console.log("FAIL", name); } };
 const dir = dirname(fileURLToPath(import.meta.url)), root = join(dir, "..");
 const P = await import("../gore/plan.mjs");
 const R = await import("../gore/raster.mjs");
+const TN = await import("../gore/tone.mjs");      // GOREPINK: the glass as shown (shade + blood) and the pink measure
 
 /* ---------------- the rule ---------------- */
 {
@@ -98,7 +102,16 @@ const T = P.TICK_MS;
   const c1 = count(shot([it], g0 + d0 * 0.2)), c2 = count(shot([it], g0 + d0 * 0.6)), c3 = count(shot([it], g0 + d0 + 50));
   ck(`it clears to nothing, never a fade (${c1} -> ${c2} -> ${c3} px, flat colours)`, c1 > c2 && c2 > 0 && c3 === 0 && flatInk(shot([it], g0 + d0 * 0.5), 40));
   /* GORE2 (the owner: «Krew bardzo słabo znika»): it CRUMBLES from the thin parts in: the drops go first, the body's heart last, no
-     screen-door holes inside what is left, a pale crumbling front, flakes falling */
+     screen-door holes inside what is left, a crumbling front that stands out from the crust, flakes falling.
+     GOREPINK: the front check is RESTATED, not weakened. It read "a PALE front: pixels whose RED channel is over the dried lit colour's
+     + 20", which was written for the salmon front [214, 128, 100]; the owner's standing rule is no pink, and a pale tint of red is
+     pink. What the check was for stays and is asked more strictly: the clearing must show a front that is LIGHTER than any dried crust
+     colour (by luma now, the eye's measure, not by its red channel: >= 20 levels over the lightest crust colour), in the same number
+     (> 200 px over the clearing), and none of it may be pink. Its visibility as SHOWN on a dark and on a light ground, both looks, is
+     in scripts/sweep-checks/gorepink.mjs section 6. */
+  const lumaOf = (a, i) => 0.2126 * a[i] + 0.7152 * a[i + 1] + 0.0722 * a[i + 2];
+  const crustTop = Math.max(...Object.values(R.PAL.dried).filter((c, k, all) => c !== R.PAL.dried.crumb && c !== R.PAL.dried.g1 && c !== R.PAL.dried.g2).map((c) => lumaOf(c, 0)));
+  let pinkFront = 0;
   const rest = shot([it], g0 - 50), early = shot([it], g0 + d0 * 0.3);
   const heart = (rgba) => { const p = it.plan, i = ((p.cy | 0) * g.w + (p.cx | 0)) * 4; return rgba[i + 3] > 0; };
   ck(`it crumbles from the thin parts in: drops first (${parts(rest)} -> ${parts(early)} spots), the body's heart still there`, parts(early) < parts(rest) * 0.6 && heart(early));
@@ -107,13 +120,13 @@ const T = P.TICK_MS;
     const fr = shot([it], g0 + 1 + k * (d0 / 12));
     for (let y = 1; y < g.h - 1; y++) for (let x = 1; x < g.w - 1; x++) {
       const i = (y * g.w + x) * 4;
-      if (fr[i + 3]) { filled++; if (fr[i] > R.PAL.dried.lit[0] + 20) crumbs++; continue; }      // paler than any dried crust: the front
+      if (fr[i + 3]) { filled++; if (lumaOf(fr, i) > crustTop + 20) { crumbs++; if (TN.isPink(fr[i], fr[i + 1], fr[i + 2])) pinkFront++; } continue; }      // lighter than any dried crust: the front
       if (fr[i + 3 - 4] && fr[i + 3 + 4] && fr[i + 3 - g.w * 4] && fr[i + 3 + g.w * 4]) holes++;
     }
     if (!flatInk(fr, 40)) ok = false;
   }
   ck(`no screen-door: pinholes inside the crumbling blood ${(holes / Math.max(1, filled) * 100).toFixed(2)} % (<= 1 %)`, holes / Math.max(1, filled) <= 0.01 && ok);
-  ck(`a pale crumbling front walks in (${crumbs} crust px over the clearing)`, crumbs > 200);
+  ck(`a dry crumbling front walks in, lighter than any crust colour and never pink (${crumbs} front px over the clearing, ${pinkFront} of them pink)`, crumbs > 200 && pinkFront === 0);
   { const q = { plan: P.bloodPlan(g, { strength: 0.8, seed: "flake", dir: 0.3, at: { fx: 0.2, fy: 0.3 } }), t0: 0 }; const gq = q.plan.life.gone; let lowest = 0, base = 0; const fr = shot([q], gq - 50); for (let i = 0; i < fr.length; i += 4) if (fr[i + 3]) base = Math.max(base, (i / 4 / g.w) | 0); for (let t = gq; t < gq + q.plan.life.dissolve; t += T) { const fz = shot([q], t); for (let i = 0; i < fz.length; i += 4) if (fz[i + 3]) lowest = Math.max(lowest, (i / 4 / g.w) | 0); } flakesLow = lowest - base; }
   ck(`flakes of crust fall off (they reach ${flakesLow} art px below the dried blood)`, flakesLow >= 3);
   ck("the same seed draws the same picture; another seed another one", sha(shot([mk()], 600)) === sha(shot([it], 600)) && sha(shot([mk({ seed: "other" })], 600)) !== sha(shot([it], 600)));
@@ -147,7 +160,8 @@ const T = P.TICK_MS;
      levels (the drips held still, so only the ageing is measured). Version 2 changed by up to 130 levels in one tick (its stages). */
   const DIM_STEP = 4;
   const BGS = [[32, 32, 32], [200, 200, 200]];
-  const shown = (a, i, bg, c) => (a[i + c] * a[i + 3] + bg[c] * (255 - a[i + 3])) / 255;
+  /* GOREPINK: composited the way the glass now shows it (the shade under the blood: tone.mjs onGround; plain alpha on a dark map) */
+  const shown = (a, i, bg, c) => TN.onGround(a[i + c], a[i + 3], bg[c]);
   for (const [sv, seed] of [[0.3, "dimA"], [0.65, "dimB"], [1, "dimC"]]) {
     const p = P.bloodPlan(g, { strength: sv, seed, dir: 1.2, at: { fx: 0.25, fy: 0.3 } });
     p.drips = []; if (p.second) p.second.plan.drips = [];
@@ -440,7 +454,8 @@ const T = P.TICK_MS;
   globalThis.setTimeout = (fn, ms) => { const t = { fn, at: clock + (ms ?? 0), id: timers.length + 1 }; timers.push(t); return t.id; };
   globalThis.clearTimeout = (id) => { const t = timers.find((x) => x.id === id); if (t) t.fn = null; };
   const advance = (ms) => { const end = clock + ms; for (;;) { const t = timers.filter((x) => x.fn && x.at <= end).sort((a, b) => a.at - b.at)[0]; if (!t) break; clock = Math.max(clock, t.at); const fn = t.fn; t.fn = null; fn(); } clock = end; };
-  globalThis.requestAnimationFrame = () => 1;
+  const rafs = [];
+  globalThis.requestAnimationFrame = (fn) => { rafs.push(fn); return 1; };
   globalThis.window = { innerWidth: 1600, innerHeight: 900, devicePixelRatio: 1, addEventListener() {} };
   globalThis.matchMedia = () => ({ matches: false });
   globalThis.ImageData = class { constructor(d, w, h) { this.data = d; this.width = w; this.height = h; } };
@@ -583,6 +598,21 @@ const T = P.TICK_MS;
   ck("two panes (GORE2): blood right after #board (under the interface), cracks on the body over the bars (z over 30, under windows)",
     pane("ipu-gore")?.[0] === "board" && pane("ipu-gore-cracks")?.[0] === "body" && Number(pane("ipu-gore-cracks")[1].style.zIndex) > 31 && Number(pane("ipu-gore-cracks")[1].style.zIndex) < 100
     && [pane("ipu-gore"), pane("ipu-gore-cracks")].every((p) => p[1].style.pointerEvents === "none"));
+  /* GOREPINK: the shade pane, under the blood's, blended "darken" (no light map shines through a splash as pink) */
+  ck("the shade pane (GOREPINK): right after #board and put there AFTER the blood's pane (so under it), blended 'darken', the same place and size, ignores the pointer", (() => {
+    const order = made.filter(([where]) => where === "board").map(([, c]) => c.id), sh = pane("ipu-gore-shade")?.[1];
+    return !!sh && order.indexOf("ipu-gore-shade") > order.indexOf("ipu-gore") && sh.style.mixBlendMode === "darken" && M.SHADE_BLEND === "darken" && sh.style.pointerEvents === "none" && sh.style.zIndex === pane("ipu-gore")[1].style.zIndex;
+  })());
+  ck("... it is out of the page while the glass is empty, in it while blood shows", (() => {
+    const sh = pane("ipu-gore-shade")[1];
+    api.clear({ quick: true });
+    const off = sh.style.display === "none";
+    api.blood({ strength: 0.5, seed: "shade" });
+    clock += 50; for (const fn of rafs.splice(0)) fn();
+    const on = sh.style.display === "";
+    api.clear({ quick: true });
+    return off && on && sh.style.display === "none";
+  })());
   ck("a public call returns a handle with its strength, the table's level applied", api.blood({ strength: 0.5 })?.strength === 0.5 && api.cracks({ strength: 0.4 })?.kind === "cracks");
   api.clear({ quick: true });
   ck("clear empties the glass", live() === 0);
@@ -609,7 +639,7 @@ const T = P.TICK_MS;
   const D = await import("../table/defs.mjs");
   ck("the Comic effects window has the tab with the four options", JSON.stringify(D.TABS.find((t) => t.id === "gore")?.sections.flatMap((s) => s.rows.map((r) => r.key))) === JSON.stringify(["goreBlood", "goreCracks", "goreSeats", "goreHold"]));
   ck("the window's Preview plays it, and says so when both levels are 0", /tab === "gore"\) \{ if \(\(game\.modules\.get\(MOD\)\?\.api\?\.gore \?\? globalThis\.PlusUltraGore\)\?\.preview\?\.\(\) === 0\) ui\.notifications\?\.info\(t\("IPT\.Notice\.goreOff"\)\)/.test(src("table/app.mjs")));
-  ck("the glass lies over the map and under the interface, crisp (pixelated, right after #board)", /board\.after\(wrap\)/.test(src("gore/main.mjs")) && /imageRendering: "pixelated"/.test(src("gore/main.mjs")) && /pointerEvents: "none"/.test(src("gore/main.mjs")));
+  ck("the glass lies over the map and under the interface, crisp (pixelated, right after #board)", /if \(name === "blood"\) \{ board\.after\(m\.wrap\)/.test(src("gore/main.mjs")) && /imageRendering: "pixelated"/.test(src("gore/main.mjs")) && /pointerEvents: "none"/.test(src("gore/main.mjs")));
 }
 
 console.log(`sweep gore: ${n} checks, ${f} failed`);

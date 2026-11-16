@@ -16,7 +16,7 @@
                (wet with a glint -> drying -> a dark crust, the rim darkest) and DIMS SMOOTHLY over its whole life (GORE3, the owner:
                «Krew stopniowo przygasa a powinna płynnie»: one continuous age per splash, colours and alpha glide every tick, no stage
                jumps); it CLEARS by CRUMBLING (GORE2): an erosion front by distance from the edge of EVERYTHING drawn (drips included:
-               GORE3, «osypanie brzydko się urywa na dole»), on ones, with a pale crust ring, flakes that fall off; never a fade or dither
+               GORE3, «osypanie brzydko się urywa na dole»), on ones, with a dry ochre crust ring (GOREPINK: it was a pale salmon; no colour of the blood is pink, raster.mjs, tone.mjs), flakes that fall off; never a fade or dither
      placement (GORE3, finding 5 of the blind review): beside the STRUCK token as this seat sees it, on its far side from the
                attacker, sized by the token on this screen (capped), never on a screen whose view does not hold the token; the whole
                splash and its clearing stay inside the view (nothing is ever cut by an edge)

@@ -17,19 +17,24 @@ import { TICK_MS, CENTRE, FLAKE_MS, FALL, FALL_MS, EDGE, rng, dripAt, crackReach
 export const THR = 0.06;
 /* palettes: [r, g, b] per role; alpha per stage */
 export const PAL = {
-  wet:    { out: [58, 4, 10],  d: [112, 8, 18], m: [170, 16, 28], b: [214, 36, 44], lit: [255, 112, 100], spec: [255, 232, 224] },
+  wet:    { out: [58, 4, 10],  d: [112, 8, 18], m: [170, 16, 28], b: [214, 36, 44], lit: [232, 56, 52],   spec: [255, 238, 200] },
   drying: { out: [46, 6, 10],  d: [88, 12, 18], m: [122, 20, 26], b: [146, 30, 34], lit: [170, 52, 50],  spec: [170, 52, 50] },
   dried:  { out: [34, 8, 8],   d: [66, 14, 14], m: [84, 22, 20], b: [96, 28, 24],  lit: [104, 34, 30],  spec: [104, 34, 30] }
 };
-/* GORE2: the pale dry crust of the crumbling front and its flakes (every stage: a splash cut early crumbles too) */
-PAL.wet.crumb = PAL.drying.crumb = PAL.dried.crumb = [214, 128, 100];
+/* GORE2: the dry crust of the crumbling front and its flakes (every stage: a splash cut early crumbles too).
+   GOREPINK (the owner's standing rule: no pink): it was a pale salmon [214, 128, 100]; a dried crust that flakes is dry OCHRE, the
+   colour old blood goes: as light against the crust and against a dark map as the salmon was, on the yellow side of orange, never a
+   tint of red. The wet lit rim was a coral [255, 112, 100] and the glint a rosy white [255, 232, 224]: now a bright red and a warm
+   white; a glint leaves through amber (g1) and burnt orange (g2), never through a red mixed with white (glintC). No colour of either
+   palette, none of their glides and nothing drawn is pink (tone.mjs isPink; scripts/sweep-checks/gorepink.mjs). */
+for (const st of Object.values(PAL)) Object.assign(st, { crumb: [204, 150, 78], g1: [236, 160, 88], g2: [164, 90, 20] });
 /* the photosensitive seat's blood: no saturated red (R / (R + G + B) < 0.7 for every colour) */
 export const PAL_SAFE = {
-  wet:    { out: [44, 16, 18], d: [84, 32, 32], m: [110, 42, 40], b: [130, 54, 50], lit: [160, 88, 82], spec: [222, 196, 190] },
+  wet:    { out: [44, 16, 18], d: [84, 32, 32], m: [110, 42, 40], b: [130, 54, 50], lit: [160, 88, 82], spec: [224, 208, 190] },
   drying: { out: [40, 16, 16], d: [74, 30, 28], m: [96, 38, 34], b: [110, 46, 42], lit: [124, 60, 54], spec: [124, 60, 54] },
   dried:  { out: [34, 14, 12], d: [60, 26, 22], m: [74, 32, 28], b: [84, 38, 32], lit: [90, 44, 38], spec: [90, 44, 38] }
 };
-PAL_SAFE.wet.crumb = PAL_SAFE.drying.crumb = PAL_SAFE.dried.crumb = [150, 112, 100];
+for (const st of Object.values(PAL_SAFE)) Object.assign(st, { crumb: [150, 122, 84], g1: [176, 142, 100], g2: [136, 92, 60] });
 export const ALPHA = [236, 222, 196];        // wet, drying, dried: the alpha glides along them with the dryness
 /* after the hit the glass lets the table read through the blood: over SETTLE ms after its arrival (from SETTLE_AT) a splash eases to
    SEE of its alpha; then, from dried to its clearing, it dims by LATE more (GORE3: one smooth curve, no step) */
@@ -181,9 +186,9 @@ function drawBlood(ctx, p, ms, gone) {
         }
         return;
       }
-      /* the crumbling front: a ring of pale dry crust walking inward; GORE3: each pixel pales as the front nears it (W = how near), so
+      /* the crumbling front: a ring of dry ochre crust walking inward; GORE3: each pixel dries as the front nears it (W = how near), so
          the ring never switches on at once when the clearing starts */
-      if (D <= er.E + n + CRUMB) { const i = y * ctx.w + x; ctx.sf.G[i] = 2; ctx.sf.W[i] = Math.max(ctx.sf.W[i], Math.min(4, Math.ceil(((er.E + n + CRUMB - D) / CRUMB) * 4)) / 4); }      // four steps of paleness: a few flat colours
+      if (D <= er.E + n + CRUMB) { const i = y * ctx.w + x; ctx.sf.G[i] = 2; ctx.sf.W[i] = Math.max(ctx.sf.W[i], Math.min(4, Math.ceil(((er.E + n + CRUMB - D) / CRUMB) * 4)) / 4); }      // four steps of dryness: a few flat colours
     }
     mark(y * ctx.w + x, x, y, t, l);
   };
@@ -635,6 +640,18 @@ function line(x0, y0, x1, y1, plot) {
 /* ---------------- colour ---------------- */
 const RAMP = ramp(PAL), RAMP_SAFE = ramp(PAL_SAFE), FLAT_Q = 64;
 const mixInto = (c, d, u) => (u <= 0 ? c : u >= 1 ? d : mixC(c, d, u));
+/* GOREPINK: a glint's way into the blood under it (gloss 1 -> 0): warm white -> amber -> burnt orange -> the blood. One continuous
+   glide as before (GORE3), but never a red mixed with white, which is pink
+   (the three legs share the glide by their length in levels, GLINT_LEGS, and the way is walked evenly in TIME: the gloss eases out
+   and in, which at its middle ran this longer way faster than the eye's step; un-easing it keeps every tick's change the same) */
+export const GLINT_LEGS = [0.52, 0.28];
+export const glintC = (c, wet, gloss) => {
+  const [a, b] = GLINT_LEGS, g = gloss >= 1 ? 1 : gloss <= 0 ? 0 : 0.5 + Math.sin(Math.asin(2 * gloss - 1) / 3);      // the inverse of smooth()
+  return g >= a ? mixInto(wet.g1, wet.spec, (g - a) / (1 - a)) : g >= b ? mixInto(wet.g2, wet.g1, (g - b) / (a - b)) : mixInto(c, wet.g2, g / b);
+};
+/* GOREPINK: the crumbling front's colour at nearness u (0..1): the blood first dries to the flat crust (by 2u: a splash cut while wet
+   never mixes its bright red with the ochre, which is salmon), and turns ochre by u. A dried splash: crust -> ochre, as light as near */
+export const frontC = (c, crust, crumb, u) => mixInto(mixInto(c, crust, u * 2), crumb, u);
 function colour(sf, b, ramp) {
   if (b.x1 < 0) return;
   const { w, h, T, S, G, C, rgba } = sf, Asee = sf.A, Lf = sf.L, Kf = sf.N;
@@ -674,9 +691,9 @@ function colour(sf, b, ramp) {
           const fq = Math.round(flat * FLAT_Q), key = band * (FLAT_Q + 1) + fq, fm = (P._flat ??= []);
           c = fm[key] ??= mixInto(c, P.b, fq / FLAT_Q);
         }
-        if (gi !== 2 && gloss > 0 && (gi === 1 || (v > 0.97 && t > 0.5))) c = mixInto(c, ramp[0].spec, gloss);      // toward the WET glint: one glide, not two
+        if (gi !== 2 && gloss > 0 && (gi === 1 || (v > 0.97 && t > 0.5))) c = glintC(c, ramp[0], gloss);      // toward the WET glint: one glide, not two
       }
-      if (gi === 2) c = mixInto(c, P.crumb, Wf[i]);      // the crumbling front, as pale as it is near
+      if (gi === 2) c = frontC(c, ramp[Q].b, P.crumb, Wf[i]);      // the crumbling front, as dry (ochre) as it is near
       rgba[o] = c[0]; rgba[o + 1] = c[1]; rgba[o + 2] = c[2]; rgba[o + 3] = Math.round(P.a * (Asee[i] ? CENTRE.alpha : 1) * Kf[i]);
     } else if (C[i]) {
       const c = CRACK[C[i]], o = i * 4;

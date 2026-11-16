@@ -1,7 +1,8 @@
 /* GORE: blood and cracks on the screen, the Foundry part. Started from scripts/module.js by a guarded dynamic import, like the other areas.
    What is drawn and when is plan.mjs (pure), how it is drawn raster.mjs (pure); here:
-     - the GLASS: two <canvas> panes of the art grid (plan.grid: one art px = round(3 x DPR) device px): blood over the map (right
-       after #board: over the scene, under the interface), cracks over the interface's bars (CRACK_Z, under windows); scaled by a whole number of device px with no smoothing (image-rendering:
+     - the GLASS: <canvas> panes of the art grid (plan.grid: one art px = round(3 x DPR) device px): blood over the map (right
+       after #board: over the scene, under the interface) with its SHADE under it (GOREPINK: the blood's colour, opaque, blended
+       "darken", so no light ground shines through a splash as pink: tone.mjs), cracks over the interface's bars (CRACK_Z, under windows); scaled by a whole number of device px with no smoothing (image-rendering:
        pixelated), so every art pixel is a crisp square at any window size, zoom of the scene or DPR. Drawn on the comic's 24 Hz beat and
        only while something changes; nothing runs when the glass is empty;
      - the TABLE's options (world, GM only, live; shown in the "Comic effects" window, tab Blood and cracks): blood 0..3, cracks 0..3,
@@ -56,26 +57,45 @@ function osReduced() { try { return !!globalThis.matchMedia?.("(prefers-reduced-
    tooltips and notifications): the cracks are in the screen's own glass and sit in its corners, which the bars would otherwise hide.
    Both ignore the pointer, so the board and every button stay playable. */
 export const CRACK_Z = "32";
+/* GOREPINK: the SHADE, a third pane right under the blood's (same grid, same place in the page): every blood pixel's colour at full
+   alpha, blended "darken" with the map: each channel of the ground under a splash is cut down to the blood's (blood soaks the light
+   out of what it lies on). Red at a low alpha over a light map is pink; with the shade a shown pixel is never lighter than the colour
+   painted there, on any map (tone.mjs onGround is this stack; the checks composite with it). A dark map is left as it was. */
+export const SHADE_BLEND = "darken";
 const pane = () => ({ wrap: null, cv: null, ctx: null, sf: null, img: null, dirtyAll: true });
-const G = { L: { blood: pane(), cracks: pane() }, g: null, items: [], raf: 0, lastTick: -1, arrivals: [], cost: [], frames: 0 };
+const G = { L: { blood: pane(), cracks: pane() }, shade: { wrap: null, cv: null, ctx: null, buf: null, img: null }, g: null, items: [], raf: 0, lastTick: -1, arrivals: [], cost: [], frames: 0 };
 const layerOf = (kind) => (kind === "blood" ? "blood" : "cracks");
 function ensureGlass() {
-  if (G.L.blood.wrap?.isConnected && G.L.cracks.wrap?.isConnected) return true;
+  if (G.L.blood.wrap?.isConnected && G.L.cracks.wrap?.isConnected && G.shade.wrap?.isConnected) return true;
   const board = document.getElementById("board");
   if (!board) return false;
-  for (const name of ["blood", "cracks"]) {
-    const L = G.L[name];
-    if (L.wrap?.isConnected) continue;
+  const make = (id, z) => {
     const wrap = document.createElement("div");
-    wrap.id = name === "blood" ? "ipu-gore" : "ipu-gore-cracks";
+    wrap.id = id;
     wrap.setAttribute("aria-hidden", "true");
-    Object.assign(wrap.style, { position: "fixed", left: "0", top: "0", width: "100vw", height: "100vh", overflow: "hidden", pointerEvents: "none",
-      zIndex: name === "blood" ? getComputedStyle(board).zIndex || "auto" : CRACK_Z, contain: "strict" });
+    Object.assign(wrap.style, { position: "fixed", left: "0", top: "0", width: "100vw", height: "100vh", overflow: "hidden", pointerEvents: "none", zIndex: z, contain: "strict" });
     const cv = document.createElement("canvas");
     Object.assign(cv.style, { position: "absolute", left: "0", top: "0", imageRendering: "pixelated" });
     wrap.appendChild(cv);
-    if (name === "blood") board.after(wrap); else (document.body ?? board.parentElement)?.appendChild(wrap);
-    L.wrap = wrap; L.cv = cv; L.ctx = cv.getContext("2d", { alpha: true });
+    return { wrap, cv, ctx: cv.getContext("2d", { alpha: true }) };
+  };
+  const zBoard = getComputedStyle(board).zIndex || "auto";
+  let moved = false;
+  for (const name of ["blood", "cracks"]) {
+    const L = G.L[name];
+    if (L.wrap?.isConnected) continue;
+    const m = make(name === "blood" ? "ipu-gore" : "ipu-gore-cracks", name === "blood" ? zBoard : CRACK_Z);
+    if (name === "blood") { board.after(m.wrap); moved = true; } else (document.body ?? board.parentElement)?.appendChild(m.wrap);
+    Object.assign(L, m);
+  }
+  /* the shade goes in right after #board, so UNDER the blood's pane (made again whenever the blood's pane is, to keep that order) */
+  if (moved || !G.shade.wrap?.isConnected) {
+    try { G.shade.wrap?.remove?.(); } catch { /* gone already */ }
+    const m = make("ipu-gore-shade", zBoard);
+    m.wrap.style.mixBlendMode = SHADE_BLEND;
+    m.wrap.style.display = "none";
+    board.after(m.wrap);
+    Object.assign(G.shade, m);
   }
   G.g = null;
   return true;
@@ -93,6 +113,11 @@ function fit() {
     L.img = new ImageData(L.sf.rgba, g.w, g.h);
     L.dirtyAll = true;
   }
+  const Sh = G.shade;
+  Sh.cv.width = g.w; Sh.cv.height = g.h;
+  Sh.cv.style.width = G.L.blood.cv.style.width; Sh.cv.style.height = G.L.blood.cv.style.height;
+  Sh.buf = new Uint8ClampedArray(g.w * g.h * 4);
+  Sh.img = new ImageData(Sh.buf, g.w, g.h);
   /* the plans are laid out on the grid: a new grid lays them out again (the same seeds: the same splash, in this view's fractions) */
   for (const it of G.items) { it.plan = it.make(g); warmLater(it); }
   return true;
@@ -113,8 +138,10 @@ function frame() {
         if (!mine.length && !L.sf.box && !L.dirtyAll) continue;
         const out = R.render(L.sf, mine, now);
         moving = moving || out.moving;
-        if (L.dirtyAll) { L.ctx.putImageData(L.img, 0, 0); L.dirtyAll = false; }
+        const all = L.dirtyAll;
+        if (all) { L.ctx.putImageData(L.img, 0, 0); L.dirtyAll = false; }
         else if (out.box) L.ctx.putImageData(L.img, 0, 0, out.box.x0, out.box.y0, out.box.x1 - out.box.x0 + 1, out.box.y1 - out.box.y0 + 1);
+        if (name === "blood") shade(L.sf.rgba, all ? { x0: 0, y0: 0, x1: G.g.w - 1, y1: G.g.h - 1 } : out.box);
       }
       G.cost.push(pnow() - t0); if (G.cost.length > 240) G.cost.shift();
       G.frames++;
@@ -124,6 +151,20 @@ function frame() {
     }
   } catch (err) { once(err); }
   G.raf = requestAnimationFrame(frame);
+}
+/* GOREPINK: the shade = the blood pane's pixels at full alpha (the changed box only), under it */
+function shade(rgba, b) {
+  const Sh = G.shade;
+  if (!Sh.ctx || !Sh.buf) return;
+  if (Sh.wrap.style.display) Sh.wrap.style.display = "";
+  if (!b) return;
+  const w = G.g.w, buf = Sh.buf;
+  for (let y = b.y0; y <= b.y1; y++) {
+    for (let o = (y * w + b.x0) * 4, e = (y * w + b.x1) * 4; o <= e; o += 4) {
+      if (rgba[o + 3]) { buf[o] = rgba[o]; buf[o + 1] = rgba[o + 1]; buf[o + 2] = rgba[o + 2]; buf[o + 3] = 255; } else buf[o + 3] = 0;
+    }
+  }
+  Sh.ctx.putImageData(Sh.img, 0, 0, b.x0, b.y0, b.x1 - b.x0 + 1, b.y1 - b.y0 + 1);
 }
 /* nothing moves: sleep until the next stage (drying, dissolve, retract) of any live item */
 function nextChange(now) {
@@ -157,6 +198,9 @@ function hideIfEmpty() {
     L.ctx.clearRect(0, 0, G.g.w, G.g.h);
     if (L.sf) { L.sf.rgba.fill(0); L.sf.T.fill(0); L.sf.C.fill(0); L.sf.box = null; }
   }
+  /* the shade: empty and out of the page's compositing while there is no blood (a blended pane costs a pass only while it shows) */
+  const Sh = G.shade;
+  if (Sh.ctx) { Sh.ctx.clearRect(0, 0, G.g.w, G.g.h); Sh.buf?.fill(0); Sh.wrap.style.display = "none"; }
 }
 
 /* ---------------- playing ---------------- */
