@@ -14,6 +14,10 @@
        review: a screen that saw no blow gets no blood); the splash lands beside the struck token as this seat sees it, sized by it,
        and never on it (GORE4: plan.mjs TOK_GAP; at the view's edge the splash turns to a side that has room);
      - a new splash on a token makes its older ones crumble away (no stains piling up on one character);
+     - GORECLEAR: never over ANOTHER token's portrait nor over the lettering of the moment, on any seat: a splash is laid out clear of the
+       other tokens this seat sees and of the token reactions' standing words and numbers (asked on the reactions' hook, phase "ink":
+       plan.mjs keep-outs); while it stays, the glass draws no blood over a token under it (the camera moved, a token walked in:
+       raster.mjs cutOut) and a splash that later lettering comes to stand on crumbles away at once (CLEAR_FAST);
      - the public API (game.modules.get("invincible-plus-ultra").api.gore, also globalThis.PlusUltraGore). Nothing here throws. */
 import * as P from "./plan.mjs";
 import * as R from "./raster.mjs";
@@ -28,6 +32,11 @@ export const QUIET = 180;          // ms a change waits for its other half (Heal
 export const HIT_WAIT = 3200;      // ms a change waits for its token reaction's blow; then it plays on its own
 const PUSH_MS = 9000, ATTACK_MS = 6000;
 export const IMPACT_MAX = 1500;     // ms the blood waits at most for an impact frame to end
+/* GORECLEAR: on (the rule above). api.debug({ clear: false }) lays blood out as before it (GORE4's plan, no mask, no guard) on THIS page
+   only, so a live take can count what the rule changes; nothing stores it */
+let CLEAR = true;
+const LOG_MAX = 80;
+const glog = [];                     // this seat's last splashes: how each was placed and what of it lay on a token or on lettering
 let engineL = null;                  // the lettering engine on this page (its impact frames)
 
 let started = false, warned = false;
@@ -119,9 +128,67 @@ function fit() {
   Sh.buf = new Uint8ClampedArray(g.w * g.h * 4);
   Sh.img = new ImageData(Sh.buf, g.w, g.h);
   /* the plans are laid out on the grid: a new grid lays them out again (the same seeds: the same splash, in this view's fractions) */
-  for (const it of G.items) { it.plan = it.make(g); warmLater(it); }
+  for (const it of G.items) { it.plan = it.make(g); if (it.fast) quicken(it.plan); warmLater(it); }
   return true;
 }
+/* ---------------- GORECLEAR: what the blood keeps clear of on this seat ---------------- */
+/* a token this seat is shown now (the glass never tells a seat about a token it does not see) */
+function seesTok(t) {
+  try { return !!t && !t.destroyed && t.scene?.id === canvas.scene?.id && (t.isVisible ?? t.visible) !== false && (t.document?.hidden !== true || !!game.user?.isGM); } catch { return false; }
+}
+/** the tokens this seat sees, as discs in fractions of its view ({ id, fx, fy, fr }); only those that touch the view */
+export function tokDiscs(skip = null) {
+  const out = [];
+  try {
+    const vw = window.innerWidth, vh = window.innerHeight, m = Math.min(vw, vh);
+    for (const t of canvas?.tokens?.placeables ?? []) {
+      if (t.id === skip || !seesTok(t)) continue;
+      const s = tokScreen(t);
+      if (!s) continue;
+      const rx = (s.fr * m) / vw, ry = (s.fr * m) / vh;
+      if (s.fx + rx < 0 || s.fy + ry < 0 || s.fx - rx > 1 || s.fy - ry > 1) continue;
+      out.push({ id: t.id, fx: s.fx, fy: s.fy, fr: s.fr });
+    }
+  } catch (err) { once(err); }
+  return out;
+}
+/** the lettering standing on this seat now: the token reactions answer the hook (phase "ink") with the boxes of their standing words
+    and numbers in client px -> boxes in fractions of the view ({ l, t, r, b }) */
+export function inkBoxes() {
+  const out = [];
+  try {
+    const rects = [];
+    Hooks.callAll(REACT_HOOK, { phase: "ink", rects });
+    const vw = window.innerWidth, vh = window.innerHeight;
+    for (const q of rects) if (q && q.w > 0 && q.h > 0 && Number.isFinite(q.x) && Number.isFinite(q.y)) out.push({ l: q.x / vw, t: q.y / vh, r: (q.x + q.w) / vw, b: (q.y + q.h) / vh });
+  } catch (err) { once(err); }
+  return out;
+}
+const discsPx = (ds, gap = 0) => { const g = G.g, m = Math.min(g.w, g.h); return ds.map((d) => ({ id: d.id, x: d.fx * g.w, y: d.fy * g.h, r: d.fr * m + gap })); };
+const boxesPx = (bs) => { const g = G.g; return bs.map((b) => ({ x0: b.l * g.w, y0: b.t * g.h, x1: b.r * g.w, y1: b.b * g.h })); };
+function quicken(plan) { for (const q of plan.second ? [plan, plan.second.plan] : [plan]) q.life = { ...q.life, dissolve: Math.min(q.life.dissolve, P.CLEAR_FAST) }; }
+/* lettering stands (or is about to stand) where a splash lies: the splash crumbles away at once, quickly (never a straight cut round
+   the word's box). Also measures, for the seat's log, the most of each splash that lay under a token or under lettering */
+function guard(now = pnow()) {
+  try {
+    if (!G.g) return;
+    const live = G.items.filter((it) => it.kind === "blood" && !it.plan.none);
+    if (!live.length) return;
+    const boxes = boxesPx(inkBoxes()), discs = discsPx(tokDiscs());
+    for (const it of live) {
+      const own = it.tok ? discs.filter((d) => d.id !== it.tok) : discs;
+      const on = R.inkOn(it.plan, own, boxes), e = it.log;
+      if (e) { e.maxTok = Math.max(e.maxTok, on.discs); if (now >= it.t0 && !Number.isFinite(it.cutAt)) e.maxInk = Math.max(e.maxInk, on.boxes); }
+      if (!CLEAR || Number.isFinite(it.cutAt) && it.cutAt <= now) continue;
+      if (on.boxes > Math.max(P.WORD_TOL.px, on.ink * P.WORD_TOL.share)) {
+        it.fast = true; quicken(it.plan);
+        it.cutAt = Math.max(it.t0, now);
+        if (e) e.gaveWay = Math.round(now - it.t0);
+      }
+    }
+  } catch (err) { once(err); }
+}
+
 function frame() {
   G.raf = 0;
   try {
@@ -136,7 +203,13 @@ function frame() {
       for (const [name, L] of Object.entries(G.L)) {
         const mine = G.items.filter((it) => layerOf(it.kind) === name);
         if (!mine.length && !L.sf.box && !L.dirtyAll) continue;
-        const out = R.render(L.sf, mine, now);
+        /* GORECLEAR: the tokens under the glass at this tick (every one this seat sees, the struck one too): no blood over them */
+        const mask = name === "blood" && CLEAR && mine.length ? discsPx(tokDiscs(), P.MASK_GAP) : null;
+        const out = R.render(L.sf, mine, now, mask);
+        if (name === "blood" && mine.length) {
+          if (L.sf.cut) for (const it of mine) if (it.log) it.log.masked = Math.max(it.log.masked, L.sf.cut);
+          if (tick % P.GUARD_TICKS === 0) guard(now);
+        }
         moving = moving || out.moving;
         const all = L.dirtyAll;
         if (all) { L.ctx.putImageData(L.img, 0, 0); L.dirtyAll = false; }
@@ -145,7 +218,8 @@ function frame() {
       }
       G.cost.push(pnow() - t0); if (G.cost.length > 240) G.cost.shift();
       G.frames++;
-      G.items = G.items.filter((it) => now - it.t0 < P.endOf(it.plan) + 100);
+      /* (GORECLEAR: a splash that was made to clear early is over when its crumbling is, not at its planned end) */
+      G.items = G.items.filter((it) => now - it.t0 < Math.min(P.endOf(it.plan), it.kind === "blood" && Number.isFinite(it.cutAt) ? Math.max(0, it.cutAt - it.t0) + it.plan.life.dissolve + (it.plan.second ? it.plan.second.delay : 0) : Infinity) + 100);
       if (!moving && !G.items.length) { hideIfEmpty(); return; }
       if (!moving) { G.raf = 0; G.idle = setTimeout(kick, nextChange(now)); return; }
     }
@@ -222,11 +296,21 @@ function play(kind, o = {}) {
     const t0 = P.arrivalAt(want, s, G.arrivals, safe);
     if (s >= P.BIG || safe) { G.arrivals.push(t0); G.arrivals = G.arrivals.filter((t) => t > pnow() - 3000); }
     const seed = o.seed ?? `${kind}|${++uid}|${Math.random()}`;
-    const spec = { strength: s, seed, dir: Number.isFinite(o.dir) ? o.dir : null, at: o.at ?? null, near: kind === "blood" ? near : null, safe, still, hold: op.hold };
+    /* GORECLEAR: beside a token the blood keeps clear of the other tokens this seat sees and of the lettering standing now */
+    const others = kind === "blood" && tok ? tokDiscs(tok.id) : [], ink = kind === "blood" && tok ? inkBoxes() : [];
+    const keep = CLEAR && others.length + ink.length ? [...others, ...ink] : null;
+    const spec = { strength: s, seed, dir: Number.isFinite(o.dir) ? o.dir : null, at: o.at ?? null, near: kind === "blood" ? near : null, safe, still, hold: op.hold, ...(keep ? { keep } : {}) };
     const make = (g) => (kind === "blood" ? P.bloodPlan(g, spec) : P.crackPlan(g, spec));
     if (!ensureGlass()) return null;
     fit();
     const it = { id: ++uid, kind, t0, make, plan: make(G.g), tok: tok?.id ?? null, pv: !!o.pv };
+    if (kind === "blood" && tok) {
+      /* the seat's log: how it was placed, and what of its standing ink lies on another token or on lettering as laid out */
+      const on = it.plan.none ? { ink: 0, discs: 0, boxes: 0 } : R.inkOn(it.plan, discsPx(others), boxesPx(ink));
+      it.log = { id: it.id, tok: tok.id, name: tok.name ?? null, at: Date.now(), strength: s, clear: CLEAR, how: it.plan.none ? "none" : it.plan.keepHow ?? "free", tokens: others.length, words: ink.length,
+        r: Math.round(it.plan.R * 10) / 10, ink: on.ink, onTok: on.discs, onInk: on.boxes, maxTok: on.discs, maxInk: on.boxes, masked: 0, gaveWay: null };
+      glog.push(it.log); if (glog.length > LOG_MAX) glog.shift();
+    }
     /* GORE4: no room beside the token in this view (it fills the screen): no blood here rather than blood on it */
     if (it.plan.none) return null;
     /* GORE3: a new splash on a token: its older ones start to crumble as this one lands (one stain per character, no piling) */
@@ -324,6 +408,9 @@ function onReact(d) {
   try {
     if (d?.phase !== "hit" || !Array.isArray(d.ids)) return;
     const at = Number.isFinite(d.at) ? d.at : pnow();
+    /* GORECLEAR: the words of this blow are laid out by now and come up before it: a splash already on the glass where they will stand
+       starts to crumble at once (asked a task later: the reactions are started right after this hook) */
+    if (G.items.length) setTimeout(guard, 0);
     const mine = d.ids.filter((id) => pending.has(id));
     if (!mine.length) return;
     for (const id of mine) clearTimeout(pending.get(id).timer);
@@ -439,7 +526,16 @@ export const api = {
       costMs: c.length ? { p50: c[Math.floor(c.length / 2)], p95: c[Math.floor(c.length * 0.95)], max: c[c.length - 1], n: c.length } : null,
       pending: pending.size, cleared: G.items.filter((it) => Number.isFinite(it.cutAt)).length, opts: opts(), safe: photosensitive(), still: osReduced() };
   },
-  resetCost: () => { G.cost = []; G.frames = 0; }
+  resetCost: () => { G.cost = []; G.frames = 0; },
+  /** GORECLEAR: this seat's last splashes beside a token: { how: "free" (nothing near) | "clean" (laid out clear of the keep-outs) |
+      "none" (no clean place: no blood here), tokens, words (keep-outs seen), ink (px of standing ink), onTok / onInk (px of it on
+      another token / on lettering as laid out), maxTok / maxInk (the most through its life), masked (px the glass left out over
+      tokens), gaveWay (ms after landing it started to crumble for lettering) }; { clear: true } empties it */
+  log: (o) => { if (o?.clear) glog.length = 0; return glog.map((e) => ({ ...e })); },
+  /** what the blood would keep clear of on this seat now: { tokens: discs, words: boxes } in fractions of the view */
+  keepOuts: () => ({ tokens: tokDiscs(), words: inkBoxes() }),
+  /** a take's switch, this page only, never stored: { clear: false } lays blood out as before GORECLEAR */
+  debug: (o) => { if (o && typeof o.clear === "boolean") CLEAR = o.clear; return { clear: CLEAR }; }
 };
 
 function registerHooks() {

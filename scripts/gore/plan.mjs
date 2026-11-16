@@ -39,6 +39,19 @@ export const NEAR_K = 1.1;                 // GORE3: a splash's body radius at m
 export const R_MIN = 0.02;                 // ... but never under this share of the view's short side (pixel art stays readable)
 export const EDGE = 2;                     // art px: nothing of a splash is drawn closer to the view's edge (never cut by it)
 export const TOK_GAP = 1.5;                // GORE4, art px: nothing of a splash is drawn closer to the struck token's rim (beside it, never on it)
+/* GORECLEAR (live 2026-11-16: a knock-down's splash lay over the neighbouring token and over the sound word of its own blow): the blood
+   also keeps clear of what this seat hands it as KEEP-OUTS (opts.keep): the other tokens it sees (discs) and the standing lettering
+   (boxes). Nothing of a splash is laid closer than KEEP_GAP art px to one. It still lands: the body takes the cheapest clean place round
+   the struck token (another way, a little farther out, a little smaller), never under the smallest KEEP_SHRINK share of its size. */
+export const KEEP_GAP = 1.5;               // art px: nothing of a splash is drawn closer to another token's rim or a word's ink
+export const KEEP_MAX = 64;                // keep-outs read per splash
+export const KEEP_SHRINK = [1, 0.84, 0.7]; // the sizes tried among keep-outs (share of the splash's size beside its token)
+export const KEEP_FAR = 3.2;               // how much farther out than GORE4's place the body may land, in body radii
+export const MASK_GAP = 0.75;               // art px round a token's rim the glass keeps free of blood while the token is under it
+export const CLEAR_FAST = 760;             // ms a splash takes to crumble away when lettering comes to stand where it lies (the last FLAKE_MS only flakes)
+export const WORD_TOL = { px: 4, share: 0.012 };      // a splash gives way to lettering once more of its ink than this lies under it
+export const GUARD_TICKS = 3;              // the lettering is asked for every this many ticks while blood is on the glass
+export const KEEP_COST = { turn: 0.9, out: 1.7, shrink: 2.6, fan: 5 };      // per 20 degrees turned, per body radius farther, per size step, for a fully blocked spray
 export const CENTRE = { rx: 0.30, ry: 0.28, alpha: 0.55 };      // the readable middle: an ellipse (fractions of the view) and blood's alpha there
 export const BIG = 0.4;                    // an arrival from this strength up counts in the rationing
 export const DISSOLVE = 1500;              // ms blood takes to crumble away (the last FLAKE_MS of it only flakes still falling)
@@ -150,8 +163,82 @@ export function bloodPlan(g, opts = {}) {
   const tok = near ? { x: near.fx * g.w, y: near.fy * g.h, r: tokR + TOK_GAP } : null;
   const hasAt = !!(opts.at && Number.isFinite(opts.at.fx) && Number.isFinite(opts.at.fy));
   const keepOf = (rad) => rad * 1.36 + EDGE + 1;
-  let none = false;
-  if (tok && !hasAt) {
+  /* GORECLEAR: the keep-outs on this grid: discs { x, y, r } and boxes { x0, y0, x1, y1 }, each grown by KEEP_GAP */
+  const obs = [];
+  for (const q of Array.isArray(opts.keep) ? opts.keep.slice(0, KEEP_MAX) : []) {
+    if (!q) continue;
+    if (Number.isFinite(q.fx) && Number.isFinite(q.fy) && Number.isFinite(q.fr)) obs.push({ x: q.fx * g.w, y: q.fy * g.h, r: Math.max(1, q.fr * m) + KEEP_GAP });
+    else if (Number.isFinite(q.l) && Number.isFinite(q.t) && q.r > q.l && q.b > q.t) obs.push({ x0: q.l * g.w - KEEP_GAP, y0: q.t * g.h - KEEP_GAP, x1: q.r * g.w + KEEP_GAP, y1: q.b * g.h + KEEP_GAP });
+  }
+  for (const o of obs) { if (o.r !== undefined) { o.bx0 = o.x - o.r; o.bx1 = o.x + o.r; o.by0 = o.y - o.r; o.by1 = o.y + o.r; } else { o.bx0 = o.x0; o.bx1 = o.x1; o.by0 = o.y0; o.by1 = o.y1; } }
+  /* how far (x, y) is from a keep-out's edge (art px; under 0 = inside it) */
+  const gapTo = (o, x, y) => { if (o.r !== undefined) return Math.hypot(x - o.x, y - o.y) - o.r; const ax = Math.max(o.x0 - x, 0, x - o.x1), ay = Math.max(o.y0 - y, 0, y - o.y1); return ax || ay ? Math.hypot(ax, ay) : -Math.min(x - o.x0, o.x1 - x, y - o.y0, o.y1 - y); };
+  /* (a keep-out's own box first: most of them are nowhere near the point asked) */
+  const onKeep = (x, y, rad) => { for (const o of obs) { if (x < o.bx0 - rad || x > o.bx1 + rad || y < o.by0 - rad || y > o.by1 + rad) continue; if (gapTo(o, x, y) < rad) return true; } return false; };
+  const gapAt = (x, y) => { let v = Infinity; for (const o of obs) { const q = gapTo(o, x, y); if (q < v) v = q; } return v; };
+  /* the draw order of the seeded numbers below never changes with the placement, so every seat draws the same splash */
+  const reach = lerp(0.68, 0.88, r());
+  const perp = (r() - 0.5) * 0.5;
+  const sm = Math.min(s, 1);
+  /* the body: a ragged blot (four rim harmonics, the highest makes it spiky), never a smooth glob; laid out round (0, 0) first, moved to
+     its place once that is known (GORE4: the place follows from the body's own outline) */
+  const lob = [0, 1, 2, 3].map(() => r() * Math.PI * 2);
+  const amp = [lerp(0.07, 0.13, r()), lerp(0.05, 0.09, r()), lerp(0.04, 0.07, r()), lerp(0.05, 0.09, r())];
+  /* lumps round its rim (GORECLEAR: their seeded shares are drawn once, the blobs are built for a size: bodyAt) */
+  const nb = 5 + Math.round(5 * sm);
+  const lumps = [];
+  for (let i = 0; i < nb; i++) lumps.push({ a: r() * Math.PI * 2, kd: lerp(0.8, 1.02, r()), kr: lerp(0.16, 0.32, r()), lob: [r() * 6, r() * 6, r() * 6] });
+  const bodyAt = (rad) => {
+    const bl = [{ x: 0, y: 0, r: rad, h: 1, at: 0, main: true, lob, amp, fq: [3, 5, 9, 15], e: 1.08 }];
+    for (const q of lumps) { const d = rad * q.kd, rr = rad * q.kr; bl.push({ x: Math.cos(q.a) * d, y: Math.sin(q.a) * d, r: rr, h: 0.85, at: 1, lob: q.lob, amp: [0.1, 0.06, 0.03], e: 1 }); }
+    return bl;
+  };
+  let none = false, spot = null, keepHow = null;
+  if (tok && !hasAt && obs.length) {
+    /* GORECLEAR: among keep-outs the body takes the cheapest CLEAN place round its token: each way (20 degree steps from the way it
+       flies), the nearest distance where its whole outline (burst, squash, settled, lumps) is clear of the token, every keep-out and
+       the view's edge; the cost weighs the turn, the distance, the size and how much of its spray would be lost there */
+    const first = hash(`side|${opts.seed ?? "x"}`) & 1 ? 1 : -1;
+    KEEP_SHRINK.forEach((ks, si) => {
+      const rad = R * ks, k = keepOf(rad), bl = bodyAt(rad);
+      for (let j = 0; j <= 18; j++) {
+        const a = dir + first * (j & 1 ? 1 : -1) * Math.ceil(j / 2) * (Math.PI / 9), ol = bodyOutline(bl, a), ca = Math.cos(a), sa = Math.sin(a);
+        const d0 = tok.r + rad * 0.5, dMax = tok.r + rad * (2.4 + KEEP_FAR) + 3;
+        /* the body with its middle d from the token's: 1 clean, 0 not, -1 past the view's edge (nothing farther either) */
+        const cleanAt = (d) => {
+          const x = tok.x + ca * d, y = tok.y + sa * d;
+          if (x < k || y < k || x > g.w - k || y > g.h - k) return d > tok.r + rad * 1.8 + 2 ? -1 : 0;
+          /* the nearest keep-out from the body's middle: far = clean at once; inside the body's smallest drawing (0.8 of its radius) = taken */
+          const g0 = gapAt(x, y);
+          if (g0 < rad * 0.8) return 0;
+          if (g0 >= rad * 1.5 + 2 && Math.hypot(x - tok.x, y - tok.y) >= tok.r + rad * 1.5 + 2) return 1;
+          for (const [px, py, pr] of ol) {
+            if (Math.hypot(x + px - tok.x, y + py - tok.y) < tok.r + pr) return 0;
+            if (onKeep(x + px, y + py, pr)) return 0;
+          }
+          return 1;
+        };
+        /* in steps of two art px, then back to the nearest half px that is still clean (beside its token as close as GORE4 stood it) */
+        for (let d = d0; d <= dMax; d += 2) {
+          const c = cleanAt(d);
+          if (c < 0) break;
+          if (!c) continue;
+          for (const back of [1.5, 1, 0.5]) if (d - back >= d0 && cleanAt(d - back) === 1) { d -= back; break; }
+          const x = tok.x + ca * d, y = tok.y + sa * d;
+          /* the spray's fan from there: the share of it that would fall on a keep-out, the token or outside the view */
+          let lost = 0, nfan = 0;
+          for (const u of [1.7, 2.6, 3.6, 4.6]) for (const da of [-0.45, -0.15, 0.15, 0.45]) { const fx = x + Math.cos(a + da) * rad * u, fy = y + Math.sin(a + da) * rad * u; nfan++; if (fx < EDGE + 2 || fy < EDGE + 2 || fx > g.w - 3 - EDGE || fy > g.h - 3 - EDGE || Math.hypot(fx - tok.x, fy - tok.y) < tok.r + 2 || onKeep(fx, fy, 2)) lost++; }
+          const cost = Math.ceil(j / 2) * KEEP_COST.turn + ((d - d0) / rad) * KEEP_COST.out + si * KEEP_COST.shrink + (lost / nfan) * KEEP_COST.fan;
+          if (!spot || cost < spot.cost - 1e-9) spot = { cost, a, x, y, rad };
+          break;
+        }
+      }
+    });
+    /* no clean place at any way, distance or size tried: this seat draws no blood rather than blood on a neighbour's portrait or on
+       the lettering (main.mjs: the seat's log counts it) */
+    if (spot) { R = spot.rad; dir = spot.a; keepHow = "clean"; } else { none = true; keepHow = "none"; }
+  }
+  if (tok && !hasAt && !obs.length) {
     const first = hash(`side|${opts.seed ?? "x"}`) & 1 ? 1 : -1;
     const room = (a, rad) => { const d = tok.r + rad * 1.8 + 2, k = keepOf(rad), x = tok.x + Math.cos(a) * d, y = tok.y + Math.sin(a) * d; return x >= k && y >= k && x <= g.w - k && y <= g.h - k; };
     let found = null;
@@ -162,30 +249,16 @@ export function bloodPlan(g, opts = {}) {
     if (found === null) none = true; else dir = found;
   }
   const dx = Math.cos(dir), dy = Math.sin(dir);
-  /* the draw order of the seeded numbers below never changes with the placement, so every seat draws the same splash */
-  const reach = lerp(0.68, 0.88, r());
-  const perp = (r() - 0.5) * 0.5;
-  const sm = Math.min(s, 1);
-  /* the body: a ragged blot (four rim harmonics, the highest makes it spiky), never a smooth glob; laid out round (0, 0) first, moved to
-     its place once that is known (GORE4: the place follows from the body's own outline) */
-  const lob = [0, 1, 2, 3].map(() => r() * Math.PI * 2);
-  const amp = [lerp(0.07, 0.13, r()), lerp(0.05, 0.09, r()), lerp(0.04, 0.07, r()), lerp(0.05, 0.09, r())];
-  const blobs = [];
-  blobs.push({ x: 0, y: 0, r: R, h: 1, at: 0, main: true, lob, amp, fq: [3, 5, 9, 15], e: 1.08 });
-  /* lumps round its rim */
-  const nb = 5 + Math.round(5 * sm);
-  for (let i = 0; i < nb; i++) {
-    const a = r() * Math.PI * 2, d = R * lerp(0.8, 1.02, r()), rr = R * lerp(0.16, 0.32, r());
-    blobs.push({ x: Math.cos(a) * d, y: Math.sin(a) * d, r: rr, h: 0.85, at: 1, lob: [r() * 6, r() * 6, r() * 6], amp: [0.1, 0.06, 0.03], e: 1 });
-  }
+  const blobs = bodyAt(R);
   /* the body's outline round its middle: the settled blot (stretched along its way), its burst and squash frames, the lumps as discs */
   const outline = bodyOutline(blobs, dir);
-  const clearAt = (x, y) => !tok || outline.every(([px, py, pr]) => Math.hypot(x + px - tok.x, y + py - tok.y) >= tok.r + pr);
+  const clearAt = (x, y) => (!tok || outline.every(([px, py, pr]) => Math.hypot(x + px - tok.x, y + py - tok.y) >= tok.r + pr)) && (!obs.length || outline.every(([px, py, pr]) => !onKeep(x + px, y + py, pr)));
   /* GORE3: the body and its rim lumps lie wholly inside the view (EDGE art px clear of it); what flies farther is trimmed below */
   const keep = keepOf(R);
   const inView = (x, y) => [keep * 2 < g.w ? clamp(x, keep, g.w - keep) : g.w / 2, keep * 2 < g.h ? clamp(y, keep, g.h - keep) : g.h / 2];
   let cx, cy;
-  if (hasAt) {
+  if (spot) { cx = spot.x; cy = spot.y; }
+  else if (hasAt) {
     /* a given place (a public call, a knock-down's second blow): kept, but moved straight away from the token while it would lie on it */
     [cx, cy] = inView(opts.at.fx * g.w, opts.at.fy * g.h);
     if (tok && !clearAt(cx, cy)) {
@@ -194,6 +267,8 @@ export function bloodPlan(g, opts = {}) {
       for (let d = al; d <= tok.r + R * 3 && !ok; d += 0.5) { const [x, y] = inView(tok.x + (ax / al) * d, tok.y + (ay / al) * d); if (clearAt(x, y)) { cx = x; cy = y; ok = true; } }
       if (!ok) none = true;
     }
+    /* GORECLEAR: a given place that lies on a keep-out is not taken (the caller tries another: the second blow below) */
+    if (obs.length && !none && !clearAt(cx, cy)) none = true;
   } else if (tok) {
     /* as close beside the token as its own outline allows (GORE3 stood it at a fixed distance: its lumps could touch the rim) */
     const far = tok.r + R * 2.4 + 3;
@@ -257,15 +332,16 @@ export function bloodPlan(g, opts = {}) {
   const fits = (x, y, rad) => x - rad >= EDGE && y - rad >= EDGE && x + rad <= g.w - 1 - EDGE && y + rad <= g.h - 1 - EDGE;
   /* GORE4: ... and nothing lies on the struck token or crosses it on its way (a drop lands beyond the token only when its whole flight
      from the body passes clear of it; a tail, a crown spike, a spray line, a drip stop short of it) */
-  const onTok = (x, y, rad) => !!tok && Math.hypot(x - tok.x, y - tok.y) < tok.r + rad + 0.75;
-  const crosses = (x0, y0, x1, y1, rad) => { if (!tok) return false; const n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0))); for (let i = 0; i <= n; i++) if (onTok(x0 + (x1 - x0) * (i / n), y0 + (y1 - y0) * (i / n), rad)) return true; return false; };
+  /* GORECLEAR: ... nor on any keep-out (another token, the lettering), by the same rules */
+  const onTok = (x, y, rad) => (!!tok && Math.hypot(x - tok.x, y - tok.y) < tok.r + rad + 0.75) || (obs.length > 0 && onKeep(x, y, rad + 0.75));
+  const crosses = (x0, y0, x1, y1, rad) => { if (!tok && !obs.length) return false; const n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0))); for (let i = 0; i <= n; i++) if (onTok(x0 + (x1 - x0) * (i / n), y0 + (y1 - y0) * (i / n), rad)) return true; return false; };
   for (let i = sats.length - 1; i >= 0; i--) {
     const q = sats[i], ux = Math.cos(q.a), uy = Math.sin(q.a);
     if (!fits(q.x, q.y, q.r * 1.4 + 1) || crosses(cx + ux * R * 0.8, cy + uy * R * 0.8, q.x, q.y, q.r * 1.4)) sats.splice(i, 1);
   }
   for (const td of tendrils) {
     const tip = (L) => [td.x + Math.cos(td.a + td.bend) * L, td.y + Math.sin(td.a + td.bend) * L];
-    const hits = (L) => { if (!tok) return false; const n = Math.max(2, Math.ceil(L)); for (let i = 0; i <= n; i++) { const u = i / n, a = td.a + td.bend * u; if (onTok(td.x + Math.cos(a) * L * u, td.y + Math.sin(a) * L * u, Math.max(td.w0 / 2, i === n ? td.bead : 0))) return true; } return false; };
+    const hits = (L) => { if (!tok && !obs.length) return false; const n = Math.max(2, Math.ceil(L)); for (let i = 0; i <= n; i++) { const u = i / n, a = td.a + td.bend * u; if (onTok(td.x + Math.cos(a) * L * u, td.y + Math.sin(a) * L * u, Math.max(td.w0 / 2, i === n ? td.bead : 0))) return true; } return false; };
     while (td.len > 0.5 && (!fits(...tip(td.len), td.bead + 1) || hits(td.len))) td.len *= 0.85;
     if (hits(td.len)) td.len = 0;      // it starts too near the rim: no spike there
   }
@@ -288,7 +364,7 @@ export function bloodPlan(g, opts = {}) {
   }
   for (let i = streaks.length - 1; i >= 0; i--) if (!(streaks[i].len > 0)) streaks.splice(i, 1);
   /* a drip runs straight down: it stops above the token when the token lies under it */
-  const dripRoom = (x, y0) => { let room = g.h - 1 - EDGE - 3 - y0; if (tok && Math.abs(x - tok.x) < tok.r + 4) for (let d = 0; d < room; d += 0.5) if (onTok(x, y0 + d, 2.75)) { room = Math.max(0, d - 1); break; } return room; };
+  const dripRoom = (x, y0) => { let room = g.h - 1 - EDGE - 3 - y0; if ((tok && Math.abs(x - tok.x) < tok.r + 4) || obs.length) for (let d = 0; d < room; d += 0.5) if (onTok(x, y0 + d, 2.75)) { room = Math.max(0, d - 1); break; } return room; };
   /* drips: from the lowest parts of the big blobs, a bead swells, then runs stick-slip */
   const drips = [];
   const nd = 1 + Math.round(4 * Math.min(s, 1));
@@ -312,11 +388,17 @@ export function bloodPlan(g, opts = {}) {
     safe: !!opts.safe, still: !!opts.still, g: { w: g.w, h: g.h } };
   /* no room beside the token anywhere in this view (a token filling the screen): this seat draws no blood rather than blood on it */
   if (none) Object.assign(plan, { none: true, blobs: [], tendrils: [], sats: [], mist: [], streaks: [], drips: [], glints: [] });
+  /* GORECLEAR: what it kept clear of and how it was placed (only among keep-outs: a plan without them is exactly GORE4's) */
+  if (obs.length) Object.assign(plan, { keep: obs, keepHow: keepHow ?? (none ? "none" : "clean") });
   if (s >= 0.98 && !opts.second && !opts.safe && !none) {
-    const a2 = dir + (r() < 0.5 ? 1 : -1) * lerp(0.6, 1.1, r());
-    const p2 = bloodPlan(g, { ...opts, strength: 0.55, seed: `${opts.seed}|2`, dir: a2, second: true,
-      at: { fx: clamp((cx + Math.cos(a2) * R * 2.2) / g.w, 0.04, 0.96), fy: clamp((cy + Math.sin(a2) * R * 2.2) / g.h, 0.04, 0.96) } });
-    if (!p2.none) plan.second = { plan: p2, delay: 2 * TICK_MS };
+    const sg = r() < 0.5 ? 1 : -1, a2 = dir + sg * lerp(0.6, 1.1, r());
+    /* GORECLEAR: among keep-outs the second blow tries the other ways round the first when its own place is taken */
+    for (const turn of obs.length ? [0, -1.4, 0.7, -2.1, 1.4, -2.8, 2.1] : [0]) {
+      const a = a2 + sg * turn;
+      const p2 = bloodPlan(g, { ...opts, strength: 0.55, seed: `${opts.seed}|2`, dir: a, second: true,
+        at: { fx: clamp((cx + Math.cos(a) * R * 2.2) / g.w, 0.04, 0.96), fy: clamp((cy + Math.sin(a) * R * 2.2) / g.h, 0.04, 0.96) } });
+      if (!p2.none) { plan.second = { plan: p2, delay: 2 * TICK_MS }; break; }
+    }
   }
   return plan;
 }

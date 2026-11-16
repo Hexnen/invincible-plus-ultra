@@ -1185,6 +1185,7 @@ function follow(tok, plan, member) {
         const d = Dir.clampTravel(c, w, eb.w / 2, eb.h / 2, safe);
         c = { x: c.x + d.x, y: c.y + d.y };
       }
+      plan.at = { c, k };      // GORECLEAR: where the group stands on this seat now (inkNow)
       const off = member < 0 ? plan.g.word : plan.g.nums[member];
       last = view.toWorld({ x: c.x + off.dx * k, y: c.y + off.dy * k });
       return last;
@@ -1343,6 +1344,30 @@ function directionOf(it) {
   } catch (err) { once(err); return null; }
 }
 
+/* GORECLEAR (the blood on the glass lay over the word of its own blow): the standing ink of every reaction on this seat now, as boxes in
+   client px (the word and its numbers as they stand: layout.mjs standAt, at the place follow() last drew them; a reaction laid out but
+   not drawn yet answers with its planned place). Asked on REACT_HOOK with { phase: "ink", rects: [] }; whoever draws over the map
+   (scripts/gore) keeps clear of them */
+function inkNow(rects) {
+  try {
+    if (!Array.isArray(rects) || !view.ok()) return;
+    for (const e of playing.values()) {
+      const p = e?.plan;
+      if (!p?.g || !p.box) continue;
+      let c = p.at?.c ?? null;
+      const k = p.at?.k ?? 1;
+      if (!c) {
+        const tr = p.rect ? p.rect() : p.tokRect;
+        if (!tr) continue;
+        c = P.slotPoint(p.slot, tr, p.box);
+        if (p.nudge) c = { x: c.x + p.nudge.x, y: c.y + p.nudge.y };
+      }
+      const r = Lay.standAt(c, p.g, k);
+      if (r && r.w > 0 && r.h > 0 && Number.isFinite(r.x) && Number.isFinite(r.y)) rects.push({ x: r.x, y: r.y, w: r.w, h: r.h });
+    }
+  } catch (err) { once(err); }
+}
+
 /* the user's display layer, handed to the engine (contract: the world layer option) */
 const layer = () => { const v = get(KEY.layer, "overlay"); return { layer: LAYERS.includes(v) ? v : "overlay" }; };
 
@@ -1399,6 +1424,7 @@ function registerHooks() {
   Hooks.on(TAC_HOOK, onEvent);
   Hooks.on(TAC_HOOK_GM, onEvent);
   Hooks.on(SPLASH_HOOK, onSplash);
+  Hooks.on(REACT_HOOK, (d) => { if (d?.phase === "ink") inkNow(d.rects); });
 }
 export function start(phases = {}) {
   try {

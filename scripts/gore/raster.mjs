@@ -90,7 +90,7 @@ export function surface(w, h) {
 
 /** draw the live items ({ plan, t0, cutAt? }) at `now` (ms, the same clock as t0). -> { box (dirty: this frame's and the last one's
     drawn area) | null, live: how many still draw, moving: whether the next tick can differ } */
-export function render(sf, items, now) {
+export function render(sf, items, now, mask = null) {
   const { w, h, T, S, G, C } = sf;
   const prev = sf.box;
   if (prev) { clearBox(sf, prev); }
@@ -118,10 +118,45 @@ export function render(sf, items, now) {
       }
     }
   }
+  /* GORECLEAR: the tokens under the glass now (discs, art px): no blood is drawn there. Cut out of the coverage BEFORE the colours, so the
+     blood ends at a token's rim with its own dark outline, as at any other edge of it (never a raw cut through its shading) */
+  sf.cut = mask?.length && box.x1 >= 0 ? cutOut(sf, box, mask) : 0;
   colour(sf, box, items.some((it) => it.plan.safe) ? RAMP_SAFE : RAMP);
   sf.box = box.x1 >= 0 ? box : null;
   const dirty = union(prev, sf.box);
   return { box: dirty, live, moving };
+}
+function cutOut(sf, b, discs) {
+  const { w, T, G } = sf;
+  let n = 0;
+  for (const d of discs) {
+    const y0 = Math.max(b.y0, Math.floor(d.y - d.r)), y1 = Math.min(b.y1, Math.ceil(d.y + d.r));
+    for (let y = y0; y <= y1; y++) {
+      if (sf.hi[y] < 0) continue;
+      const dy = y + 0.5 - d.y, half = d.r * d.r - dy * dy;
+      if (half <= 0) continue;
+      const hw = Math.sqrt(half), x0 = Math.max(sf.lo[y], Math.ceil(d.x - hw - 0.5)), x1 = Math.min(sf.hi[y], Math.floor(d.x + hw - 0.5));
+      for (let x = x0, i = y * w + x0; x <= x1; x++, i++) if (T[i] > 0) { T[i] = 0; G[i] = 0; n++; }
+    }
+  }
+  return n;
+}
+/** GORECLEAR: how much of a splash's standing ink (its second blow too; not its drips) lies on keep-outs given in art px: discs
+    [{ x, y, r }] and boxes [{ x0, y0, x1, y1 }] -> { ink, discs, boxes } (pixels) */
+export function inkOn(p, discs = [], boxes = []) {
+  let ink = 0, nd = 0, nb = 0;
+  if (p?.kind !== "blood") return { ink, discs: nd, boxes: nb };
+  for (const q of p.second ? [p, p.second.plan] : [p]) {
+    const c = tickPixels(q, SETTLED, q.still), w = c.w;
+    for (let j = 0; j < c.idx.length; j++) {
+      if (c.t[j] <= THR) continue;
+      ink++;
+      const i = c.idx[j], y = (i / w) | 0, x = i - y * w, cx = x + 0.5, cy = y + 0.5;
+      for (const d of discs) if ((cx - d.x) ** 2 + (cy - d.y) ** 2 < d.r * d.r) { nd++; break; }
+      for (const r of boxes) if (cx > r.x0 && cx < r.x1 && cy > r.y0 && cy < r.y1) { nb++; break; }
+    }
+  }
+  return { ink, discs: nd, boxes: nb };
 }
 function union(a, b) {
   if (!a) return b; if (!b) return a;
@@ -154,6 +189,9 @@ function drawBlood(ctx, p, ms, gone) {
      that fall off for FLAKE_MS, only where their fall stays inside the view (pure: the moment a pixel eroded follows from its depth). */
   const dms = ms - gone, diss = dms > 0;
   const tk = p.tok ?? null;      // GORE4: the struck token's disc: no flake of crust falls onto it
+  /* GORECLEAR: ... nor onto any keep-out it was laid out clear of (another token, the lettering) */
+  const ko = p.keep?.length ? p.keep : null;
+  const offKeep = (x, y) => { if (ko) for (const o of ko) { if (o.r !== undefined ? Math.hypot(x - o.x, y - o.y) < o.r : x > o.x0 && x < o.x1 && y > o.y0 && y < o.y1) return false; } return true; };
   const er = diss ? erosion(p, dms, still) : null;
   const dep = er ? depthOf(p, ctx.w) : null;
   const mark = (i, x, y, t, l) => {
@@ -178,7 +216,7 @@ function drawBlood(ctx, p, ms, gone) {
           if (age2 >= 0 && age2 < FLAKE_MS) {
             const a = age2 / 1000, hs = hash2(y + 7, x + 3);
             const fx = Math.round(x + (hs - 0.5) * 40 * a), fy = Math.round(y + 1 + 0.5 * FLAKE_G * a * a);
-            if (!tk || Math.hypot(fx + 1 - tk.x, fy + 0.5 - tk.y) >= tk.r + 1) {
+            if ((!tk || Math.hypot(fx + 1 - tk.x, fy + 0.5 - tk.y) >= tk.r + 1) && offKeep(fx + 0.5, fy + 0.5) && offKeep(fx + 1.5, fy + 0.5)) {
               ctx.sf.G[fy * ctx.w + fx] = 3; mark(fy * ctx.w + fx, fx, fy, 0.5, 0.3);
               if (hs < 0.45) { ctx.sf.G[fy * ctx.w + fx + 1] = 3; mark(fy * ctx.w + fx + 1, fx + 1, fy, 0.5, 0.3); }
             }
