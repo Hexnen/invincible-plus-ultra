@@ -54,7 +54,7 @@ const playersEnd = () => get(KEY.playersEnd) !== false;
 function registerSettings() {
   const has = (key) => game.settings.settings.has(`${MOD}.${key}`);
   const bool = (key, name, def, extra = {}) => {
-    if (!has(key)) game.settings.register(MOD, key, { name: t(`ITN.Settings.${name}.Name`), hint: t(`ITN.Settings.${name}.Hint`), scope: "client", config: true, type: Boolean, default: def, ...extra });
+    if (!has(key)) game.settings.register(MOD, key, { name: t(`ITN.Settings.${name}.Name`), hint: t(`ITN.Settings.${name}.Hint`), scope: "world", config: false, type: Boolean, default: def, ...extra });
   };
   bool(KEY.message, "Message", true, { onChange: (v) => { if (!v) Msg.clear(); } });
   bool(KEY.tray, "Tray", true, { onChange: () => refresh() });

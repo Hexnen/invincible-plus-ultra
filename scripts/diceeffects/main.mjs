@@ -36,19 +36,19 @@ const once = (e) => { if (!warned) { warned = true; console.warn(LOG, "a failure
 const strength = () => { const s = get(KEY.strength); return s === "off" || s === "bold" ? s : "subtle"; };
 const active = () => get(KEY.enabled) !== false && strength() !== "off";
 
-/* ---------- settings (client scope, registered in init) ---------- */
+/* ---------- settings (GMGOVERN: the table's: world scope, the GM chooses in the table settings window; registered in init) ---------- */
 function registerSettings() {
   const has = (key) => game.settings.settings.has(`${MOD}.${key}`);
   const bool = (key, name, def) => {
-    if (!has(key)) game.settings.register(MOD, key, { name: t(`IDF.Settings.${name}.Name`), hint: t(`IDF.Settings.${name}.Hint`), scope: "client", config: true, type: Boolean, default: def, onChange: () => { if (!active()) clearAll(true); } });
+    if (!has(key)) game.settings.register(MOD, key, { name: t(`IDF.Settings.${name}.Name`), hint: t(`IDF.Settings.${name}.Hint`), scope: "world", config: false, type: Boolean, default: def, onChange: () => { if (!active()) clearAll(true); } });
   };
   bool(KEY.enabled, "Enabled", true);
   if (!has(KEY.strength)) game.settings.register(MOD, KEY.strength, {
-    name: t("IDF.Settings.Strength.Name"), hint: t("IDF.Settings.Strength.Hint"), scope: "client", config: true, type: String, default: "subtle",
+    name: t("IDF.Settings.Strength.Name"), hint: t("IDF.Settings.Strength.Hint"), scope: "world", config: false, type: String, default: "subtle",
     choices: { off: t("IDF.Settings.Strength.off"), subtle: t("IDF.Settings.Strength.subtle"), bold: t("IDF.Settings.Strength.bold") },
     onChange: () => { if (!active()) clearAll(true); }
   });
-  if (!has(KEY.oneStyle)) game.settings.register(MOD, KEY.oneStyle, { scope: "client", config: false, type: String, default: "c" });   // hidden: "c" magenta X in a halftone ring (default) | "b" red burst
+  if (!has(KEY.oneStyle)) game.settings.register(MOD, KEY.oneStyle, { name: t("IDF.Settings.OneStyle.Name"), hint: t("IDF.Settings.OneStyle.Hint"), scope: "world", config: false, type: String, default: "c", choices: { c: t("IDF.Settings.OneStyle.c"), b: t("IDF.Settings.OneStyle.b") } });   // was hidden: "c" magenta X in a halftone ring (default) | "b" red burst
   bool(KEY.sixes, "Sixes", true);
   bool(KEY.ones, "Ones", true);
   bool(KEY.onesPush, "OnesPush", true);

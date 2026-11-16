@@ -8,7 +8,8 @@
                                  into the statistics (scripts/stats/titles-pure.mjs), read from the statistics store like the
                                  statistics window does; the card follows the store until they come
      U58  two sounds             "your turn" and "the table waits for you", files that ship with Foundry itself, played on this client
-                                 alone at this client's own volume (the setting tacticsSoundVolume; 0 = off)
+                                 alone at the table's volume (the world setting tacticsSoundVolume; 0 = off), scaled by this seat's
+                                 own Foundry interface volume (feedback-pure.mjs seatVolume)
      U53  first-fight hints      one line over the bar, each once per user and device (the setting tacticsHintsSeen), gone once the
                                  thing was used or the line was put away; the switch is the setting tacticsHints
    Nothing is written to the fight, nothing is sent to anybody. Everything is in try / catch: feedback must never break the dock. */
@@ -117,7 +118,7 @@ const who = (id) => snap[id] ?? null;
 /* ---------- U58: the two sounds ---------- */
 function play(cue) {
   try {
-    const volume = Math.max(0, Math.min(1, Number(setting("tacticsSoundVolume", 0.5)) || 0)), now = Date.now();
+    const volume = FP.seatVolume(setting("tacticsSoundVolume", 0.5), (() => { try { return game.settings.get("core", "globalInterfaceVolume"); } catch { return undefined; } })()), now = Date.now();
     if (!cue || !(volume > 0) || now - cueAt < CUE_GAP) return;
     cueAt = now;
     foundry.audio.AudioHelper.play({ src: FP.SOUNDS[cue], volume, autoplay: true, loop: false }, false);      // false: this client only

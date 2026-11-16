@@ -34,21 +34,21 @@ const allowed = () => !!game.user.isGM || get(KEY.players) !== false;
 function registerSettings() {
   const has = (key) => game.settings.settings.has(`${MOD}.${key}`);
   if (!has(KEY.display)) game.settings.register(MOD, KEY.display, {
-    name: t("IPT.Settings.Display.Name"), hint: t("IPT.Settings.Display.Hint"), scope: "client", config: true, type: String, default: "peek",
+    name: t("IPT.Settings.Display.Name"), hint: t("IPT.Settings.Display.Hint"), scope: "client", config: false, type: String, default: "peek",   // GMGOVERN: the seat's own fold state (the panel's handle cycles it), not an option: table/defs.mjs SEAT_MEMORY
     choices: { hidden: t("IPT.Settings.Display.hidden"), peek: t("IPT.Settings.Display.peek"), full: t("IPT.Settings.Display.full") },
     onChange: (v) => { Panel.setDisplay(v); scheduleMeasure(); }
   });
   if (!has(KEY.pips)) game.settings.register(MOD, KEY.pips, {
-    name: t("IPT.Settings.Pips.Name"), hint: t("IPT.Settings.Pips.Hint"), scope: "client", config: true, type: Boolean, default: true,
+    name: t("IPT.Settings.Pips.Name"), hint: t("IPT.Settings.Pips.Hint"), scope: "world", config: false, type: Boolean, default: true,
     onChange: (v) => Panel.setPips(v)
   });
   if (!has(KEY.size)) game.settings.register(MOD, KEY.size, {
-    name: t("IPT.Settings.Size.Name"), hint: t("IPT.Settings.Size.Hint"), scope: "client", config: true, type: String, default: "normal",
+    name: t("IPT.Settings.Size.Name"), hint: t("IPT.Settings.Size.Hint"), scope: "world", config: false, type: String, default: "normal",
     choices: { small: t("IPT.Settings.Size.small"), normal: t("IPT.Settings.Size.normal"), large: t("IPT.Settings.Size.large") },
     onChange: (v) => { Panel.setSize(v); scheduleMeasure(); }
   });
   if (!has(KEY.style)) game.settings.register(MOD, KEY.style, {   // 'classic' = the original look, 'new' = the overhaul (scoped by the root class ipt-v2); applies live
-    name: t("IPT.Settings.Style.Name"), hint: t("IPT.Settings.Style.Hint"), scope: "client", config: true, type: String, default: "new",
+    name: t("IPT.Settings.Style.Name"), hint: t("IPT.Settings.Style.Hint"), scope: "world", config: false, type: String, default: "new",
     choices: { classic: t("IPT.Settings.Style.classic"), new: t("IPT.Settings.Style.new") },
     onChange: (v) => { Panel.setStyle(v); scheduleMeasure(); }
   });

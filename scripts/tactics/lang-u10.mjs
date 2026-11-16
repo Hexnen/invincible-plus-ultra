@@ -143,7 +143,7 @@ export const EN_U10 = {
   "ITAC.sum.quiet": "Nobody was hit.",
   /* U58: the two sounds */
   "ITAC.Settings.tacticsSoundVolume.Name": "Tactical combat: sound of your turn",
-  "ITAC.Settings.tacticsSoundVolume.Hint": "How loud the two sounds of a fight are on this device: your turn begins, and the table waits for you (an answer, a roll, a nudge of the GM). 0 turns them off.",
+  "ITAC.Settings.tacticsSoundVolume.Hint": "How loud the two sounds of a fight are: your turn begins, and the table waits for you (an answer, a roll, a nudge of the GM). 0 turns them off.",
   /* U57 */
   "ITAC.Settings.tacticsSummary.Name": "Tactical combat: summary of a round and of a fight",
   "ITAC.Settings.tacticsSummary.Hint": "Shows a small card when a round ends and when the fight ends: who dealt and took how much. It goes away by itself.",
@@ -290,7 +290,7 @@ export const PL_U10 = {
   "ITAC.sum.more": "i jeszcze {n}",
   "ITAC.sum.quiet": "Nikt nie został trafiony.",
   "ITAC.Settings.tacticsSoundVolume.Name": "Walka taktyczna: dźwięk twojej tury",
-  "ITAC.Settings.tacticsSoundVolume.Hint": "Głośność dwóch dźwięków walki na tym urządzeniu: zaczyna się twoja tura oraz stół czeka na ciebie (odpowiedź, rzut, ponaglenie MG). 0 je wyłącza.",
+  "ITAC.Settings.tacticsSoundVolume.Hint": "Głośność dwóch dźwięków walki: zaczyna się twoja tura oraz stół czeka na ciebie (odpowiedź, rzut, ponaglenie MG). 0 je wyłącza.",
   "ITAC.Settings.tacticsSummary.Name": "Walka taktyczna: podsumowanie rundy i walki",
   "ITAC.Settings.tacticsSummary.Hint": "Pokazuje małą kartę na koniec rundy i na koniec walki: kto ile zadał i ile stracił. Znika sama.",
   "ITAC.Settings.tacticsHints.Name": "Walka taktyczna: podpowiedzi w pierwszej walce",

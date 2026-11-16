@@ -11,6 +11,9 @@
      has not run (defs.legacyNeeded), and carried with L.setTable where it is newer than the engine's table (defs.legacyCarry). A player's
      earlier own values are left untouched in his browser (unused); he gets one notice that the GM now chooses (the engine tells him about
      the lettering itself).
+     GMGOVERN (3) every remaining option of the module (dice marks, token halo, typefaces, combat banner and bar, turn helpers, panels,
+     sheets ...: defs.GOVERNED) is the table's too: the GM's own earlier browser value of each becomes the table's the same way; a player
+     is told once more. What stays a seat's own is listed in defs.SEAT_MEMORY (its own folded panels and the like, never an option).
    The window itself is app.mjs (loaded on first open). */
 import * as D from "./defs.mjs";
 import { t } from "./lang.mjs";
@@ -18,6 +21,7 @@ import { t } from "./lang.mjs";
 const { MOD, NS, MIGRATED_KEY, LEGACY_KEY } = D;
 const LOG = `${MOD} (table settings) |`;
 const NOTICED = `${MOD}.gmallNoticed`;          // localStorage: the one-time notice was shown on this browser
+const NOTICED_GOVERNED = `${MOD}.gmgovernNoticed`;      // the same for GMGOVERN's options
 let started = false, warned = false, appMod = null, engineFresh = false;
 const once = (e) => { if (!warned) { warned = true; console.warn(LOG, e); } };
 const isGM = () => !!game.user?.isGM;
@@ -103,6 +107,22 @@ export async function migrate() {
     } catch (err) { console.warn(`${LOG} migrate splashLang failed`, err); }
     /* (the GM's own old lettering preferences: the engine's own migration takes them, 1.9.16) */
   }
+  /* GMGOVERN (3): the rest of the module's options became the table's: the GM's own earlier browser value of each becomes the table's,
+     where the world holds none yet and it differs from the default. Nothing the world already holds is touched. */
+  if (done < 3) {
+    const { coerce } = await import("../splash/migrate.mjs");
+    const raw = (key) => rawClient(`${MOD}.${key}`);
+    for (const key of D.GOVERNED) {
+      try {
+        const cfg = game.settings.settings.get(`${MOD}.${key}`);
+        if (!cfg || cfg.scope !== "world" || worldDoc(`${MOD}.${key}`)) continue;
+        const old = coerce(cfg, D.carryGoverned(key, raw));
+        if (old === undefined || same(old, cfg.default)) continue;
+        await game.settings.set(MOD, key, old);
+        out.push(key);
+      } catch (err) { console.warn(`${LOG} migrate ${key} failed`, err); }
+    }
+  }
   /* UNMIRROR: GMALL's old copy of the lettering preferences into the engine's table (only where it is newer than the engine's) */
   try {
     const legacyDoc = worldDoc(`${MOD}.${LEGACY_KEY}`);
@@ -137,6 +157,25 @@ function playerSeat() {
     ls.setItem(NOTICED, String(Date.now()));
   } catch (err) { once(err); }
 }
+/* GMGOVERN: the same once more for the rest of the module's options (its own marker: a browser that saw GMALL's notice is told about
+   these too, once, and only when one of its own earlier values differs from what the table shows) */
+function playerSeatGoverned() {
+  try {
+    if (isGM()) return;
+    const ls = globalThis.localStorage;
+    if (!ls || ls.getItem(NOTICED_GOVERNED) !== null) return;
+    const raw = (key) => rawClient(`${MOD}.${key}`);
+    let differed = false;
+    for (const key of D.GOVERNED) {
+      const v = D.carryGoverned(key, raw);
+      if (v === undefined) continue;
+      let cur; try { cur = game.settings.get(MOD, key); } catch { continue; }
+      if (!same(v, cur)) { differed = true; break; }
+    }
+    if (differed) ui.notifications?.info(t("IPT.Notice.governed"), { permanent: true });
+    ls.setItem(NOTICED_GOVERNED, String(Date.now()));
+  } catch (err) { once(err); }
+}
 
 /* ---------- the window ---------- */
 export async function open(tab = null) {
@@ -157,7 +196,7 @@ export function start(phases = {}) {
     run("ready", async () => {
       try {
         if (isGM()) migrate().catch(once);     // may wait for the engine's own migration: never holds up the rest of the start
-        else playerSeat();
+        else { playerSeat(); playerSeatGoverned(); }
       } catch (err) { once(err); }
       engine().then(sayOld).catch(once);
       try { const Menu = await import("../menu.mjs"); Menu.add({ name: "ipuTable", title: () => t("IPT.Menu.tool"), icon: "fa-solid fa-sliders", order: 5, onChange: () => open() }); } catch (err) { once(err); }

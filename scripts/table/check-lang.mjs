@@ -30,6 +30,7 @@ for (const tab of TABS) {
   for (const s of tab.sections) used.add(`IPT.Section.${tab.id}.${s.id}`);
 }
 for (const r of ROWS) {
+  if (r.own) continue;      // GMGOVERN: named by its own area's registered strings (both languages checked in sweep-checks/gmgovern.mjs)
   used.add(`IPT.Row.${r.id}.Name`); used.add(`IPT.Row.${r.id}.Hint`);
   if (r.src === "info") { used.add(`IPT.Row.${r.id}.value`); continue; }
   if (r.src === "seat") { for (const c of ["none", "reduced", "photo", "both"]) used.add(`IPT.Row.${r.id}.${c}`); continue; }

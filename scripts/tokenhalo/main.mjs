@@ -29,24 +29,23 @@ const get = (key) => { try { return game.settings.get(MOD, key); } catch { retur
 const on = (name, fn) => hookIds.push([name, Hooks.on(name, fn)]);
 const once = (e) => { if (!warned) { warned = true; console.warn(LOG, "a failure here never affects the canvas:", e); } };
 
-/* ---------- settings (client scope, registered in init) ---------- */
+/* ---------- settings (GMGOVERN: the table's: world scope, the GM chooses in the table settings window; registered in init) ---------- */
 function registerSettings() {
   const has = (key) => game.settings.settings.has(`${MOD}.${key}`);
-  const bool = (key, name, hint, def) => { if (!has(key)) game.settings.register(MOD, key, { name: t(name), hint: t(hint), scope: "client", config: true, type: Boolean, default: def, onChange: () => syncAll() }); };
+  const bool = (key, name, hint, def) => { if (!has(key)) game.settings.register(MOD, key, { name: t(name), hint: t(hint), scope: "world", config: false, type: Boolean, default: def, onChange: () => syncAll() }); };
   bool(KEY.enabled, "ITH.Settings.Enabled.Name", "ITH.Settings.Enabled.Hint", true);
   bool(KEY.hover, "ITH.Settings.Hover.Name", "ITH.Settings.Hover.Hint", true);
   bool(KEY.selected, "ITH.Settings.Selected.Name", "ITH.Settings.Selected.Hint", true);
   bool(KEY.turn, "ITH.Settings.Turn.Name", "ITH.Settings.Turn.Hint", true);
   if (!has(KEY.size)) game.settings.register(MOD, KEY.size, {
-    name: t("ITH.Settings.Size.Name"), hint: t("ITH.Settings.Size.Hint"), scope: "client", config: true, type: String, default: "normal",
+    name: t("ITH.Settings.Size.Name"), hint: t("ITH.Settings.Size.Hint"), scope: "world", config: false, type: String, default: "normal",
     choices: { small: t("ITH.Settings.Size.small"), normal: t("ITH.Settings.Size.normal"), large: t("ITH.Settings.Size.large") },
     onChange: () => syncAll()
   });
-  /* motion replaces the first boolean "tokenHaloAnimate" (its client-storage value is read raw): false -> off, anything else -> calm */
-  let legacy = null;
-  try { legacy = game.settings.storage.get("client").getItem(`${MOD}.tokenHaloAnimate`); } catch { /* none */ }
+  /* motion replaced the first boolean "tokenHaloAnimate". GMGOVERN: the table's, so its default is the same on every seat ("calm"); the
+     GM's own older browser value (the first boolean included: false -> off) is carried once by the table's migration (table/defs.mjs) */
   if (!has(KEY.motion)) game.settings.register(MOD, KEY.motion, {
-    name: t("ITH.Settings.Motion.Name"), hint: t("ITH.Settings.Motion.Hint"), scope: "client", config: true, type: String, default: legacy === "false" ? "off" : "calm",
+    name: t("ITH.Settings.Motion.Name"), hint: t("ITH.Settings.Motion.Hint"), scope: "world", config: false, type: String, default: "calm",
     choices: { off: t("ITH.Settings.Motion.off"), calm: t("ITH.Settings.Motion.calm"), lively: t("ITH.Settings.Motion.lively") },
     onChange: () => syncAll()
   });

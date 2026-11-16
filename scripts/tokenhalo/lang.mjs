@@ -3,7 +3,7 @@
    "Token halo: " prefix because they share the Plus Ultra settings list. Parity check: node scripts/tokenhalo/check-lang.mjs */
 export const EN = {
   "ITH.Settings.Enabled.Name": "Token halo: enabled",
-  "ITH.Settings.Enabled.Hint": "A ring of comic halftone dots under a token while you hover it, select it, or when it is the active combatant. This client only.",
+  "ITH.Settings.Enabled.Hint": "A ring of comic halftone dots under a token while you hover it, select it, or when it is the active combatant.",
   "ITH.Settings.Hover.Name": "Token halo: on hover",
   "ITH.Settings.Hover.Hint": "Show the halo while the pointer is over a token.",
   "ITH.Settings.Selected.Name": "Token halo: when selected",
@@ -28,7 +28,7 @@ export const EN = {
 
 export const PL = {
   "ITH.Settings.Enabled.Name": "Aura żetonu: włączona",
-  "ITH.Settings.Enabled.Hint": "Pierścień z komiksowych kropek rastra pod żetonem, gdy najedziesz na niego, zaznaczysz go albo gdy jest jego tura w walce. Tylko ten klient.",
+  "ITH.Settings.Enabled.Hint": "Pierścień z komiksowych kropek rastra pod żetonem, gdy najedziesz na niego, zaznaczysz go albo gdy jest jego tura w walce.",
   "ITH.Settings.Hover.Name": "Aura żetonu: po najechaniu",
   "ITH.Settings.Hover.Hint": "Pokaż aurę, gdy wskaźnik jest nad żetonem.",
   "ITH.Settings.Selected.Name": "Aura żetonu: po zaznaczeniu",

@@ -31,7 +31,7 @@ export function registerSettings() {
   reg(SETTING_ARCHIVE, { scope: "world", config: false, type: String, default: "", onChange: () => notify("archive") });
   reg(SETTING_ALLOW, { name: t("IPL.Session.Settings.allowPlayers.Name"), hint: t("IPL.Session.Settings.allowPlayers.Hint"), scope: "world", config: true, type: Boolean, default: true });
   reg(SETTING_CHAT, { name: t("IPL.Session.Settings.chatSummary.Name"), hint: t("IPL.Session.Settings.chatSummary.Hint"), scope: "world", config: true, type: Boolean, default: false });
-  reg(SETTING_AUTO, { name: t("IPL.Session.Settings.autoOpen.Name"), hint: t("IPL.Session.Settings.autoOpen.Hint"), scope: "client", config: true, type: Boolean, default: true });
+  reg(SETTING_AUTO, { name: t("IPL.Session.Settings.autoOpen.Name"), hint: t("IPL.Session.Settings.autoOpen.Hint"), scope: "world", config: false, type: Boolean, default: true });
 }
 export const setting = (key, fallback) => { try { return game.settings.get(MOD, key); } catch { return fallback; } };
 

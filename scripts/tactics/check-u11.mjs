@@ -151,7 +151,9 @@ const both = (key) => { ok(typeof EN[key] === "string" && EN[key] && typeof PL[k
   const dock = readFileSync(new URL("./ui/dock.mjs", import.meta.url), "utf8");
   ok(/k = Lay\.factor\(document\.body\)/.test(dock) && /natural = natU \* k/.test(dock) && /pe\.offsetWidth \* kb/.test(dock) && /barEl\.offsetHeight \* kb/.test(dock) && /pe\.offsetHeight \* kb - GAP \* k/.test(dock), "U62 (U163: at the bar's own size kb): the placement multiplies the stack's own lengths by the size before they meet the window");
   const main = readFileSync(new URL("./main.mjs", import.meta.url), "utf8");
-  ok(/reg\("tacticsUiScale", \{[^}]*scope: "client"[^}]*range: \{ min: 80, max: 140, step: 5 \}[^}]*default: 100/.test(main), "U62: a client setting with a slider, separate from Foundry's scale");
+  /* GMGOVERN (2026-11-16): this pin asked for scope "client". The owner's ruling «wszystko mg wybiera dla stołu. wszystko» makes the size
+     the table's (world scope, shown in the table settings window), so the pin asks for the world scope now; range and default unchanged. */
+  ok(/reg\("tacticsUiScale", \{[^}]*scope: "world"[^}]*range: \{ min: 80, max: 140, step: 5 \}[^}]*default: 100/.test(main), "U62: a setting with a slider (the table's since GMGOVERN), separate from Foundry's scale");
   ok(EN["ITAC.Settings.tacticsUiScale.Name"] && PL["ITAC.Settings.tacticsUiScale.Name"] && PL["ITAC.Settings.tacticsUiScale.Hint"], "U62: named in both languages");
 }
 

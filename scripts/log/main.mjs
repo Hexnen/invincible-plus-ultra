@@ -36,7 +36,7 @@ function registerSettings() {
   reg("logActorTypes", { scope: "world", config: false, type: String, default: "superhero" });
   reg("logScope", { scope: "world", config: false, type: String, default: "", onChange: () => { Scribe.rescan().catch(() => {}); } });
   reg("logPolicy", { scope: "world", config: false, type: String, default: "" });
-  reg("logRevealJournals", { ...txt("logRevealJournals"), scope: "client", config: true, type: Boolean, default: false, onChange: () => ui.journal?.render() });
+  reg("logRevealJournals", { ...txt("logRevealJournals"), scope: "world", config: false, type: Boolean, default: false, onChange: () => ui.journal?.render() });
   reg("logDensity", { scope: "client", config: false, type: String, default: "compact" });
   reg("logShowMinor", { scope: "client", config: false, type: Boolean, default: false });
 }

@@ -93,7 +93,7 @@ function closeDisallowed() {
 function registerSettings() {
   const has = (key) => game.settings.settings.has(`${MOD}.${key}`);
   if (!has(KEY.button)) game.settings.register(MOD, KEY.button, {
-    name: t("IPC.Settings.Button.Name"), hint: t("IPC.Settings.Button.Hint"), scope: "client", config: true, type: Boolean, default: true, onChange: () => syncAll()
+    name: t("IPC.Settings.Button.Name"), hint: t("IPC.Settings.Button.Hint"), scope: "world", config: false, type: Boolean, default: true, onChange: () => syncAll()
   });
   if (!has(KEY.players)) game.settings.register(MOD, KEY.players, {
     name: t("IPC.Settings.Players.Name"), hint: t("IPC.Settings.Players.Hint"), scope: "world", config: true, type: Boolean, default: true, onChange: () => { syncAll(); closeDisallowed(); }

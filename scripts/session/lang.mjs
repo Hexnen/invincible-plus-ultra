@@ -5,8 +5,8 @@
 export const EN = {
   "IPL.Session.Settings.allowPlayers.Name": "End-of-session review: players may check their own heroes",
   "IPL.Session.Settings.allowPlayers.Hint": "When off, only the GM (and assistants) can tick the end-of-session questions; players can still watch.",
-  "IPL.Session.Settings.autoOpen.Name": "End-of-session review: announce it to me",
-  "IPL.Session.Settings.autoOpen.Hint": "Show a small notice with an Open button when the GM starts the end-of-session review (this client only; players only).",
+  "IPL.Session.Settings.autoOpen.Name": "End-of-session review: announce it to players",
+  "IPL.Session.Settings.autoOpen.Hint": "Show a small notice with an Open button when the GM starts the end-of-session review (players only).",
   "IPL.Session.Settings.chatSummary.Name": "End-of-session review: post a chat summary after awarding karma",
   "IPL.Session.Settings.chatSummary.Hint": "Off by default. When on, awarding karma also posts a public chat message with the karma of every hero.",
   "IPL.Session.Key.Open.Name": "End-of-session panel",
@@ -75,8 +75,8 @@ export const EN = {
 export const PL = {
   "IPL.Session.Settings.allowPlayers.Name": "Przegląd końca sesji: gracze zaznaczają swoich bohaterów",
   "IPL.Session.Settings.allowPlayers.Hint": "Po wyłączeniu pytania zaznacza tylko MG (i asystenci); gracze nadal widzą panel.",
-  "IPL.Session.Settings.autoOpen.Name": "Przegląd końca sesji: powiadom mnie",
-  "IPL.Session.Settings.autoOpen.Hint": "Pokaż małe powiadomienie z przyciskiem Otwórz, gdy MG rozpocznie przegląd końca sesji (tylko ten klient; tylko gracze).",
+  "IPL.Session.Settings.autoOpen.Name": "Przegląd końca sesji: powiadom graczy",
+  "IPL.Session.Settings.autoOpen.Hint": "Pokaż małe powiadomienie z przyciskiem Otwórz, gdy MG rozpocznie przegląd końca sesji (tylko gracze).",
   "IPL.Session.Settings.chatSummary.Name": "Przegląd końca sesji: podsumowanie na czacie po przyznaniu karmy",
   "IPL.Session.Settings.chatSummary.Hint": "Domyślnie wyłączone. Po włączeniu przyznanie karmy wysyła też publiczną wiadomość z karmą każdego bohatera.",
   "IPL.Session.Key.Open.Name": "Panel końca sesji",

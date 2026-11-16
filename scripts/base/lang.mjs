@@ -3,7 +3,7 @@
    (they are book data). Messages from pure.mjs arrive as KEY + params and are shown with t(key, params). */
 export const EN = {
   "IPB.Settings.HeaderButton.Name": "Team cards: button in the hero sheet header",
-  "IPB.Settings.HeaderButton.Hint": "Show the Team & base button in the header of hero sheets (this client only).",
+  "IPB.Settings.HeaderButton.Hint": "Show the Team & base button in the header of hero sheets.",
   "IPB.Settings.PlayersCreate.Name": "Team cards: players may ask for a new card",
   "IPB.Settings.PlayersCreate.Hint": "A player can create a team card for a hero they own; the request is carried out by the connected GM.",
   "IPB.Default.Name": "New team",
@@ -230,7 +230,7 @@ export const EN = {
 
 export const PL = {
   "IPB.Settings.HeaderButton.Name": "Karty drużyn: przycisk w nagłówku karty bohatera",
-  "IPB.Settings.HeaderButton.Hint": "Pokaż przycisk Drużyna i baza w nagłówku kart bohaterów (tylko ten klient).",
+  "IPB.Settings.HeaderButton.Hint": "Pokaż przycisk Drużyna i baza w nagłówku kart bohaterów.",
   "IPB.Settings.PlayersCreate.Name": "Karty drużyn: gracze mogą poprosić o nową kartę",
   "IPB.Settings.PlayersCreate.Hint": "Gracz może utworzyć kartę drużyny dla swojego bohatera; prośbę wykonuje połączony MG.",
   "IPB.Default.Name": "Nowa drużyna",

@@ -395,7 +395,7 @@ T("IPL.Keybind.Table.Hint", "GM only. Not bound by default.", "Tylko MG. Domyśl
 T("IPL.Settings.logCombat.Name", "Log combat events", "Zapisuj zdarzenia walki");
 T("IPL.Settings.logCombat.Hint", "Joining and leaving a combat, turn starts, action marks and initiative. Turn starts, action marks and initiative are minor events and stay hidden unless the Log tab asks for them.", "Dołączanie do walki i wychodzenie z niej, początki tur, znaczniki akcji i inicjatywa. Początki tur, znaczniki akcji i inicjatywa to drobne zdarzenia, ukryte, dopóki zakładka Dziennik o nie nie poprosi.");
 T("IPL.Settings.logRevealJournals.Name", "Show the log journals in the sidebar", "Pokaż dzienniki logu na pasku bocznym");
-T("IPL.Settings.logRevealJournals.Hint", "They are hidden by default; do not edit them by hand. This client only.", "Domyślnie ukryte; nie edytuj ich ręcznie. Tylko ten klient.");
+T("IPL.Settings.logRevealJournals.Hint", "They are hidden by default; do not edit them by hand.", "Domyślnie ukryte; nie edytuj ich ręcznie.");
 
 /* ------------------------------------------------------------------ L6: Table log, maintenance, import, offline queue */
 TP("IPL.Plural.Logs", "{n} log", "{n} logs", "{n} dziennik", "{n} dzienniki", "{n} dzienników");

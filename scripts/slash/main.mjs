@@ -52,6 +52,10 @@ const hookIds = [];
 const get = (key) => { try { return game.settings.get(MOD, key); } catch { return undefined; } };
 const on = (name, fn) => hookIds.push([name, Hooks.on(name, fn)]);
 const reduced = () => { try { return !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches; } catch { return false; } };
+/* GMGOVERN: the plain fade is the table's choice (slashCalm, world); what a seat may still differ in is its own safeguard: the system's
+   reduced motion or Foundry's photosensitive mode gives that seat the plain fade whatever the table chose */
+const photosensitive = () => { try { return game.settings.get("core", "photosensitiveMode") === true; } catch { return false; } };
+export const calmHere = (table, seat = { reduced: reduced(), photosensitive: photosensitive() }) => table === true || !!seat.reduced || !!seat.photosensitive;
 
 /* ---------- the shader ---------- */
 function fragment(filters) {
@@ -326,7 +330,7 @@ function makeFilterClass() {
       this.#name = name in LABELS ? name : "slashRight";
       this.uniforms.style = styleOf(this.#name);
       this.uniforms.variant = this.#name in VARIANT ? VARIANT[this.#name] : Math.floor(Math.random() * 3);
-      this.uniforms.calm = reduced() || get(KEY.calm) === true ? 1 : 0;
+      this.uniforms.calm = calmHere(get(KEY.calm)) ? 1 : 0;
       this.uniforms.preview = previewMode ? 1 : 0;
       Object.assign(this.uniforms, liveFrame());
       // a scene asking for more than WATCHDOG_MS gets the same effect played faster (no hard cut at the cap)
@@ -456,7 +460,7 @@ function registerSettings() {
     choices: { off: t("IPS.Settings.Default.off"), ...Object.fromEntries(Object.keys(PICK).map((k) => [k, t(LABELS[PICK[k]])])) }
   });
   if (!has(KEY.calm)) game.settings.register(MOD, KEY.calm, {
-    name: t("IPS.Settings.Calm.Name"), hint: t("IPS.Settings.Calm.Hint"), scope: "client", config: true, type: Boolean, default: false
+    name: t("IPS.Settings.Calm.Name"), hint: t("IPS.Settings.Calm.Hint"), scope: "world", config: false, type: Boolean, default: false
   });
 }
 

@@ -41,7 +41,19 @@ function value(row) {
 export const values = () => Object.fromEntries(D.ROWS.map((r) => [r.id, value(r)]));
 /** the engine this window reads and writes (set at every render; a check sets it directly) */
 export function useEngine(l) { L = l ?? null; return L; }
-const choiceLabel = (row, c) => t(`IPT.Row.${row.id}.${c}`);
+/* GMGOVERN: a row with own: true speaks with its setting's own registered words (its area's strings). Inside a section that belongs to
+   one area the area's prefix of the name ("Token halo: on hover") is dropped: the section's legend already says it. */
+const own = (row) => (row.own ? game.settings.settings.get(`${MOD}.${row.key}`) ?? null : null);
+const SOLO = new Set(["dice", "halo", "combat", "panels"]);      // id prefixes of rows whose section names their one area
+const bare = (s) => { const m = /^[^:]{2,40}:\s+(.+)$/s.exec(s); return m ? m[1].charAt(0).toLocaleUpperCase(game.i18n?.lang || "en") + m[1].slice(1) : s; };
+function rowName(row) {
+  const cfg = own(row); if (!cfg) return t(`IPT.Row.${row.id}.Name`);
+  const s = String(cfg.name ?? row.key);
+  return SOLO.has(row.id.split(".")[0]) || row.id.startsWith("interface.comicFont") || row.id.startsWith("interface.captionFont") ? bare(s) : s;
+}
+const rowHint = (row) => { const cfg = own(row); return cfg ? String(cfg.hint ?? "") : t(`IPT.Row.${row.id}.Hint`); };
+const choiceLabel = (row, c) => { const cfg = own(row); return cfg ? String(cfg.choices?.[c] ?? c) : t(`IPT.Row.${row.id}.${c}`); };
+export const words = (row) => ({ name: rowName(row), hint: rowHint(row) });
 function shownText(row, sp, v) {
   if (row.src === "seat") return t(`IPT.Row.${row.id}.${v ?? "none"}`);
   if (sp.type === "info") return t(`IPT.Row.${row.id}.value`);
@@ -56,7 +68,7 @@ function rowHtml(row, gm, vals) {
   const sp = spec(row);
   if (!sp) return "";
   if (row.src === "seat" && !vals[row.id]) return "";       // an older engine: nothing to say about this screen
-  const id = `ipt-${++uid}`, v = vals[row.id], name = t(`IPT.Row.${row.id}.Name`), hint = t(`IPT.Row.${row.id}.Hint`);
+  const id = `ipt-${++uid}`, v = vals[row.id], name = rowName(row), hint = rowHint(row);
   const hidden = D.shown(row, vals) ? "" : " hidden";
   /* an engine row is the GM's control only when the engine holds the table (an older copy: this screen's own value, read-only) */
   const edit = gm && !(row.src === "engine" && !tableEngine());
@@ -141,7 +153,7 @@ function appClass() {
     static DEFAULT_OPTIONS = {
       id: "ipu-table-settings", classes: ["ipt-app"],
       window: { title: "IPT.Title", icon: "fa-solid fa-burst", resizable: true, contentClasses: ["standard-form"] },
-      position: { width: 660, height: 740 },
+      position: { width: 900, height: 740 },      // GMGOVERN: eight tabs in one line
       actions: { preview: TableSettings.#preview, defaults: TableSettings.#defaults }
     };
     static TABS = { main: { initial: "letters", tabs: D.TABS.map((x) => ({ id: x.id })) } };
@@ -261,8 +273,8 @@ const CSS = `
 .ipt-app .ipt-banner { display: flex; gap: 0.6rem; align-items: flex-start; margin: 0; padding: 0.65rem 1rem 0.6rem; font-size: var(--font-size-13, 0.8125rem); line-height: 1.4; color: var(--color-text-primary); border-bottom: 1px solid var(--color-border, rgba(127,127,127,0.35)); }
 .ipt-app .ipt-banner > i { flex: none; margin-top: 0.15rem; color: var(--color-text-secondary); }
 .ipt-app .ipt-access { color: var(--color-text-secondary); }
-.ipt-app .ipt nav.sheet-tabs { flex: none; margin: 0; padding: 0 0.6rem; gap: 0.15rem; border-bottom: 1px solid var(--color-border, rgba(127,127,127,0.35)); }
-.ipt-app .ipt nav.sheet-tabs > a { display: flex; align-items: center; gap: 0.4rem; padding: 0.55rem 0.7rem; white-space: nowrap; }
+.ipt-app .ipt nav.sheet-tabs { flex: none; flex-wrap: wrap; margin: 0; padding: 0 0.6rem; gap: 0 0.15rem; border-bottom: 1px solid var(--color-border, rgba(127,127,127,0.35)); }
+.ipt-app .ipt nav.sheet-tabs > a { display: flex; align-items: center; gap: 0.35rem; padding: 0.55rem 0.45rem; white-space: nowrap; }
 .ipt-app .ipt nav.sheet-tabs > a i { font-size: 0.85em; }
 .ipt-app .ipt .tab { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0.4rem 1rem 0.2rem; scrollbar-gutter: stable; }
 .ipt-app .ipt .tab:not(.active) { display: none; }
