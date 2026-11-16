@@ -40,7 +40,11 @@ else {
   const ring = [-1, 0, 1].flatMap((dx) => [-1, 0, 1].map((dy) => ({ x: 700 + dx * 100, y: 400 + dy * 100, w: 100, h: 100, kind: "tok", id: `${dx}${dy}` }))).filter((r) => r.id !== "00");
   const s = Lay.cleanSpot({ tok, own: tok, g, eb: { w: g.w, h: g.h }, std, safe: std, panels: [], obs: ring, tokPx: 100 });
   const r = Lay.standAt(s.c, g, s.k);
-  ck("L3 a token ringed by eight others: a clean place outside the ring, never on a neighbour", s.clean && ring.every((q) => inter(r, P.ringRect(q)) <= Lay.CLEAN.tokTol * r.w * r.h), JSON.stringify(s));
+  /* REACTPLACE (restated; before: "a clean place outside the ring, never on a neighbour"): the place outside the ring stood a token and
+     more from its own token, beside a neighbour: a word nobody could attribute (blind review ADVS3 D4, D12). A ringed token has no clean
+     place that is still ITS place; its word now stands over its own token, reported unclean, and still never on a neighbour */
+  ck("L3 a token ringed by eight others: no clean place by it; the word stands over its own token, never on a neighbour", !s.clean && s.slot === "on" && Lay.claim(r, tok) < 0.15
+    && ring.every((q) => inter(r, P.ringRect(q)) <= Lay.TETHER.graze * P.ringRect(q).w * P.ringRect(q).h), JSON.stringify(s));
   const boxed = Lay.cleanSpot({ tok, own: tok, g, eb: { w: g.w, h: g.h }, std: { l: 690, t: 390, r: 810, b: 510 }, safe: { l: 690, t: 390, r: 810, b: 510 }, panels: [], obs: [], tokPx: 100 });
   ck("L4 no room anywhere: reported unclean (the caller's rule decides), never a crash", boxed.clean === false && Number.isFinite(boxed.k));
   const pin = { x: 690, y: 330, w: 60, h: 60, kind: "pin" };

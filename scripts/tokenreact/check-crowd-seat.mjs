@@ -29,6 +29,9 @@ globalThis.getComputedStyle = () => ({ visibility: "visible" });
 const z = cfg.zoom ?? 1, C0 = cfg.center ?? { x: 800, y: 450 };
 const cam = { x: C0.x - W / 2 / z, y: C0.y - H / 2 / z, z };
 const stage = { scale: { get x() { return cam.z; } }, toGlobal: (p) => ({ x: (p.x - cam.x) * cam.z, y: (p.y - cam.y) * cam.z }), toLocal: (q) => ({ x: q.x / cam.z + cam.x, y: q.y / cam.z + cam.y }) };
+/* REACTPLACE: cfg.frames gives the stage its pivot and position, as on a page: the moment is then laid out on the centred frame (main
+   planFrame) and drawn on this view, which is where the two may differ */
+if (cfg.frames) { stage.pivot = { get x() { return cam.x + W / 2 / cam.z; }, get y() { return cam.y + H / 2 / cam.z; } }; stage.position = { x: W / 2, y: H / 2 }; }
 const scene = { id: "S" };
 const toks = [], notes = [];
 globalThis.canvas = { ready: true, scene, grid: { size: 100 }, performance: { mode: 2 }, stage, app: { view: { getBoundingClientRect: () => ({ left: 0, top: 0, right: W, bottom: H, width: W, height: H }) } },
@@ -40,6 +43,7 @@ for (const t of cfg.toks ?? []) {
     testUserPermission: () => !!cfg.gm, _stats: { modifiedTime: stamp } };
   const vis = cfg.gm || (!t.hidden && !t.unseen);
   const tok = { id: t.id, name: t.id, scene, isVisible: vis, visible: vis, document: { id: t.id, hidden: !!t.hidden }, actor, x: t.x, y: t.y, w: 100, h: 100, destroyed: false };
+  if (cfg.frames) tok.center = { x: t.x + 50, y: t.y + 50 };
   actor.getActiveTokens = () => [tok];
   toks.push(tok);
 }

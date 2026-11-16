@@ -130,7 +130,12 @@ async function seat(role, scen, W) {
     setTimeout(() => { splash = false; }, W - Date.now() + 1100);
     if (role === "gm") look(home.x, home.y, home.scale);
     else if (role === "shifted") look(home.x + 72, home.y + 323, home.scale);      // another own view, the same zoom (live: the GM's follow)
-    else { look(2700, 1300, role === "away-out" ? 0.45 : 0.8); cam.home = role === "nohome" ? null : { ...home }; }
+    /* REACTPLACE: the seat with no home told has the camera pushed in close (1.6: the token in its shot's corner). Before, it shared the
+       other seats' shot (0.8), and the place differed only because a word could be laid out far from its token; tied to its token the word
+       took the same side on both views, so the check no longer saw the case. In the corner of a close shot the word has no room on that
+       side, and the seat that plans there still differs. */
+    else if (role === "nohome") { look(2700, 1300, 1.6); cam.home = null; }
+    else { look(2700, 1300, role === "away-out" ? 0.45 : 0.8); cam.home = { ...home }; }
     await at(W);
     hit(W); ev();
     await sleep(1400);
