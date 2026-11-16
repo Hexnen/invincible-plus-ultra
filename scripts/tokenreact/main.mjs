@@ -1315,7 +1315,8 @@ function impactOf(L, it, tok, tHit, red, word = null, keep = []) {
     const also = (it.impAlso ?? by.impAlso ?? []).map((id) => canvas.tokens?.get(id)).filter((t) => t && t.id !== tok.id && t !== spec.from);
     if (also.length && !edge) spec.also = also;
     if (red) spec.reduced = true;
-    return I.play(spec);
+    /* LYING: a token that lies takes part lying (tokenanim posed: its picture is read at this call) */
+    return TokAnim.posed([tok, spec.from, ...(spec.also ?? [])], () => I.play(spec));
   } catch (err) { once(err); return null; }
 }
 

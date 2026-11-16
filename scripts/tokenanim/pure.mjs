@@ -12,7 +12,9 @@
      LIE / lyingAt / lieAmount  KODOWN: a token at 0 Health lies until it gets up or is healed (a state under the reactions)
      apply(base, pose, size)    -> the picture's transform: { x, y, rotation, sx, sy, tint } from the base Foundry set
    Pose units: x, y in token widths (world, + = right / down), rot in radians, sx / sy multipliers in the token's own axes, pivot (px, py)
-   in token widths from the centre, tint 0xRRGGBB with its strength tk 0..1 (multiplied onto the picture's own tint). */
+   in token widths from the centre, tint 0xRRGGBB with its strength tk 0..1 (multiplied onto the picture's own tint).
+   LYING adds: fy = how flat the picture lies on the floor (1 = not at all), a squash down the SCREEN after the turn, whatever way the token
+   faces; dim / dk = the lying state's dim under a reaction's own tint; lie = how far down the token is (0..1). */
 
 export const EVENTS = ["hit", "heavy", "down", "heal", "back", "stress", "spent", "regain", "out", "steady"];
 
@@ -34,12 +36,13 @@ const tremble = (t, hz, ph) => 0.65 * Math.sin(TAU * hz * t / 1000 + ph) + 0.35 
 /** the tail every animation ends with: the last `ms` of the layer fade whatever is left to rest */
 const tail = (t, dur, ms = 140) => clamp01((dur - t) / ms);
 
-export const POSE0 = Object.freeze({ x: 0, y: 0, rot: 0, sx: 1, sy: 1, px: 0, py: 0, tint: 0xffffff, tk: 0 });
+export const POSE0 = Object.freeze({ x: 0, y: 0, rot: 0, sx: 1, sy: 1, px: 0, py: 0, tint: 0xffffff, tk: 0, fy: 1, dim: 0xffffff, dk: 0, lie: 0 });
 export const pose0 = (out = {}) => Object.assign(out, POSE0);
 
 /* the colours the picture is tinted with for a moment: which track moved (the lettering's own families, tokenreact/pure.mjs PALETTE) */
 /* PALETTE: stress was the old magenta (0xff4fae), out violet (0xa75cf0): now the blood red and indigo of the words (letter-colors.mjs TINT) */
-export const TINTS = { blow: 0xff4a3a, down: 0xd4231c, heal: 0x8fe86a, stress: 0xd8141f, out: 0x8a7bff, steady: 0x3fd8c4 };
+/* LYING: lie = the dim of a token that lies (a cool dark, "lights out": it darkens the picture without colouring it like a fresh blow) */
+export const TINTS = { blow: 0xff4a3a, down: 0xd4231c, heal: 0x8fe86a, stress: 0xd8141f, out: 0x8a7bff, steady: 0x3fd8c4, lie: 0x5a5f6c };
 
 /* ---------------------------------------------------------------- the animations
    Each pose(t, A, c, out) writes the pose at t ms after the contact instant; A = the strength (1 = normal, about 0.3..2.4), c = { dir
@@ -282,7 +285,13 @@ export function plan(kind, o = {}) {
    round its centre (a figure on its side reads as down on a round portrait too), flattened across the turn (a body lying on the floor seen
    from above: the disc reads as an oval), a little smaller, a touch towards the square's foot, and darker. Every pose of the fall and the
    lying pose stay inside the square (the turned box is scaled to fit: inSquare); a square portrait turned a quarter fills its square again */
-export const LIE = Object.freeze({ rot: Math.PI / 2, py: 0, size: 0.1, flat: 0.8, drop: 0.05, fallDelay: 70, fallMs: 420, upMs: 520, tk: 0.42, grace: 4000 });
+/* LYING (D10 again, seen live on tag 159: the tokens of a fight are turned to face, so a quarter turn alone made a lying round portrait
+   look like a standing one that faces another way, sometimes more upright than before; the squash ran along the token's own axis, which
+   points anywhere; the dim was a faint red; and a reaction on a lying token (Resolve out: the slump leans round its feet) slid the
+   lying picture a quarter of a square onto its neighbour for over a second). Now the picture lies like a disc tipped onto the floor:
+   after the turn it is squashed down the SCREEN (fy: every lying token is the same low oval, whatever way it faces), darker (TINTS.lie),
+   and while it lies every reaction played on it keeps it on its own square (mix: slack is all the room outside the square it may take) */
+export const LIE = Object.freeze({ rot: Math.PI / 2, py: 0, size: 0.08, flat: 0.62, drop: 0.08, slack: 0.04, loose: 0.6, fallDelay: 70, fallMs: 420, upMs: 520, tk: 0.85, grace: 4000 });
 /** the scale (<= 1) that keeps a w x h box (token widths, centred) turned by rot inside its own square */
 export const inSquare = (w, h, rot) => { const c = Math.abs(Math.cos(rot)), s = Math.abs(Math.sin(rot)); return Math.min(1, 1 / Math.max(w * c + h * s, w * s + h * c, 1e-6)); };
 export const lieSide = (id) => (hash(`${id ?? ""}|lie`) & 1 ? 1 : -1);
@@ -298,23 +307,23 @@ export function lieAmount(S, now) {
 }
 /** the state has risen fully: nothing left to draw */
 export const lieDone = (S, now) => !!S && Number.isFinite(S.upAt) && now >= S.upAt + LIE.upMs;
-/** the lying pose: turned a quarter round its centre, flattened across the turn, a little smaller, inside its own square at every instant
-    of the fall (CROWDKO, D10), the fall's dim red kept and deeper; still (reduced motion) = the dim alone, no tipping. tk = the tint factor */
+/** the lying pose: turned a quarter round its centre, a little smaller, inside its own square at every instant of the fall (CROWDKO,
+    D10), flat on the floor (fy, LYING) and dim; still (reduced motion) = the dim alone, no tipping. tk = the tint factor */
 export function lyingAt(S, now, out = {}, o = {}) {
   pose0(out);
   const a = lieAmount(S, now);
   if (!(a > 0)) return out;
   out.px = 0; out.py = LIE.py;
   if (!o.still) {
-    const rot = (S.side === -1 ? -1 : 1) * LIE.rot * a, s = 1 - LIE.size * a;
-    /* own x is the axis that ends across the screen's vertical after the quarter turn: flattening it flattens the lying body on screen */
-    let sx = s * (1 - (1 - LIE.flat) * a), sy = s;
-    const f = inSquare(sx, sy, rot);
-    sx *= f; sy *= f;
-    const tall = sx * Math.abs(Math.sin(rot)) + sy * Math.abs(Math.cos(rot));      // the turned picture's height, token widths
-    out.rot = rot; out.sx = sx; out.sy = sy; out.y = Math.min(LIE.drop * a, Math.max(0, (1 - tall) / 2));
+    const rot = (S.side === -1 ? -1 : 1) * LIE.rot * a;
+    let s = 1 - LIE.size * a;
+    s *= inSquare(s, s, rot);
+    /* LYING: the squash is down the screen, after the turn (apply), not along the token's own axis: a token turned to face lies as flat */
+    const fy = 1 - (1 - LIE.flat) * a;
+    const tall = fy * s * (Math.abs(Math.sin(rot)) + Math.abs(Math.cos(rot)));      // the turned, flattened picture's height, token widths
+    out.rot = rot; out.sx = s; out.sy = s; out.fy = fy; out.y = Math.min(LIE.drop * a, Math.max(0, (1 - tall) / 2));
   }
-  out.tint = TINTS.down; out.tk = clamp01(LIE.tk * a * (Number.isFinite(o.tk) ? o.tk : 1));
+  out.tint = TINTS.lie; out.tk = clamp01(LIE.tk * a * (Number.isFinite(o.tk) ? o.tk : 1)); out.lie = a;
   return out;
 }
 const norm = (v) => { const n = Math.hypot(v.x, v.y) || 1; return { x: v.x / n, y: v.y / n }; };
@@ -334,7 +343,15 @@ export function poseAt(L, now, out = {}) {
   for (const k of ["sx", "sy"]) out[k] = Number.isFinite(out[k]) ? clamp(out[k], 0.5, 1.6) : 1;
   return out;
 }
-export const isRest = (p) => !p || (Math.abs(p.x) < 1e-5 && Math.abs(p.y) < 1e-5 && Math.abs(p.rot) < 1e-5 && Math.abs(p.sx - 1) < 1e-5 && Math.abs(p.sy - 1) < 1e-5 && p.tk < 1e-3);
+export const isRest = (p) => !p || (Math.abs(p.x) < 1e-5 && Math.abs(p.y) < 1e-5 && Math.abs(p.rot) < 1e-5 && Math.abs(p.sx - 1) < 1e-5 && Math.abs(p.sy - 1) < 1e-5 && p.tk < 1e-3 && (p.fy ?? 1) > 1 - 1e-5 && (p.dk ?? 0) < 1e-3);
+/** a move held inside `lim`: as it is up to 0.6 of the room, then eased so it never passes the room (no hard stop) */
+export function held(v, lim) {
+  if (!(lim > 1e-9)) return 0;
+  const a = Math.abs(v), k = 0.6 * lim;
+  return a <= k ? v : Math.sign(v) * (k + (lim - k) * Math.tanh((a - k) / (lim - k)));
+}
+/** half the box of a picture sx x sy (token widths), turned by rot, then squashed down the screen by fy -> { hw, hh } */
+export const boxOf = (sx, sy, rot, fy = 1) => { const c = Math.abs(Math.cos(rot)), s = Math.abs(Math.sin(rot)); return { hw: (Math.abs(sx) * c + Math.abs(sy) * s) / 2, hh: fy * (Math.abs(sx) * s + Math.abs(sy) * c) / 2 }; };
 
 /* a newer reaction takes over from an older one on the same token: the older fades out over TAKEOVER ms from the newer one's contact */
 export const TAKEOVER = 160;
@@ -343,12 +360,12 @@ export const TAKEOVER = 160;
 export function mix(layers, now, out = {}, base = null) {
   pose0(out);
   const p = {};
-  let tkMax = 0;
+  let tkMax = 0, lie = 0, baseTk = 0;
   /* KODOWN: the lying state (lyingAt) is the base every reaction plays on top of; it is never taken over */
   if (base && !isRest(base)) {
     const c = centred(base);
     out.x = c.x; out.y = c.y; out.rot = base.rot; out.sx = base.sx; out.sy = base.sy;
-    tkMax = base.tk; out.tint = base.tint;
+    out.fy = Number.isFinite(base.fy) ? base.fy : 1; lie = clamp01(base.lie ?? 0); baseTk = base.tk;
   }
   for (let i = 0; i < (layers?.length ?? 0); i++) {
     const L = layers[i];
@@ -364,6 +381,20 @@ export function mix(layers, now, out = {}, base = null) {
     if (p.tk * w > tkMax) { tkMax = p.tk * w; out.tint = p.tint; }
   }
   out.tk = tkMax;
+  /* LYING: the lying dim stays under a reaction's own tint (a blow on a lying token still flushes it); alone it is the pose's tint */
+  if (baseTk > 0) { if (tkMax > 1e-3) { out.dim = base.tint; out.dk = baseTk; } else { out.tint = base.tint; out.tk = baseTk; } }
+  /* LYING: a token that lies stays on its own square under every reaction: whatever the layers add (a knock, a lean round the feet, a
+     slump, a hop) is held to the room its lying picture has inside the square plus LIE.slack; the further up it is (a fall that has not
+     landed, a rise), the freer it moves, and a standing token is not held at all */
+  if (lie > 0) {
+    out.lie = lie;
+    const free = LIE.slack + (1 - lie) * LIE.loose;
+    let b = boxOf(out.sx, out.sy, out.rot, out.fy);
+    /* a reaction that turns it (a spin, a lean) or swells it: the picture gives way in size, as in the fall (inSquare), never in place */
+    const fit = Math.min(1, (0.5 + free) / Math.max(b.hw, b.hh, 1e-6));
+    if (fit < 1) { out.sx *= fit; out.sy *= fit; b = boxOf(out.sx, out.sy, out.rot, out.fy); }
+    out.x = held(out.x, Math.max(0, 0.5 + free - b.hw)); out.y = held(out.y, Math.max(0, 0.5 + free - b.hh));
+  }
   return out;
 }
 /** a pose turned and sized round its pivot, as a move of the centre (token sizes): pivot + R(rot) . S . (centre - pivot) */
@@ -380,12 +411,23 @@ export function tintOf(base, color, tk) {
   return (out[0] << 16) | (out[1] << 8) | out[2];
 }
 /** the picture's transform: base = { x, y, rotation, sx, sy, tint } as Foundry (or whoever) set it this frame, pose = mix(), size = the
-    token's size in world px { w, h } -> the transform to draw this frame with */
+    token's size in world px { w, h } -> the transform to draw this frame with.
+    LYING: pose.fy < 1 squashes the turned picture down the screen. A turn and a scale in the picture's own axes cannot say that for a
+    token that faces any way, so the two axes get their own directions (skewX / skewY, PIXI's transform: x axis at rotation + skewY, y axis
+    at rotation - skewX) and lengths; with fy = 1 both skews are 0 and nothing changes */
 export function apply(base, pose, size) {
+  const rotation = base.rotation + pose.rot, fy = Number.isFinite(pose.fy) ? pose.fy : 1;
+  let sx = base.sx * pose.sx, sy = base.sy * pose.sy, skewX = 0, skewY = 0;
+  if (fy < 1 - 1e-6) {
+    const c = Math.cos(rotation), s = Math.sin(rotation);
+    skewY = Math.atan2(fy * s, c) - rotation; skewX = rotation - Math.atan2(s, fy * c);
+    sx *= Math.hypot(c, fy * s); sy *= Math.hypot(s, fy * c);
+  }
   return {
     x: base.x + pose.x * size.w, y: base.y + pose.y * size.w,
-    rotation: base.rotation + pose.rot,
-    sx: base.sx * pose.sx, sy: base.sy * pose.sy,
-    tint: tintOf(base.tint ?? 0xffffff, pose.tint, pose.tk)
+    rotation, sx, sy, skewX, skewY,
+    tint: tintOf(tintOf(base.tint ?? 0xffffff, pose.dim ?? 0xffffff, pose.dk ?? 0), pose.tint, pose.tk)
   };
 }
+/** the 2 x 2 matrix a transform { rotation, sx, sy, skewX, skewY } draws with (PIXI's own formula): [a, b, c, d] */
+export const matrixOf = (t) => [Math.cos(t.rotation + (t.skewY ?? 0)) * t.sx, Math.sin(t.rotation + (t.skewY ?? 0)) * t.sx, -Math.sin(t.rotation - (t.skewX ?? 0)) * t.sy, Math.cos(t.rotation - (t.skewX ?? 0)) * t.sy];

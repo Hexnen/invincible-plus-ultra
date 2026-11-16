@@ -36,7 +36,7 @@ let started = false, warned = false, engine = null;
 const active = new Map();     // token id -> { tok, layers: [layer] } (oldest first)
 const lying = new Map();      // KODOWN: token id -> { side, fallAt, upAt } (pure LIE): a token down at 0 Health on this scene
 const known = new Map();      // KODOWN: token id -> down (this seat's last read), to tell a change from a first look
-const saved = [];             // [{ m, x, y, r, sx, sy, tint, tinted }] what this drawing changed, put back on postrender
+const saved = [];             // [{ m, x, y, r, sx, sy, kx, ky, tint, tinted }] what this drawing changed, put back on postrender
 let depth = 0, renderer = null, ticking = false, lieWanted = false;
 const pose = {}, basePose = {};
 const stats = { frames: 0, applied: 0, restored: 0, healed: 0, ms: 0, maxMs: 0 };
@@ -155,6 +155,29 @@ function lieSync(tok, kind, at, L) {
     if (kind === "down" && e.fallAt > t0) e.fallAt = Math.max(t0, L ? P.lieFallAt(L) : at + P.LIE.fallDelay);
   } else if (!(e.upAt <= t0)) e.upAt = Math.max(t0, at);
 }
+/** LYING: run fn (a call that reads the tokens' pictures at once: the impact frame takes its figures from them) with every lying token of
+    `toks` in its lying turn and size, then put the pictures back before anything else runs. Our pose is on a picture only for the length of
+    one drawing, so whoever reads the picture between two drawings sees it standing: the impact frame of a blow on a lying token drew the
+    figure upright (seen live, tag 159). Only what this seat draws lying (the table's switch, the seat's motion, a token it sees) */
+export function posed(toks, fn) {
+  const undo = [];
+  try {
+    if (started && lying.size && lieOn() && mode() !== "off" && mode() !== "still") {
+      const t0 = now();
+      for (const tok of toks ?? []) {
+        const e = tok?.id ? lying.get(tok.id) : null;
+        if (!e || tok._mmDead === true || !seen(tok)) continue;
+        const p = P.lyingAt(e, t0, {});
+        if (!(p.lie > 0)) continue;
+        const m = tok.mesh;
+        undo.push([m, m.rotation, m.scale.x, m.scale.y]);
+        m.rotation += p.rot; m.scale.set(m.scale.x * p.sx, m.scale.y * p.sy);
+      }
+    }
+  } catch (err) { once(err); }
+  try { return fn(); }
+  finally { for (const [m, r, sx, sy] of undo) { try { if (!m.destroyed) { m.rotation = r; m.scale.set(sx, sy); } } catch (err) { once(err); } } }
+}
 /** every token of the viewed scene read again (the scene is ready, the GM turned it back on) */
 function lieScan(how = "instant") {
   try { for (const tok of canvas?.tokens?.placeables ?? []) lieLook(tok, how); } catch (err) { once(err); }
@@ -194,17 +217,20 @@ function onPre() {
       const lieBase = e && tok._mmDead !== true ? P.lyingAt(e, t0, basePose, { still: md === "still", tk }) : null;
       P.mix(a?.layers ?? [], t0, pose, lieBase);
       if (P.isRest(pose)) continue;
-      if (tok._mmDead === true) { pose.x = 0; pose.y = 0; pose.rot = 0; pose.sx = 1; pose.sy = 1; }      // the map's death look owns the body
+      if (tok._mmDead === true) { pose.x = 0; pose.y = 0; pose.rot = 0; pose.sx = 1; pose.sy = 1; pose.fy = 1; }      // the map's death look owns the body
       const m = tok.mesh;
       const tintNum = Number(m.tint);
       const base = { x: m.position.x, y: m.position.y, rotation: m.rotation, sx: m.scale.x, sy: m.scale.y, tint: Number.isFinite(tintNum) ? tintNum : 0xffffff };
       const w = Number(tok.w) || (tok.document?.width ?? 1) * (canvas.grid?.size ?? 100);
       const out = P.apply(base, pose, { w, h: w });
-      const tinted = pose.tk > 0.003;
-      saved.push({ m, x: base.x, y: base.y, r: base.rotation, sx: base.sx, sy: base.sy, tint: m.tint, tinted });
+      const tinted = pose.tk > 0.003 || pose.dk > 0.003;
+      /* LYING: the picture flat on the floor needs the mesh's skew (pure apply); a picture without one (not PIXI's) lies turned only */
+      const skewed = !!m.skew;      // also when the skew comes out 0 (a quarter turn of an unturned token): the squash is then all in the scale
+      saved.push({ m, x: base.x, y: base.y, r: base.rotation, sx: base.sx, sy: base.sy, kx: skewed ? m.skew.x : null, ky: skewed ? m.skew.y : null, tint: m.tint, tinted });
       m.position.set(out.x, out.y);
       m.rotation = out.rotation;
-      m.scale.set(out.sx, out.sy);
+      if (skewed) { m.skew.set(out.skewX, out.skewY); m.scale.set(out.sx, out.sy); }
+      else m.scale.set(base.sx * pose.sx, base.sy * pose.sy);
       if (tinted) m.tint = out.tint;
       stats.applied++;
     }
@@ -226,6 +252,7 @@ function restore() {
       s.m.position.set(s.x, s.y);
       s.m.rotation = s.r;
       s.m.scale.set(s.sx, s.sy);
+      if (s.kx !== null) s.m.skew.set(s.kx, s.ky);
       if (s.tinted) s.m.tint = s.tint;
       stats.restored++;
     } catch (err) { once(err); }

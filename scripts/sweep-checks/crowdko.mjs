@@ -54,14 +54,17 @@ else {
 }
 /* ---------------- pure: the lying picture (D10) ---------------- */
 {
-  const inside = (S, t) => { const p = A.lyingAt(S, t); if (!(p.rot || p.sx !== 1)) return 0; const c = A.centred(p), cs = Math.abs(Math.cos(p.rot)), sn = Math.abs(Math.sin(p.rot)); const hx = (p.sx * cs + p.sy * sn) / 2, hy = (p.sx * sn + p.sy * cs) / 2; return Math.max(Math.abs(c.x) + hx, Math.abs(c.y) + hy); };
+  /* LYING: the squash is now down the screen after the turn (pose.fy, drawn by apply), no longer along the token's own axis, so the box
+     measured here is the box that is drawn: the turned picture's height times fy (the same rule: inside its own square at every instant) */
+  const inside = (S, t) => { const p = A.lyingAt(S, t); if (!(p.rot || p.sx !== 1)) return 0; const c = A.centred(p), cs = Math.abs(Math.cos(p.rot)), sn = Math.abs(Math.sin(p.rot)); const hx = (p.sx * cs + p.sy * sn) / 2, hy = (p.fy ?? 1) * (p.sx * sn + p.sy * cs) / 2; return Math.max(Math.abs(c.x) + hx, Math.abs(c.y) + hy); };
   for (const side of [1, -1]) {
     const S = { side, fallAt: 1000, upAt: 1000 + A.LIE.fallMs + 3000 };
     let worst = 0; for (let t = 1000; t <= S.upAt + A.LIE.upMs; t += 10) worst = Math.max(worst, inside(S, t));
     ck(`D10a side ${side}: the falling, lying and rising picture stays inside its own square at every instant (reach ${worst.toFixed(3)} of 0.5)`, worst <= 0.5 + 1e-6);
   }
   const p = A.lyingAt({ side: 1, fallAt: -Infinity, upAt: Infinity }, 0);
-  ck(`D10b a round portrait reads as fallen: the lying picture is squashed across (flat ${(Math.min(p.sx, p.sy) / Math.max(p.sx, p.sy)).toFixed(2)}), not only turned`, Math.min(p.sx, p.sy) / Math.max(p.sx, p.sy) <= 0.85);
+  /* LYING: the squash that is drawn is pose.fy (down the screen); the bound is tighter than the old 0.85 along the token's own axis */
+  ck(`D10b a round portrait reads as fallen: the lying picture is squashed flat (${p.fy.toFixed(2)} of its height on screen), not only turned`, p.fy <= 0.7 && Math.abs(p.sx - p.sy) < 1e-9);
   ck("D10c lying turns about its own centre (the centre stays on its square's centre line, a small drop at most)", (() => { const c = A.centred(p); return Math.abs(c.x) < 0.02 && c.y >= 0 && c.y <= 0.1; })());
 }
 
