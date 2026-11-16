@@ -542,13 +542,13 @@ function stageOpts(message, ev, resolve) {
    the measuring and the layout by their input; play() then only takes them). `when`: 'idle' while the dice roll (an idle slot of the page),
    'now' once the table's instant is known. -> nothing; dbg says what it cost */
 function prepareAhead(message, rd, when = 'now', at = null) {
-  const run = () => {
+  const run = (idle) => {   // CRITFREEZE: (idle: the page's IdleDeadline, how long this slot may be)
     try {
       if (!game.messages.has(message.id) || document.visibilityState === 'hidden' || !visibleToMe(message)) return;
       const ev = eventFor(message, readRoll(message) ?? rd);
       /* ROLLSTALL: with the moment's instant (at, this page's clock) the stage also asks the engine for the impact now, ahead of its word */
       const so = stageOpts(message, ev, ev.stress ? resolveReader(message, ev) : null);
-      const ms = Stage.prepare(ev, Number.isFinite(at) ? { ...so, at } : so, when === 'idle');
+      const ms = Stage.prepare(ev, Number.isFinite(at) ? { ...so, at } : so, when === 'idle', 0, when === 'idle' ? (idle ?? null) : null);
       dbg('ułożone zawczasu (' + when + '):', ms == null ? '-' : Math.round(ms) + ' ms');
     } catch (e) { /* the moment lays itself out at its instant, as before */ }
   };

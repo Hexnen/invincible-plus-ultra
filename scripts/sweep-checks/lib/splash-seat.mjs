@@ -175,7 +175,10 @@ export async function seatPlay(o) {
     /* SPLASHSEAT: o.told = { user id: report } (seatTell): the table's lists for this roll, as main.mjs would have heard them */
     const shareId = o.told ? "SH-" + runN : null;
     if (shareId) for (const [u, r] of Object.entries(o.told)) Share.note(shareId, u, r);
-    const ctl = Stage.play(out.e, { token: b.hero, scale: 1, hold: 1, fx: 1, fullFrom: out.full ? 0.7 : null, seed: "SS-" + tag, resolve: () => ({ now: 5, max: 8 }), targets: [b.target.id], from: b.hero, at: 0, ...(o.probe ? { momentId: "SB-" + runN } : {}), ...(shareId ? { shareId } : {}) });
+    const po = { token: b.hero, scale: 1, hold: 1, fx: 1, fullFrom: out.full ? 0.7 : null, seed: "SS-" + tag, resolve: () => ({ now: 5, max: 8 }), targets: [b.target.id], from: b.hero, at: 0, ...(o.probe ? { momentId: "SB-" + runN } : {}), ...(shareId ? { shareId } : {}) };
+    /* CRITFREEZE: o.before({ Stage, e, opts, board }) runs before the play (a layout ahead, as main.mjs prepareAhead makes it) */
+    if (o.before) o.before({ Stage, e: out.e, opts: po, board: b });
+    const ctl = Stage.play(out.e, po);
     let t, probed;
     if (o.probe) { while ((t = timers.filter((x) => !x.done && x.ms <= (o.probeAt ?? 1500)).sort((a, b2) => a.ms - b2.ms)[0])) { t.done = true; t.fn(); } probed = o.probe({ Stage, ctl, toClient, board: b }); }
     while ((t = timers.filter((x) => !x.done).sort((a, b2) => a.ms - b2.ms)[0])) { t.done = true; t.fn(); }
@@ -192,6 +195,7 @@ export async function seatPlay(o) {
       /* SPLASHCLEAR: the zone badges as moinen-maps draws them (radius min(19, max(8, 0.8 r zoom)) CSS px, a shaped badge up to 1.2 of that) */
       badges: b.badges.map((q) => { const c = toClient(o.badgePlace === "corner" ? corner(q) : q.label), rr = Math.min(19, Math.max(8, 0.8 * q.label.r * zoom)) * 1.2; return { l: c.x - rr, t: c.y - rr, r: c.x + rr, b: c.y + rr }; }),
       gauges: gaugesOf(document.all), pins: b.notes.map((n) => { const q = toClient({ x: n.document.x, y: n.document.y }); return { x: q.x, y: q.y }; }),
+      stats: { ...Stage.layoutStats }, steps: Stage.stepStats ? { ...Stage.stepStats } : null,
       ui: Object.fromEntries(Object.entries(document.rects).map(([kk, v]) => [kk, v])), yielded: [...new Set(Object.values(document.els).filter((e) => e.yielded).map((e) => e.sel))] };
     if (o.probe) res.probe = probed;
     Stage.clearAll(); Stage.setLayer("screen"); S.setReduced(false);

@@ -86,7 +86,7 @@ let runN = 0;
    every timer in order. o: { layer, e, board, targets, W, H, idle, now (ms before the instant, null: none), nowAt (the instant handed to that
    prepare, default AT), playAt (the instant handed to play), change (between the two prepares), change2 (between the last prepare and play),
    noPlay (the moment never plays), grid (the engine reads contacts on a 24 Hz grid: L.contactAt), probe (a live probe of the placing is on) } */
-async function seat({ layer = "screen", e, board, targets = [], W = 1600, H = 900, idle = true, now = 100, nowAt = AT, playAt = AT, change = null, change2 = null, noPlay = false, grid = false, probe = false, twice = false }) {
+async function seat({ layer = "screen", e, board, targets = [], W = 1600, H = 900, idle = true, now = 100, nowAt = AT, playAt = AT, change = null, change2 = null, noPlay = false, grid = false, probe = false, twice = false, warm = false }) {
   clock = 1000;
   { let r = 777; Math.random = () => ((r = (r * 1103515245 + 12345) % 2147483648) / 2147483648); }
   globalThis.document = fakeDom(W, H);
@@ -109,6 +109,8 @@ async function seat({ layer = "screen", e, board, targets = [], W = 1600, H = 90
     L.play = (text, op) => { const h = play0(text, op); h.opts = op; h.plan.contactMs = 125; h.plan.motion = { mode: "stepped", in: "slam" }; return h; };
     L.contactAt = (x, startAt) => { const plan = x?.plan ?? (x?.timeline ? x : null), t0 = Number.isFinite(startAt) ? startAt : x?.opts?.startAt; return plan && Number.isFinite(t0) ? Math.ceil((t0 + plan.contactMs) / TICK - 1e-9) * TICK : null; };
   }
+  /* CRITFREEZE: (warm) an engine that takes a blow named ahead (I.warmFor, 1.9.26) */
+  if (warm) L.impact.warmFor = (spec) => { log.push({ t: clock, warm: { ...spec, subject: spec.subject?.id ?? spec.subject, from: spec.from?.id, keep: spec.keep?.id } }); return 3; };
   Stage.setLetters(L); Stage.setLayer(layer); S.setReduced(false);
   const hero = () => canvas.tokens.get("HERO000000000000");
   const opts = () => ({ token: hero(), from: hero(), targets, scale: 1, hold: 1, fx: 1, fullFrom: 0.7, seed: "RS-" + (e.word ?? "x"), momentId: "RS", resolve: () => ({ now: 5, max: 8 }), backdrop: false });
@@ -243,6 +245,30 @@ for (const [tag, o] of [["a pushed roll (its prefix letters first)", { e: KINDS.
   ok(s.early.armed === 0 && impacts(s).every((x) => x.t >= AT), `R8 ${tag}: nothing asked ahead`);
   eq(calls(s), calls(n), `R8 ${tag}: the same calls as before`);
 }
+/* CRITFREEZE W: the blow is named to the engine while the dice still roll (the layout ahead without the instant): once a moment, the very
+   blow the play then asks for (all but its instant and the word it keeps), and nothing else of the moment changes; an engine without
+   warmFor, a moment never laid out ahead, a moment without a blow: nothing */
+for (const [bn, board] of [["empty", BOARDS.empty], ["crowd", BOARDS.crowd]]) for (const kn of ["critical", "strong", "ordinary", "miss"]) for (const tg of [true, false]) {
+  const e = KINDS[kn], targets = tg ? [T0.id] : [], tag = `${bn} ${kn} ${tg ? "target" : "no target"}`;
+  const w = await seat({ e, board, targets, warm: true }), n = await seat({ e, board, targets });
+  const named = w.log.filter((x) => x.warm), a = impacts(w), b = impacts(n);
+  const rest = (s) => s.log.filter((x) => !x.warm);
+  eq(rest(w), rest(n), `W ${tag}: every lettering and the impact are asked the same, at the same instants, with the naming ahead and without`);
+  eq(w.lay, n.lay, `W ${tag}: the same block`);
+  ok(named.length === (a.length ? 1 : 0), `W ${tag}: the blow is named once when the moment has one (${named.length} named, ${a.length} impact)`);
+  if (a.length && named.length) {
+    const bare = (x) => { const { blowAt, startAt, keep, ...r } = x; return r; };
+    eq(bare(named[0].warm), bare(a[0].impact), `W ${tag}: the blow named is the blow asked (all but its instant)`);
+    ok(named[0].t <= 1000 + 1 && a[0].t >= AT - 100, `W ${tag}: named while the dice roll (${named[0].t}), asked when the instant is known (${a[0].t})`);
+  }
+  const late = await seat({ e, board, targets, warm: true, idle: false });
+  ok(late.log.filter((x) => x.warm).length === 0, `W ${tag}: a moment whose instant is known when it is first laid out is not named ahead (asked at once instead)`);
+  eq(impacts(late).map(strip), impacts(await seat({ e, board, targets, idle: false })).map(strip), `W ${tag}: and its impact is the same call`);
+  ok(b.length === a.length && (w.early.warmed ?? 0) === named.length && !(n.early.warmed > 0), `W ${tag}: an engine without warmFor is asked nothing (${n.early.warmed ?? 0})`);
+}
+{ const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("../splash/stage.mjs", import.meta.url), "utf8");
+  ok(/else warmImpact\(ctl, wp, q\);/.test(src) && /return I\.warmFor\(shot\.spec\) \|\| 0;/.test(src), "W the layout ahead names the blow to the engine (warmImpact -> I.warmFor)"); }
 console.log(`  most placings of one layout ahead: ${heavy}; the impact asked at least ${Math.round(gain)} ms before its first drawing`);
 Object.defineProperty(globalThis, "performance", { value: realPerf, configurable: true, writable: true });
 done("rollstall");

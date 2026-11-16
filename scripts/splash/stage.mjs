@@ -243,7 +243,9 @@ function engineKey() {
   try { p = JSON.stringify(LE?.prefs ?? null); } catch (e) { p = '?'; }
   return `${LE?.version ?? '?'}|${p}`;
 }
-function measureItems(items, base) {
+function measureItems(items, base) { return LP.runSteps(measureSteps(items, base)); }
+/* CRITFREEZE: the measuring in steps (after each lettering the engine measured afresh; a kept one costs nothing) */
+function* measureSteps(items, base) {
   const hands = [];
   const ek = engineKey(), gs = globalThis.canvas?.dimensions?.size ?? globalThis.canvas?.grid?.size ?? 100;
   for (const it of items) {
@@ -275,6 +277,7 @@ function measureItems(items, base) {
     else if (mk) { MEASURE_MEMO.set(mk, m); if (MEASURE_MEMO.size > MEASURE_MAX) MEASURE_MEMO.delete(MEASURE_MEMO.keys().next().value); }   // (an estimate is not kept: the engine may answer next time)
     it._m = m;
     if (m.hand) hands.push(m.hand);
+    yield;
   }
 }
 /* CRITLATE: a key that only equal inputs share (non-finite numbers kept apart; functions, DOM nodes and tokens make the input unkeyable: null) */
@@ -1055,15 +1058,21 @@ function seatPlaceKept(table, seat) {
     /* each line is the one handed in now (its engine marks and inner objects as seatPlace passes them on), at its kept place and size */
     return { ...table, ...seatCopy(kept), items: table.items.map((it, n) => ({ ...it, ...kept.items[n] })) };
   }
-  if (prepDeadline != null && performance.now() > prepDeadline) throw PREP_YIELD;   // a sliced prepare goes on in its next slot
-  const t0 = performance.now();
-  const out = LP.seatPlace(table, seat);
-  layoutStats.seatFresh++; layoutStats.seatMs += performance.now() - t0;
+  /* CRITFREEZE: the search itself in steps (a sliced prepare takes as many as its slot holds and goes on from there in its next one; the
+     table handed in when the search began is the one it ends on: the same input by its key) */
+  const run = stepped(SEAT_STEPS, key, () => ({ g: LP.seatPlaceSteps(table, seat), table }), (ms) => { layoutStats.seatMs += ms; });
+  const out = run.value, mine = run.own.table === table;
+  layoutStats.seatFresh++;
   if (key) {
+    const table0 = table;
+    table = run.own.table;
     let v = null;
     if (out) { v = {}; for (const k of SEAT_SET) if (Object.prototype.hasOwnProperty.call(out, k) && out[k] !== table[k]) v[k] = out[k]; v = seatCopy(v); v.items = out.items.map((it, n) => { const src = table.items[n], o = {}; for (const k of ['x', 'y', 'S', 'w', 'h']) if (it[k] !== src[k]) o[k] = it[k]; return o; }); }
     SEAT_MEMO.set(key, v);
     if (SEAT_MEMO.size > SEAT_MAX) SEAT_MEMO.delete(SEAT_MEMO.keys().next().value);
+    table = table0;
+    /* (a search begun in an earlier slot ran on that slot's copy of the table: handed out as a kept placing is, on the table given now) */
+    if (!mine) return v === null ? null : { ...table, ...seatCopy(v), items: table.items.map((it, n) => ({ ...it, ...v.items[n] })) };
   }
   return out;
 }
@@ -1080,22 +1089,69 @@ function composeIn(ctl, items, frame) {
     layoutStats.reused++;
     return copyLayout(kept.out);
   }
-  if (prepDeadline != null && performance.now() > prepDeadline) throw PREP_YIELD;   // CRITLATE: a sliced prepare goes on in its next slot
-  const t0 = performance.now();
+  /* CRITFREEZE: the measuring and the search in steps (a sliced prepare takes as many as its slot holds and goes on from there in its next
+     one, on the items handed in when the layout began: the same input by its key) */
+  const seed = ctl.seed, map = !!ctl.shared;
+  const run = stepped(LAYOUT_STEPS, key, () => ({ g: composeSteps(items, frame, seed, map), items }), (ms) => { layoutStats.ms += ms; });
+  const out = run.value, done = run.own.items;
+  layoutStats.fresh++;
+  if (key && out) {
+    const kept = { out: copyLayout(out), marks: done.map((it) => [it._o, it._m]) };
+    LAYOUT_MEMO.set(key, kept);
+    if (LAYOUT_MEMO.size > LAYOUT_MAX) LAYOUT_MEMO.delete(LAYOUT_MEMO.keys().next().value);
+    /* (a layout begun in an earlier slot ran on that slot's items: handed out as a kept layout is, on the items given now) */
+    if (done !== items) { kept.marks.forEach(([o, m], i) => { if (items[i]) { items[i]._o = o; items[i]._m = m; } }); return copyLayout(kept.out); }
+  } else if (done !== items) done.forEach((it, i) => { if (items[i]) { items[i]._o = it._o; items[i]._m = it._m; } });
+  return out;
+}
+function* composeSteps(items, frame, seed, map) {
   const anchored = !!frame.token;
   let side = 'above', out = null;
   for (let pass = 0; pass < 2; pass++) {
-    measureItems(items, { seed: ctl.seed, from: anchored ? SIDE_FROM[side] : null, map: !!ctl.shared });
-    out = LP.composeMoment(items, frame, measureFn);
+    yield* measureSteps(items, { seed, from: anchored ? SIDE_FROM[side] : null, map });
+    out = yield* LP.composeMomentSteps(items, frame, measureFn);
     if (!anchored || out.side === side) break;
     side = out.side;
   }
-  layoutStats.fresh++; layoutStats.ms += performance.now() - t0;
-  if (key && out) {
-    LAYOUT_MEMO.set(key, { out: copyLayout(out), marks: items.map((it) => [it._o, it._m]) });
-    if (LAYOUT_MEMO.size > LAYOUT_MAX) LAYOUT_MEMO.delete(LAYOUT_MEMO.keys().next().value);
-  }
   return out;
+}
+/* CRITFREEZE (live, two seats, The Warehouse: laid out ahead while the dice rolled, a critical's layout held the page 176-218 ms in one
+   task, then twice more 70-175 ms: the prepare was cut BETWEEN its layouts only, and one layout of a critical is 0.15-0.45 s). One unit of
+   layout work (a block composed, a block placed on the seat) is a generator of steps (LP.composeMomentSteps, LP.seatPlaceSteps): a few ms
+   each. Unsliced (the play, the prepare with the instant) it runs to its end here, as before. In a sliced prepare it runs until the slot
+   is used up (always one step at least), is put by under its input's key and PREP_YIELD ends the slot; the next slot comes back to the
+   same key (everything before it is kept) and goes on from that step. Whoever asks for the same input unsliced meanwhile (the instant
+   came) finishes what is left. The answer is the search's own, whatever the slots: nothing is read between two steps that the search did
+   not already hold. Without a key (a live probe, an input that cannot be keyed) there is nothing to come back to: run to the end.
+   -> { value, own: what make() made (the generator's own input) } */
+const LAYOUT_STEPS = new Map(), SEAT_STEPS = new Map(), STEPS_MAX = 6;
+export const stepStats = { slots: 0, steps: 0, worst: 0 };   // (for the checks and a live probe: slots ended early, steps taken, the longest step in ms)
+function stepped(pending, key, make, spent) {
+  let own = key ? pending.get(key) : null;
+  /* a slot already used up by what came before this unit: the unit begins in the next one (a slot that did nothing yet takes one step) */
+  if (prepDeadline != null && key && prepDid && performance.now() > prepDeadline) throw PREP_YIELD;
+  if (!own) own = make();
+  const t0 = performance.now();
+  let t1 = t0;
+  try {
+    for (;;) {
+      const r = own.g.next();
+      prepDid = true;
+      const t = performance.now();
+      stepStats.steps++; if (t - t1 > stepStats.worst) stepStats.worst = t - t1;
+      t1 = t;
+      if (r.done) { if (key) pending.delete(key); return { value: r.value, own }; }
+      if (prepDeadline != null && key && t > prepDeadline) {
+        pending.delete(key); pending.set(key, own);
+        if (pending.size > STEPS_MAX) pending.delete(pending.keys().next().value);
+        stepStats.slots++;
+        throw PREP_YIELD;
+      }
+    }
+  } catch (e) {
+    if (e !== PREP_YIELD && key) pending.delete(key);   // a search that failed is not gone on with
+    throw e;
+  } finally { spent(performance.now() - t0); }
 }
 /* a client rect in scene px (null when the canvas cannot say) */
 function sceneRectOf(s) {
@@ -1702,6 +1758,24 @@ function armEarly(ctl, it, q, t0, items) {
   e.dog = setTimeout(() => { if (EARLY.get(id) === e) dropEarly(id); }, Math.max(0, t0 - performance.now()) + EARLY_HOLD_MS);
   return e;
 }
+/* CRITFREEZE (live: asked ~200 ms before its start, the impact's arts, 3 jobs of ~31 ms for a critical's two figures, were worked out in
+   the last frames before the word landed: display frames of 50-67 ms there). The layout ahead knows the blow while the dice still roll
+   (not its instant yet): the engine is told then (I.warmFor, engine 1.9.26: the arts worked out in the page's idle moments, nothing
+   painted, shown or counted), once per moment. The impact itself is asked as before (armEarly, fireImpact): the same call, the same
+   drawings. An engine without warmFor: nothing, as before */
+const WARMED = new Set();
+function warmImpact(ctl, it, q) {
+  const I = LE?.impact, id = ctl.momentId ?? ctl.seed;
+  if (typeof I?.warmFor !== 'function' || !q?.struck || id == null || WARMED.has(id)) return 0;
+  try {
+    /* (the shot as the play will ask it: on a copy, an instant far enough ahead; only its spec is read) */
+    const { shot } = strikeAt({ ...ctl }, it, { ...q.o, startAt: performance.now() + 60000 }, q.tableOpts, true);
+    if (!shot?.fire || !shot.spec) return 0;
+    WARMED.add(id); if (WARMED.size > 40) WARMED.delete(WARMED.values().next().value);
+    earlyStats.warmed = (earlyStats.warmed ?? 0) + 1;
+    return I.warmFor(shot.spec) || 0;
+  } catch (e) { return 0; }
+}
 /* blowAt = the word's contact on this page's clock; word = its handle (kept readable on a map layer) */
 function fireImpact(ctl, shot, blowAt, word) {
   const I = LE?.impact;
@@ -2000,12 +2074,25 @@ function stageFields(opts, shared) {
    page 0.25-0.5 s and the dice stood still): the work is cut between the layouts it makes, each slice in its own idle slot of the page
    (a later slice finds the earlier layouts kept and goes on from there). -> the ms the first slice took, or null (nothing to lay out) */
 export const PREP_SLICE_MS = 12;
+/* CRITFREEZE: a slot is as long as the page says it is idle for (IdleDeadline.timeRemaining), PREP_SLICE_MS at most; a slot the page
+   had no idle time for (it came by its timeout: the dice and the map are busy drawing) is PREP_BUSY_MS, so it never makes a frame late by
+   more than that and a step; the next slot is asked for PREP_RETRY_MS later at the latest (every other frame) */
+export const PREP_BUSY_MS = 6, PREP_RETRY_MS = 32;
+function slotMs(idle) {
+  try {
+    if (!idle) return PREP_SLICE_MS;
+    if (idle.didTimeout) return PREP_BUSY_MS;
+    const r = typeof idle.timeRemaining === 'function' ? idle.timeRemaining() : NaN;
+    return Number.isFinite(r) ? Math.max(PREP_BUSY_MS, Math.min(PREP_SLICE_MS, r)) : PREP_SLICE_MS;
+  } catch (e) { return PREP_SLICE_MS; }
+}
 const PREP_YIELD = { yield: true };
-let prepDeadline = null;
-export function prepare(ev, o, slice = false, round = 0) {
+let prepDeadline = null, prepDid = false;
+export const PREP_ROUNDS = 4000;   // CRITFREEZE: a layout of 0.5 s in slots of 12 ms is ~45 slots; a crowded board's worst (3 s) 250
+export function prepare(ev, o, slice = false, round = 0, idle = null) {
   try {
     if (!lettersOn() || !o?.seed) return null;
-    prepDeadline = slice ? performance.now() + PREP_SLICE_MS : null;
+    prepDeadline = slice ? performance.now() + slotMs(idle) : null; prepDid = false;
     const t = performance.now();
     const mo = momentOpts(ev, o), opts = mo.full ? { ...mo.o, full: true } : mo.o;
     const ctl = { ...stageFields(opts, mo.shared), dry: true, seed: o.seed, full: mo.full, targets: IP.cleanTargets(mo.o.targets),
@@ -2026,13 +2113,14 @@ export function prepare(ev, o, slice = false, round = 0) {
         if (wp.en && wp.en !== wp.text) contactOf(LP.letterable(wp.en), q.tableOpts);
         /* ROLLSTALL: the table's instant is known (o.at, this page's clock): the impact is asked for now */
         if (!slice && Number.isFinite(o.at)) armEarly(ctl, wp, q, o.at, lay.items);
+        else warmImpact(ctl, wp, q);
       }
     }
     return performance.now() - t;
   } catch (e) {
-    if (e === PREP_YIELD && round < 40) {
-      const again = () => prepare(ev, o, true, round + 1);
-      if (typeof globalThis.requestIdleCallback === 'function') globalThis.requestIdleCallback(again, { timeout: 120 }); else setTimeout(again, 0);
+    if (e === PREP_YIELD && round < PREP_ROUNDS) {
+      const again = (d) => prepare(ev, o, true, round + 1, d ?? null);
+      if (typeof globalThis.requestIdleCallback === 'function') globalThis.requestIdleCallback(again, { timeout: PREP_RETRY_MS }); else setTimeout(again, 0);
       return 0;
     }
     return null;
