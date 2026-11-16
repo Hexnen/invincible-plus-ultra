@@ -58,8 +58,24 @@ function ramp(pal) {
   }
   return out;
 }
-/* GORE2 («dużo subtelniejsze»): hairlines, see-through; 8 = a falling shard's lit glass */
-export const CRACK = { 1: [14, 20, 28, 168], 2: [226, 240, 252, 150], 3: [228, 240, 252, 176], 4: [208, 230, 250, 196], 5: [255, 255, 255, 236], 6: [230, 244, 255, 16], 7: [8, 14, 24, 22], 8: [226, 242, 255, 72] };
+/* GORE2 («dużo subtelniejsze»): hairlines, see-through; 8 = a falling shard's lit glass.
+   GORE4 (GORE3's own weak point: so faint they were hard to notice; the dark hairline vanished on the dark map and on the interface's
+   dark bars, only the short lit stretch by the corner showed): still hairlines in a corner, but every crack now reads on a dark AND on a
+   light ground: the dark line a little denser (1), its lit edge (2) stronger and running most of a main crack's length, soft (9) on
+   its far part and bare at the tip; branches get the soft edge; the facets (6 lit, 7 shaded) tint the glass
+   enough to read as one broken pane. The web is no bigger and covers no more of the view than before. */
+export const CRACK = { 1: [14, 20, 28, 204], 2: [226, 240, 252, 186], 3: [228, 240, 252, 190], 4: [208, 230, 250, 204], 5: [255, 255, 255, 236], 6: [230, 244, 255, 26], 7: [8, 14, 24, 34], 8: [226, 242, 255, 72], 9: [226, 240, 252, 116] };
+/* GORE4: while the cracks hold, a glint runs out along them again every SWEEP ms (from SWEEP_AT; it takes GLINT_MS like the first one):
+   glass catching the light, the quiet way a still corner gets noticed. Not on a reduced-motion or a photosensitive seat. */
+export const SWEEP_AT = 2600, SWEEP = 2400, GLINT_AT = 120, GLINT_MS = 440;
+/** how far along the cracks (0..1 of their reach) the glint is at ms after the strike, or -1 when none runs */
+export function glintAt(p, ms) {
+  if (p.still) return -1;
+  if (ms >= GLINT_AT && ms <= GLINT_AT + GLINT_MS) return (ms - GLINT_AT) / GLINT_MS;
+  if (p.safe || ms < SWEEP_AT || ms > breakAt(p) - GLINT_MS) return -1;
+  const ph = (ms - SWEEP_AT) % SWEEP;
+  return ph <= GLINT_MS ? ph / GLINT_MS : -1;
+}
 
 export function surface(w, h) {
   return { w, h, T: new Float32Array(w * h), L: new Float32Array(w * h), S: new Float32Array(w * h).fill(9), W: new Float32Array(w * h), G: new Uint8Array(w * h), C: new Uint8Array(w * h), A: new Uint8Array(w * h).fill(1), N: new Float32Array(w * h),
@@ -82,7 +98,7 @@ export function render(sf, items, now) {
     const p = it.plan;
     if (p.kind === "cracks") {
       if (ms > p.life.gone) continue;
-      live++; if (ms < 1700 || ms > breakAt(p) - 50) moving = true;
+      live++; if (ms < 1700 || ms > breakAt(p) - 50 || !(p.still || p.safe)) moving = true;      // GORE4: the glint comes back while they hold
       drawCracks(ctx, p, ms);
     } else {
       const parts = [[p, ms]];
@@ -132,6 +148,7 @@ function drawBlood(ctx, p, ms, gone) {
      crumbs). E moves in on ones: mist, drips and small drops go first, the body shrinks to its heart. A few eroded pixels become FLAKES
      that fall off for FLAKE_MS, only where their fall stays inside the view (pure: the moment a pixel eroded follows from its depth). */
   const dms = ms - gone, diss = dms > 0;
+  const tk = p.tok ?? null;      // GORE4: the struck token's disc: no flake of crust falls onto it
   const er = diss ? erosion(p, dms, still) : null;
   const dep = er ? depthOf(p, ctx.w) : null;
   const mark = (i, x, y, t, l) => {
@@ -156,8 +173,10 @@ function drawBlood(ctx, p, ms, gone) {
           if (age2 >= 0 && age2 < FLAKE_MS) {
             const a = age2 / 1000, hs = hash2(y + 7, x + 3);
             const fx = Math.round(x + (hs - 0.5) * 40 * a), fy = Math.round(y + 1 + 0.5 * FLAKE_G * a * a);
-            ctx.sf.G[fy * ctx.w + fx] = 3; mark(fy * ctx.w + fx, fx, fy, 0.5, 0.3);
-            if (hs < 0.45) { ctx.sf.G[fy * ctx.w + fx + 1] = 3; mark(fy * ctx.w + fx + 1, fx + 1, fy, 0.5, 0.3); }
+            if (!tk || Math.hypot(fx + 1 - tk.x, fy + 0.5 - tk.y) >= tk.r + 1) {
+              ctx.sf.G[fy * ctx.w + fx] = 3; mark(fy * ctx.w + fx, fx, fy, 0.5, 0.3);
+              if (hs < 0.45) { ctx.sf.G[fy * ctx.w + fx + 1] = 3; mark(fy * ctx.w + fx + 1, fx + 1, fy, 0.5, 0.3); }
+            }
           }
         }
         return;
@@ -441,7 +460,7 @@ function crackPicture(ctx, p, ms, build) {
     const cur = sf.C[i], soft = cur === 6 || cur === 7;
     if (!force && cur && cur !== 2 && !soft) return;
     if ((c === 2 || c >= 6) && cur && !soft) return;
-    if (c >= 6 && cur) return;
+    if (c >= 6 && c !== 9 && cur) return;
     sf.C[i] = c;
     if (x < box.x0) box.x0 = x; if (x > box.x1) box.x1 = x; if (y < box.y0) box.y0 = y; if (y > box.y1) box.y1 = y; if (box.lo) { if (x < box.lo[y]) box.lo[y] = x; if (x > box.hi[y]) box.hi[y] = x; }
   };
@@ -450,11 +469,13 @@ function crackPicture(ctx, p, ms, build) {
     f._px ??= facetPixels(f, w, h);
     for (const i of f._px) set(i % w, (i / w) | 0, f.light ? 6 : 7);
   }
-  const glintD = !build && !p.still && ms >= 120 && ms <= 560 ? ((ms - 120) / 440) * p.maxD : -99;
+  const gu = build ? -1 : glintAt(p, ms);
+  const glintD = gu >= 0 ? gu * p.maxD : -99;
   for (const [li, ln] of p.lines.entries()) {
     const lim = build ? Infinity : crackReach(ln, ms, p.still);
     if (!(lim > ln.pts[0][2])) continue;
     const side = li & 1 ? 1 : -1;
+    const d0 = ln.pts[0][2], dL = Math.max(1e-6, ln.pts[ln.pts.length - 1][2] - d0);
     for (let i = 1; i < ln.pts.length; i++) {
       const a = ln.pts[i - 1], b = ln.pts[i];
       if (a[2] >= lim) break;
@@ -466,8 +487,13 @@ function crackPicture(ctx, p, ms, build) {
         const d = a[2] + (b[2] - a[2]) * u * f;
         const gl = Math.abs(d - glintD) < 2.5;
         set(x, y, gl ? 5 : 1, true);
-        /* a hairline: the lit edge only beside the radials' first stretch (the crack is open there), single pixels beyond */
-        if ((ox || oy) && ln.lvl === 0 && d < p.maxD * 0.45) set(x + ox, y + oy, 2);
+        /* a hairline with a lit edge on one side: bright along a main crack's first stretch (the crack is open there), then soft, the
+           tip bare; a branch's edge is soft and ends half way; a ring has none */
+        if (ox || oy) {
+          const fl = (d - d0) / dL;
+          if (ln.lvl === 0) { if (fl < 0.45) set(x + ox, y + oy, 2); else if (fl < 0.8) set(x + ox, y + oy, 9); }
+          else if (ln.lvl === 1 && fl < 0.5) set(x + ox, y + oy, 9);
+        }
       });
     }
   }
@@ -479,7 +505,9 @@ function crackPicture(ctx, p, ms, build) {
       const jag = r * (0.75 + 0.35 * (((x * 73856093) ^ (y * 19349663) ^ (c.seed | 0)) >>> 0) % 100 / 100);
       if (d > jag) continue;
       const hsh = (((x * 2654435761) ^ (y * 40503)) >>> 0) % 7;
-      set(x, y, d < 1 ? 1 : d > jag - 1.1 ? 1 : hsh === 0 ? 1 : 3, true);
+      /* GORE4: the crushed corner flashes on the strike's first two ticks (the instant the glass gives; a few pixels) */
+      const cls = d < 1 ? 1 : d > jag - 1.1 ? 1 : hsh === 0 ? 1 : 3;
+      set(x, y, cls === 3 && !build && !p.still && ms - c.at < 2 * TICK_MS ? 5 : cls, true);
     }
   }
 }
@@ -637,8 +665,11 @@ function colour(sf, b, ramp) {
         const band = v > 0.84 ? 0 : v > 0.56 ? 1 : v > 0.3 ? 2 : 3;
         c = band === 0 ? P.lit : band === 1 ? P.b : band === 2 ? P.m : P.d;
         const flat = dry > 0.5 ? smooth((dry - 0.5) / 0.5) : 0, gloss = Wf[i];
-        if (flat > 0 && band !== 1 && !(inner ? T[i - 2] <= THR || T[i + 2] <= THR || T[i - 2 * w] <= THR || T[i + 2 * w] <= THR
-          : at(x - 2, y) <= THR || at(x + 2, y) <= THR || at(x, y - 2) <= THR || at(x, y + 2) <= THR)) {
+        /* GORE4 (GORE3's own weak point: a pale "T" stayed in the dried crust): the LIT band flattens everywhere, also in the two-pixel
+           rim where the darker bands stay (a crust keeps its dark rim and loses every light: the lit crescents along the top left of the
+           body and of its lumps met in pale L and T shapes) */
+        if (flat > 0 && band !== 1 && (band === 0 || !(inner ? T[i - 2] <= THR || T[i + 2] <= THR || T[i - 2 * w] <= THR || T[i + 2 * w] <= THR
+          : at(x - 2, y) <= THR || at(x + 2, y) <= THR || at(x, y - 2) <= THR || at(x, y + 2) <= THR))) {
           /* the flattening, in FLAT_Q steps (each far under a visible step), its mixes kept on the ramp entry */
           const fq = Math.round(flat * FLAT_Q), key = band * (FLAT_Q + 1) + fq, fm = (P._flat ??= []);
           c = fm[key] ??= mixInto(c, P.b, fq / FLAT_Q);

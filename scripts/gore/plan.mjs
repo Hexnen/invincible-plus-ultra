@@ -38,6 +38,7 @@ export const MAX_LIVE = 6;                 // splashes alive at once; the oldest
 export const NEAR_K = 1.1;                 // GORE3: a splash's body radius at most this x the struck token's radius on this screen
 export const R_MIN = 0.02;                 // ... but never under this share of the view's short side (pixel art stays readable)
 export const EDGE = 2;                     // art px: nothing of a splash is drawn closer to the view's edge (never cut by it)
+export const TOK_GAP = 1.5;                // GORE4, art px: nothing of a splash is drawn closer to the struck token's rim (beside it, never on it)
 export const CENTRE = { rx: 0.30, ry: 0.28, alpha: 0.55 };      // the readable middle: an ellipse (fractions of the view) and blood's alpha there
 export const BIG = 0.4;                    // an arrival from this strength up counts in the rationing
 export const DISSOLVE = 1500;              // ms blood takes to crumble away (the last FLAKE_MS of it only flakes still falling)
@@ -129,8 +130,7 @@ export function bloodPlan(g, opts = {}) {
   const r = rng(`blood|${opts.seed ?? "x"}`);
   let s = clamp(Number(opts.strength) || 0.5, 0.12, 1.25);
   const m = Math.min(g.w, g.h);
-  const dir = Number.isFinite(opts.dir) ? opts.dir : r() * Math.PI * 2;
-  const dx = Math.cos(dir), dy = Math.sin(dir);
+  let dir = Number.isFinite(opts.dir) ? opts.dir : r() * Math.PI * 2;
   /* GORE2 (the owner: «krew potrzebuję też kropel bo na razie to jest bardziej jakby ktoś napluł»): a SMALLER body and much more of the
      blood in DROPS (crown spikes with beads, flung drops shaped like an exclamation mark, trails of drops along the way it flew) */
   let R = (0.017 + 0.046 * Math.min(s, 1) + 0.012 * Math.max(0, s - 1)) * m;
@@ -141,33 +141,70 @@ export function bloodPlan(g, opts = {}) {
      the board) and lands just past the token on the side away from the attacker (the token stays readable) */
   const near = opts.near && Number.isFinite(opts.near.fx) && Number.isFinite(opts.near.fy) ? opts.near : null;
   const tokR = near ? Math.max(1, (Number(near.fr) || 0.03) * m) : 0;
+  const Rfree = R;
   if (near) R = Math.min(R, Math.max(R_MIN * m, NEAR_K * tokR));
+  /* GORE4 (GORE3's own weak point: a splash beside a token at the view's edge was pushed back by the edge ONTO the token's rim): the
+     blood stands BESIDE the struck token, never on it. tok = the disc nothing of the splash may enter (its rim + TOK_GAP art px).
+     When the side the blood flies to has no room between the token and the view's edge, the whole splash turns to the nearest side
+     that has (the seed picks left or right first); its seeded numbers are the same either way (dir is only added to them). */
+  const tok = near ? { x: near.fx * g.w, y: near.fy * g.h, r: tokR + TOK_GAP } : null;
+  const hasAt = !!(opts.at && Number.isFinite(opts.at.fx) && Number.isFinite(opts.at.fy));
+  const keepOf = (rad) => rad * 1.36 + EDGE + 1;
+  let none = false;
+  if (tok && !hasAt) {
+    const first = hash(`side|${opts.seed ?? "x"}`) & 1 ? 1 : -1;
+    const room = (a, rad) => { const d = tok.r + rad * 1.8 + 2, k = keepOf(rad), x = tok.x + Math.cos(a) * d, y = tok.y + Math.sin(a) * d; return x >= k && y >= k && x <= g.w - k && y <= g.h - k; };
+    let found = null;
+    for (let shrink = 0; shrink < 5 && found === null; shrink++) {
+      for (let j = 0; j <= 18 && found === null; j++) { const a = dir + first * (j & 1 ? 1 : -1) * Math.ceil(j / 2) * (Math.PI / 9); if (room(a, R)) found = a; }
+      if (found === null) R *= 0.8;
+    }
+    if (found === null) none = true; else dir = found;
+  }
+  const dx = Math.cos(dir), dy = Math.sin(dir);
   /* the draw order of the seeded numbers below never changes with the placement, so every seat draws the same splash */
   const reach = lerp(0.68, 0.88, r());
   const perp = (r() - 0.5) * 0.5;
-  let cx, cy;
-  if (opts.at && Number.isFinite(opts.at.fx) && Number.isFinite(opts.at.fy)) { cx = opts.at.fx * g.w; cy = opts.at.fy * g.h; }
-  else if (near) { const d = tokR + R * 1.15; cx = near.fx * g.w + dx * d; cy = near.fy * g.h + dy * d; }
-  else {
-    /* no token (a public call): on the side of the view the blood flies to, off the middle */
-    cx = g.w / 2 + (dx * reach - dy * perp) * g.w / 2;
-    cy = g.h / 2 + (dy * reach + dx * perp) * g.h / 2;
-  }
-  /* GORE3: the body and its rim lumps lie wholly inside the view (EDGE art px clear of it); what flies farther is trimmed below */
-  const keep = R * 1.36 + EDGE + 1;
-  cx = keep * 2 < g.w ? clamp(cx, keep, g.w - keep) : g.w / 2; cy = keep * 2 < g.h ? clamp(cy, keep, g.h - keep) : g.h / 2;
   const sm = Math.min(s, 1);
-  /* the body: a ragged blot (four rim harmonics, the highest makes it spiky), never a smooth glob */
+  /* the body: a ragged blot (four rim harmonics, the highest makes it spiky), never a smooth glob; laid out round (0, 0) first, moved to
+     its place once that is known (GORE4: the place follows from the body's own outline) */
   const lob = [0, 1, 2, 3].map(() => r() * Math.PI * 2);
   const amp = [lerp(0.07, 0.13, r()), lerp(0.05, 0.09, r()), lerp(0.04, 0.07, r()), lerp(0.05, 0.09, r())];
   const blobs = [];
-  blobs.push({ x: cx, y: cy, r: R, h: 1, at: 0, main: true, lob, amp, fq: [3, 5, 9, 15], e: 1.08 });
+  blobs.push({ x: 0, y: 0, r: R, h: 1, at: 0, main: true, lob, amp, fq: [3, 5, 9, 15], e: 1.08 });
   /* lumps round its rim */
   const nb = 5 + Math.round(5 * sm);
   for (let i = 0; i < nb; i++) {
     const a = r() * Math.PI * 2, d = R * lerp(0.8, 1.02, r()), rr = R * lerp(0.16, 0.32, r());
-    blobs.push({ x: cx + Math.cos(a) * d, y: cy + Math.sin(a) * d, r: rr, h: 0.85, at: 1, lob: [r() * 6, r() * 6, r() * 6], amp: [0.1, 0.06, 0.03], e: 1 });
+    blobs.push({ x: Math.cos(a) * d, y: Math.sin(a) * d, r: rr, h: 0.85, at: 1, lob: [r() * 6, r() * 6, r() * 6], amp: [0.1, 0.06, 0.03], e: 1 });
   }
+  /* the body's outline round its middle: the settled blot (stretched along its way), its burst and squash frames, the lumps as discs */
+  const outline = bodyOutline(blobs, dir);
+  const clearAt = (x, y) => !tok || outline.every(([px, py, pr]) => Math.hypot(x + px - tok.x, y + py - tok.y) >= tok.r + pr);
+  /* GORE3: the body and its rim lumps lie wholly inside the view (EDGE art px clear of it); what flies farther is trimmed below */
+  const keep = keepOf(R);
+  const inView = (x, y) => [keep * 2 < g.w ? clamp(x, keep, g.w - keep) : g.w / 2, keep * 2 < g.h ? clamp(y, keep, g.h - keep) : g.h / 2];
+  let cx, cy;
+  if (hasAt) {
+    /* a given place (a public call, a knock-down's second blow): kept, but moved straight away from the token while it would lie on it */
+    [cx, cy] = inView(opts.at.fx * g.w, opts.at.fy * g.h);
+    if (tok && !clearAt(cx, cy)) {
+      const ax = cx - tok.x, ay = cy - tok.y, al = Math.hypot(ax, ay) || 1;
+      let ok = false;
+      for (let d = al; d <= tok.r + R * 3 && !ok; d += 0.5) { const [x, y] = inView(tok.x + (ax / al) * d, tok.y + (ay / al) * d); if (clearAt(x, y)) { cx = x; cy = y; ok = true; } }
+      if (!ok) none = true;
+    }
+  } else if (tok) {
+    /* as close beside the token as its own outline allows (GORE3 stood it at a fixed distance: its lumps could touch the rim) */
+    const far = tok.r + R * 2.4 + 3;
+    [cx, cy] = inView(tok.x + dx * far, tok.y + dy * far);
+    for (let d = tok.r + R * 0.5; d < far; d += 0.5) { const [x, y] = inView(tok.x + dx * d, tok.y + dy * d); if (clearAt(x, y)) { cx = x; cy = y; break; } }
+    if (!clearAt(cx, cy)) none = true;
+  } else {
+    /* no token (a public call): on the side of the view the blood flies to, off the middle */
+    [cx, cy] = inView(g.w / 2 + (dx * reach - dy * perp) * g.w / 2, g.h / 2 + (dy * reach + dx * perp) * g.h / 2);
+  }
+  for (const b of blobs) { b.x += cx; b.y += cy; }
   /* crown spikes: thin spokes out of the rim, most of them the way it flew, each ending in a round bead (the comic's splat) */
   const tendrils = [];
   const nt = 6 + Math.round(10 * sm);
@@ -185,7 +222,9 @@ export function bloodPlan(g, opts = {}) {
   const sats = [];
   const ns = Math.round(14 + 46 * sm);
   /* a drop's size follows the blow, not the (smaller) body: the drops carry the splash */
-  const unit = Math.max(0.85, ((0.03 + 0.085 * sm) * m / 14) ** 0.5 * 0.95);
+  /* GORE4: ... but beside a small token (a far zoom) the drops shrink with the body (GORE3 kept them full size: drops as big as the
+     body itself, their tails longer than the way they had flown) */
+  const unit = Math.max(0.85, ((0.03 + 0.085 * sm) * m / 14) ** 0.5 * 0.95) * clamp((R / Rfree) ** 0.5, 0.5, 1);
   for (let i = 0; i < ns; i++) {
     const fwd = r() < 0.78;
     const a = fwd ? dir + (r() - 0.5) * Math.PI * 0.8 : r() * Math.PI * 2;
@@ -193,7 +232,8 @@ export function bloodPlan(g, opts = {}) {
     const dist = R * k;
     const big = r() < 0.3;
     const rad = Math.max(0.6, (big ? lerp(1.9, 3.2, r()) : lerp(0.7, 1.8, r())) * unit * lerp(1.15, 0.7, (k - 1.15) / 3.5));
-    const tail = k > 1.9 && r() < 0.7 ? Math.max(2, rad * lerp(2.2, 4.2, r())) : 0;
+    /* a tail points home and ends before the body (GORE4: never through it and out of its far side) */
+    const tail = k > 1.9 && r() < 0.7 ? Math.min(Math.max(2, rad * lerp(2.2, 4.2, r())), dist - R) : 0;
     const x = cx + Math.cos(a) * dist, y = cy + Math.sin(a) * dist;
     sats.push({ x, y, r: rad, a, tail, at: 1 + Math.min(5, Math.floor((k - 1.1) * 1.4)), h: 0.82, k });
   }
@@ -207,7 +247,7 @@ export function bloodPlan(g, opts = {}) {
     while (d < end) {
       const a = a0 + curve * (d / R);
       const k = d / R;
-      sats.push({ x: cx + Math.cos(a) * d, y: cy + Math.sin(a) * d, r: rad, a, tail: rad > 1.4 && r() < 0.35 ? rad * 2.5 : 0, at: 1 + Math.min(5, Math.floor((k - 1.1) * 1.4)), h: 0.82, k, trail: true });
+      sats.push({ x: cx + Math.cos(a) * d, y: cy + Math.sin(a) * d, r: rad, a, tail: rad > 1.4 && r() < 0.35 ? Math.min(rad * 2.5, Math.max(0, d - R)) : 0, at: 1 + Math.min(5, Math.floor((k - 1.1) * 1.4)), h: 0.82, k, trail: true });
       d += Math.max(2.2, rad * lerp(2.2, 3.6, r()));
       rad = Math.max(0.6, rad * lerp(0.82, 0.95, r()));
     }
@@ -215,12 +255,21 @@ export function bloodPlan(g, opts = {}) {
   /* GORE3: nothing reaches the view's edge (a drop or a tendril cut by it would end in a straight line) and no drop lands on the struck
      token (it stays readable); a tendril too long for the room is shortened, a drop that would not fit is not thrown */
   const fits = (x, y, rad) => x - rad >= EDGE && y - rad >= EDGE && x + rad <= g.w - 1 - EDGE && y + rad <= g.h - 1 - EDGE;
-  const onTok = (x, y, rad) => near && Math.hypot(x - near.fx * g.w, y - near.fy * g.h) < tokR * 0.9 + rad;
-  for (let i = sats.length - 1; i >= 0; i--) { const q = sats[i]; if (!fits(q.x, q.y, q.r * 1.4 + 1) || onTok(q.x, q.y, q.r)) sats.splice(i, 1); }
+  /* GORE4: ... and nothing lies on the struck token or crosses it on its way (a drop lands beyond the token only when its whole flight
+     from the body passes clear of it; a tail, a crown spike, a spray line, a drip stop short of it) */
+  const onTok = (x, y, rad) => !!tok && Math.hypot(x - tok.x, y - tok.y) < tok.r + rad + 0.75;
+  const crosses = (x0, y0, x1, y1, rad) => { if (!tok) return false; const n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0))); for (let i = 0; i <= n; i++) if (onTok(x0 + (x1 - x0) * (i / n), y0 + (y1 - y0) * (i / n), rad)) return true; return false; };
+  for (let i = sats.length - 1; i >= 0; i--) {
+    const q = sats[i], ux = Math.cos(q.a), uy = Math.sin(q.a);
+    if (!fits(q.x, q.y, q.r * 1.4 + 1) || crosses(cx + ux * R * 0.8, cy + uy * R * 0.8, q.x, q.y, q.r * 1.4)) sats.splice(i, 1);
+  }
   for (const td of tendrils) {
     const tip = (L) => [td.x + Math.cos(td.a + td.bend) * L, td.y + Math.sin(td.a + td.bend) * L];
-    while (td.len > 0.5 && !fits(...tip(td.len), td.bead + 1)) td.len *= 0.85;
+    const hits = (L) => { if (!tok) return false; const n = Math.max(2, Math.ceil(L)); for (let i = 0; i <= n; i++) { const u = i / n, a = td.a + td.bend * u; if (onTok(td.x + Math.cos(a) * L * u, td.y + Math.sin(a) * L * u, Math.max(td.w0 / 2, i === n ? td.bead : 0))) return true; } return false; };
+    while (td.len > 0.5 && (!fits(...tip(td.len), td.bead + 1) || hits(td.len))) td.len *= 0.85;
+    if (hits(td.len)) td.len = 0;      // it starts too near the rim: no spike there
   }
+  for (let i = tendrils.length - 1; i >= 0; i--) if (!(tendrils[i].len > 0)) tendrils.splice(i, 1);
   /* mist: single pixels and pairs in a wide cone */
   const mist = [];
   const nm = Math.round(8 + 60 * sm);
@@ -231,17 +280,24 @@ export function bloodPlan(g, opts = {}) {
   /* the burst frame (tick 0): spray lines out of the hit, the way it flies (no glob in flight) */
   const streaks = [];
   for (let i = 0; i < 5 + Math.round(6 * sm); i++) { const a = dir + (r() - 0.5) * Math.PI * 0.9; streaks.push({ a, d0: R * lerp(0.5, 0.9, r()), len: R * lerp(0.9, 2.2, r()), w: Math.max(1, R * lerp(0.05, 0.1, r())) }); }
-  for (let i = mist.length - 1; i >= 0; i--) if (!fits(mist[i].x, mist[i].y, 1.5) || onTok(mist[i].x, mist[i].y, 0)) mist.splice(i, 1);
-  for (const st of streaks) while (st.len > 0.5 && !fits(cx + Math.cos(st.a) * (st.d0 + st.len), cy + Math.sin(st.a) * (st.d0 + st.len), st.w + 1)) st.len *= 0.85;
+  for (let i = mist.length - 1; i >= 0; i--) if (!fits(mist[i].x, mist[i].y, 1.5) || onTok(mist[i].x, mist[i].y, 1.5)) mist.splice(i, 1);
+  for (const st of streaks) {
+    const end = (L) => [cx + Math.cos(st.a) * (st.d0 + L), cy + Math.sin(st.a) * (st.d0 + L)];
+    while (st.len > 0.5 && (!fits(...end(st.len), st.w + 1) || crosses(...end(0), ...end(st.len), st.w))) st.len *= 0.85;
+    if (crosses(...end(0), ...end(st.len), st.w)) st.len = 0;
+  }
+  for (let i = streaks.length - 1; i >= 0; i--) if (!(streaks[i].len > 0)) streaks.splice(i, 1);
+  /* a drip runs straight down: it stops above the token when the token lies under it */
+  const dripRoom = (x, y0) => { let room = g.h - 1 - EDGE - 3 - y0; if (tok && Math.abs(x - tok.x) < tok.r + 4) for (let d = 0; d < room; d += 0.5) if (onTok(x, y0 + d, 2.75)) { room = Math.max(0, d - 1); break; } return room; };
   /* drips: from the lowest parts of the big blobs, a bead swells, then runs stick-slip */
   const drips = [];
   const nd = 1 + Math.round(4 * Math.min(s, 1));
   for (let i = 0; i < nd; i++) {
     const u = (i + 0.5) / nd, a = Math.PI / 2 + (u - 0.5) * 1.6 + (r() - 0.5) * 0.25;
     const x0 = cx + Math.cos(a) * R * 0.86, y0 = cy + Math.sin(a) * R * 0.86;
-    drips.push(dripOf(r, x0, y0, R * lerp(0.7, 2.3, r()) * (0.6 + 0.4 * Math.min(s, 1)), lerp(450, 1100, r()), R > 14 ? 2 : 1, g.h - 1 - EDGE - 3 - y0));
+    drips.push(dripOf(r, x0, y0, R * lerp(0.7, 2.3, r()) * (0.6 + 0.4 * Math.min(s, 1)), lerp(450, 1100, r()), R > 14 ? 2 : 1, dripRoom(x0, y0)));
   }
-  for (const sat of sats) if (sat.r >= 1.9 && !sat.tail && r() < 0.45) drips.push(dripOf(r, sat.x, sat.y + sat.r * 0.8, sat.r * lerp(3, 7, r()), lerp(700, 1600, r()), 1, g.h - 1 - EDGE - 3 - (sat.y + sat.r * 0.8)));
+  for (const sat of sats) if (sat.r >= 1.9 && !sat.tail && r() < 0.45) drips.push(dripOf(r, sat.x, sat.y + sat.r * 0.8, sat.r * lerp(3, 7, r()), lerp(700, 1600, r()), 1, dripRoom(sat.x, sat.y + sat.r * 0.8)));
   /* life: wet, drying, dried, cleared (ms after contact). GORE2 (the owner: «Krew bardzo słabo znika»): it clears by CRUMBLING, not by a
      screen-door dither: the dried crust erodes from its thin parts inward (mist and small drops first, the body's heart last) on twos,
      flakes of crust break off the eroding edge and fall (raster.mjs drawBlood) */
@@ -251,15 +307,37 @@ export function bloodPlan(g, opts = {}) {
   life.gone = Math.max(life.gone, life.dry + 600);
   const glints = blobs.filter((b) => b.r >= 5).map((b) => ({ x: b.x - b.r * 0.42, y: b.y - b.r * 0.45, big: b.r >= 12 }));
   /* a knock-down's second blow: a second splash two ticks later, beside the first */
-  const plan = { kind: "blood", seed: opts.seed ?? "x", s, dir, dx, dy, R, cx, cy, blobs, tendrils, sats, mist, streaks, drips, glints, life,
+  /* tok: the disc the blood keeps out of (raster.mjs: no flake of its crust falls onto the token either) */
+  const plan = { kind: "blood", seed: opts.seed ?? "x", s, dir, dx, dy, R, cx, cy, blobs, tendrils, sats, mist, streaks, drips, glints, life, tok,
     safe: !!opts.safe, still: !!opts.still, g: { w: g.w, h: g.h } };
-  if (s >= 0.98 && !opts.second && !opts.safe) {
+  /* no room beside the token anywhere in this view (a token filling the screen): this seat draws no blood rather than blood on it */
+  if (none) Object.assign(plan, { none: true, blobs: [], tendrils: [], sats: [], mist: [], streaks: [], drips: [], glints: [] });
+  if (s >= 0.98 && !opts.second && !opts.safe && !none) {
     const a2 = dir + (r() < 0.5 ? 1 : -1) * lerp(0.6, 1.1, r());
     const p2 = bloodPlan(g, { ...opts, strength: 0.55, seed: `${opts.seed}|2`, dir: a2, second: true,
       at: { fx: clamp((cx + Math.cos(a2) * R * 2.2) / g.w, 0.04, 0.96), fy: clamp((cy + Math.sin(a2) * R * 2.2) / g.h, 0.04, 0.96) } });
-    plan.second = { plan: p2, delay: 2 * TICK_MS };
+    if (!p2.none) plan.second = { plan: p2, delay: 2 * TICK_MS };
   }
   return plan;
+}
+/* GORE4: the body's outline as [x, y, r] discs round its middle (r = 0: a point of the main blot's rim, the farthest of its burst,
+   squash and settled drawings: raster.mjs blob(); the lumps as discs with their own lobes) */
+function bodyOutline(blobs, dir) {
+  const out = [], main = blobs[0], N = 96;
+  const sum = main.amp.reduce((a, c) => a + c, 0);
+  for (let j = 0; j < N; j++) {
+    const th = (j / N) * 2 * Math.PI - Math.PI, phi = th - dir;
+    let v = 0;
+    for (let q = 0; q < main.fq.length; q++) v += main.amp[q] * Math.sin(main.fq[q] * th + main.lob[q]);
+    const settled = main.r * (1 + v) / Math.hypot(Math.cos(phi) / main.e, Math.sin(phi));
+    const squash = main.r * 1.1 * (1 + 0.5 * v);
+    const burst = main.r * 0.55 * (1 + 1.8 * v);
+    /* + the rim's finest lobe between two samples, and the pixel grid */
+    const rho = Math.max(settled, squash, burst) + main.r * sum * 0.12 + 1;
+    out.push([Math.cos(th) * rho, Math.sin(th) * rho, 0]);
+  }
+  for (const b of blobs.slice(1)) { const sa = b.amp.reduce((a, c) => a + c, 0); out.push([b.x, b.y, b.r * Math.max(1 + sa, 1.1 * (1 + 0.5 * sa)) + 1]); }
+  return out;
 }
 function dripOf(r, x, y, len, start, w, room = Infinity) {
   len = Math.max(0, Math.min(len, room));

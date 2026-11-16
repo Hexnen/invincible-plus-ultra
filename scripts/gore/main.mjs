@@ -10,7 +10,8 @@
        landed on the token reaction's blow (hook invincible-plus-ultra.tokenReact, phase "hit") when one plays, else after the same short
        wait on every seat; the seed is the change's server stamp, so every seat draws the same splash;
      - never for a token this seat does not see (hidden, another scene) nor one outside this seat's view (GORE3, finding 5 of the blind
-       review: a screen that saw no blow gets no blood); the splash lands beside the struck token as this seat sees it, sized by it;
+       review: a screen that saw no blow gets no blood); the splash lands beside the struck token as this seat sees it, sized by it,
+       and never on it (GORE4: plan.mjs TOK_GAP; at the view's edge the splash turns to a side that has room);
      - a new splash on a token makes its older ones crumble away (no stains piling up on one character);
      - the public API (game.modules.get("invincible-plus-ultra").api.gore, also globalThis.PlusUltraGore). Nothing here throws. */
 import * as P from "./plan.mjs";
@@ -182,6 +183,8 @@ function play(kind, o = {}) {
     if (!ensureGlass()) return null;
     fit();
     const it = { id: ++uid, kind, t0, make, plan: make(G.g), tok: tok?.id ?? null };
+    /* GORE4: no room beside the token in this view (it fills the screen): no blood here rather than blood on it */
+    if (it.plan.none) return null;
     /* GORE3: a new splash on a token: its older ones start to crumble as this one lands (one stain per character, no piling) */
     if (kind === "blood" && it.tok) for (const x of G.items) if (x.kind === "blood" && x.tok === it.tok && !(x.cutAt <= t0)) x.cutAt = Math.max(x.t0, t0);
     G.items.push(it);
@@ -233,7 +236,9 @@ export function tokScreen(tok) {
       x = T.a * c.x + T.c * c.y + T.tx + rect.left; y = T.b * c.x + T.d * c.y + T.ty + rect.top;
     }
     const sc = Math.abs(canvas.stage?.scale?.x ?? 1) || 1;
-    const r = (Math.max(Number(tok.w) || 0, Number(tok.h) || 0) / 2) * sc;
+    /* GORE4: the token as it is DRAWN (its art may be scaled past its square: the blood keeps clear of what the table sees) */
+    const art = (v) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : 0);
+    const r = (Math.max(art(tok.w), art(tok.h), art(tok.mesh?.width), art(tok.mesh?.height)) / 2) * sc;
     const vw = window.innerWidth, vh = window.innerHeight;
     if (!Number.isFinite(x) || !Number.isFinite(y) || !(vw > 0) || !(vh > 0)) return null;
     return { fx: x / vw, fy: y / vh, fr: Math.max(0.004, r / Math.min(vw, vh)), inView: x >= 0 && y >= 0 && x <= vw && y <= vh };

@@ -9,6 +9,9 @@
 // odcięcia animacji. Pęknięcia nie powinny być od impactów tylko np z rogów»): no step in the blood's dimming above what the eye can
 // see, nothing of a splash ever touches the view's edge, its clearing never cuts a straight line, the cracks start at a corner; finding
 // 5 of the blind review: blood beside the struck token, sized by it, none on a screen whose view does not hold it, no piling.
+// GORE4 (what GORE3 itself reported as still weak): no blood pixel ever lies on the struck token (any side, edge, zoom, strength; the
+// splash turns to a side with room at the view's edge), the dried crust holds no pale shape, the cracks read on a dark and on a light
+// ground while staying as small as before, a glint comes back along them while they hold, the table's levels 1 / 2 / 3 grow in order.
 // Runtime on a fake Foundry (scripts/gore/main.mjs): a Health drop plays blood on the token reaction's blow (or after the wait when the
 // reactions are off), Resolve plays cracks, a pushed roll's stress none, a hidden token nothing on a player's seat, "owners" only on
 // the owner's seat, the table's 0 = none, a heal nothing; the settings are world and hidden from Foundry's list; the window has the tab.
@@ -236,6 +239,70 @@ const T = P.TICK_MS;
   ck("every seat draws the same splash (one seed, its own view): the same drops in the same order", (() => { const a = P.bloodPlan(P.grid(1600, 900, 1), { strength: 0.7, seed: "seat", dir: 1, near: { fx: 0.3, fy: 0.4, fr: 0.03 } }), b = P.bloodPlan(P.grid(1366, 768, 2), { strength: 0.7, seed: "seat", dir: 1, near: { fx: 0.6, fy: 0.5, fr: 0.05 } }); return a.tendrils.length === b.tendrils.length && Math.abs(a.tendrils[0].a - b.tendrils[0].a) < 1e-9 && a.blobs[0].lob.join() === b.blobs[0].lob.join(); })());
 }
 
+/* ---------------- GORE4: never on the token, a clean crust, the table's levels ---------------- */
+{
+  /* the struck token's disc: over the WHOLE life of a splash (burst, squash, drops in flight, drips, drying, clearing, flakes) no blood
+     pixel's middle lies within the token's rim. Tokens against every edge and corner and in the open, eight ways the blood can fly,
+     three strengths (a knock-down's second blow included), three token sizes (a far zoom .. a close one), three windows. GORE3 put
+     the splash ON the token whenever the view's edge pushed it back (seen live: a token at the top of the view). */
+  let onTok = 0, cases = 0, none = 0, farOff = 0, drawn = 0;
+  const wins = [[1600, 900, 1], [1366, 768, 1.25], [1000, 620, 2]];
+  for (const [vw, vh, dpr] of wins) {
+    const ge = P.grid(vw, vh, dpr), se = R.surface(ge.w, ge.h), m = Math.min(ge.w, ge.h);
+    for (const [fx, fy] of [[0.5, 0.5], [0.5, 0.06], [0.5, 0.94], [0.05, 0.5], [0.95, 0.5], [0.04, 0.05], [0.96, 0.95], [0.3, 0.7]]) for (const fr of [0.012, 0.045, 0.09]) for (let di = 0; di < 8; di++) {
+      const sv = [0.3, 0.7, 1][(di + cases) % 3];
+      const p = P.bloodPlan(ge, { strength: sv, seed: `tok${fx}${fy}${fr}${di}`, dir: (di / 8) * Math.PI * 2 + 0.2, near: { fx, fy, fr } });
+      cases++;
+      if (p.none) { none++; continue; }
+      const tx = fx * ge.w, ty = fy * ge.h, tr = fr * m;
+      if (Math.hypot(p.cx - tx, p.cy - ty) > tr + P.TOK_GAP + p.R * 1.8 + 3) farOff++;      // still BESIDE it: its body's edge a few px from the rim
+      const it = { plan: p, t0: 0 }, end = P.endOf(p);
+      const x0 = Math.max(0, Math.floor(tx - tr - 1)), x1 = Math.min(ge.w - 1, Math.ceil(tx + tr + 1)), y0 = Math.max(0, Math.floor(ty - tr - 1)), y1 = Math.min(ge.h - 1, Math.ceil(ty + tr + 1));
+      for (let k = 0; k * T <= end; k += k < 14 ? 1 : k * T > p.life.gone - 100 ? 1 : 9) {
+        R.render(se, [it], k * T + 1);
+        const a = se.rgba;
+        if (k === 12) { for (let j = 3; j < a.length; j += 4) if (a[j]) { drawn++; break; } }
+        for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (a[(y * ge.w + x) * 4 + 3] && Math.hypot(x + 0.5 - tx, y + 0.5 - ty) < tr) onTok++;
+      }
+    }
+  }
+  ck(`the blood stands beside the struck token, never on it (${cases} splashes at every edge, corner, zoom and way, 3 windows: ${onTok} px on a token over their whole lives)`, onTok === 0);
+  ck(`... and every one of them is still drawn, right beside its token (${none} without room, ${farOff} standing off, ${drawn} of ${cases} drawn)`, none === 0 && farOff === 0 && drawn === cases);
+  {
+    /* at the view's edge the splash turns to a side that has room (it is not pushed back onto the token, not dropped) */
+    const up = P.bloodPlan(g, { strength: 0.7, seed: "turn", dir: -Math.PI / 2, near: { fx: 0.5, fy: 0.07, fr: 0.085 } });
+    const free = P.bloodPlan(g, { strength: 0.7, seed: "turn", dir: -Math.PI / 2, near: { fx: 0.5, fy: 0.5, fr: 0.085 } });
+    const turn = Math.abs(Math.atan2(Math.sin(up.dir + Math.PI / 2), Math.cos(up.dir + Math.PI / 2)));
+    ck(`a token at the top of the view, the blood flying up: the splash turns ${(turn * 180 / Math.PI).toFixed(0)} deg to the nearest side with room; in the open it keeps its way`, !up.none && turn > 0.3 && turn <= Math.PI / 2 + 0.36 && Math.abs(free.dir + Math.PI / 2) < 1e-9);
+    ck("... the same drops either way (the seeded numbers do not depend on the place)", up.blobs[0].lob.join() === free.blobs[0].lob.join() && up.blobs.length === free.blobs.length);
+    /* a token that fills the view leaves no room: no blood on that seat rather than blood on it */
+    const full = P.bloodPlan(g, { strength: 0.7, seed: "full", dir: 1, near: { fx: 0.5, fy: 0.5, fr: 0.95 } });
+    ck("a token filling the view: no blood is drawn there (never on the token)", full.none === true && count(shot([{ plan: full, t0: 0 }], 600)) === 0);
+    /* a drip never runs down onto a token under the splash */
+    const over = P.bloodPlan(g, { strength: 1, seed: "over", dir: -Math.PI / 2, near: { fx: 0.5, fy: 0.6, fr: 0.07 } });
+    const tx = 0.5 * g.w, ty = 0.6 * g.h, tr = 0.07 * Math.min(g.w, g.h);
+    const under = over.drips.filter((d) => Math.abs(d.x - tx) < tr);
+    ck(`a splash over the token: its ${under.length} drips above the token stop short of it`, under.length >= 1 && under.every((d) => Math.hypot(d.x - tx, d.y + d.len + 2 - ty) >= tr));
+  }
+  /* the dried crust: one flat crust colour with its dark rim, nothing paler in it (GORE3 left the lit crescents of the body and its
+     lumps in the rim: they met in pale L and T shapes) */
+  let pale = 0, crust = 0, dark = 0;
+  const flat = R.PAL.dried.b, lum = (c) => c[0] + c[1] + c[2];
+  for (const [sv, seed] of [[0.35, "crA"], [0.7, "crB"], [1, "crC"], [0.9, "low"]]) {
+    const p = P.bloodPlan(g, { strength: sv, seed, dir: 1.4, at: { fx: 0.22, fy: 0.3 } });
+    const fr = shot([{ plan: p, t0: 0 }], p.life.gone - 60);
+    for (let i = 0; i < fr.length; i += 4) if (fr[i + 3]) { const l = fr[i] + fr[i + 1] + fr[i + 2]; if (l > lum(flat)) pale++; else if (l === lum(flat)) crust++; else dark++; }
+  }
+  ck(`the dried crust holds no pale shape (${pale} px lighter than the flat crust; ${crust} crust px, ${dark} darker rim px)`, pale === 0 && crust > 1000 && dark > 500);
+  /* the table's levels (0 = none is checked with the rule): 1 < 2 < 3 in what a seat gets, blood and cracks */
+  const ink = (kind, lvl) => { let n2 = 0; for (let i = 0; i < 6; i++) { const s2 = P.scaled(0.6, lvl); const plan = kind === "blood" ? P.bloodPlan(g, { strength: s2, seed: `lv${i}`, dir: i, at: { fx: 0.25, fy: 0.35 } }) : P.crackPlan(g, { strength: s2, seed: `lv${i}` }); n2 += count(shot([{ plan, t0: 0 }], 1500), (a, j) => a[j + 3] > 40); } return n2; };
+  const bl = [1, 2, 3].map((l) => ink("blood", l)), cr = [1, 2, 3].map((l) => ink("cracks", l));
+  ck(`the table's blood level 1 < 2 < 3 (${bl.join(" < ")} px of six blows)`, bl[0] < bl[1] * 0.85 && bl[1] < bl[2] * 0.9);
+  ck(`the table's crack level 1 < 2 < 3 (${cr.join(" < ")} px of six breaks)`, cr[0] < cr[1] * 0.9 && cr[1] < cr[2] * 0.95);
+  const hold = (h) => P.endOf(P.bloodPlan(g, { strength: 0.6, seed: "hold", dir: 1, hold: h }));
+  ck("the table's hold: 0.5 = shorter, 2 = longer, blood and cracks", hold(0.5) < hold(1) && hold(1) < hold(2) && P.crackPlan(g, { strength: 0.6, seed: "h", hold: 0.5 }).life.gone < P.crackPlan(g, { strength: 0.6, seed: "h", hold: 2 }).life.gone);
+}
+
 /* ---------------- GORE3: the cracks come from the screen's corner ---------------- */
 {
   let fromCorner = true, inward = true, early = true, hub = true, n3 = 0;
@@ -294,7 +361,39 @@ const T = P.TICK_MS;
     maxCover = Math.max(maxCover, n2 / (g.w * g.h)); maxAlpha = Math.max(maxAlpha, sa / Math.max(1, n2));
   }
   ck(`cracks stay in a corner (all four used: ${corners.size}), within 0.45 of the short side from it`, inCorner && corners.size === 4);
-  ck(`cracks are subtle: their lines cover at most ${(maxCover * 100).toFixed(2)} % of the view (<= 1.5 %), mean alpha ${maxAlpha.toFixed(0)} (<= 175; the first version drew 215-232)`, maxCover <= 0.015 && maxAlpha <= 175);
+  /* GORE4: the alpha cap moved 175 -> 195 on purpose. GORE3 itself reported the cracks as faint to the point of being hard to notice
+     (175 was GORE2's answer to «dużo subtelniejsze», drawn as dark hairlines that vanish on a dark map and on the interface's dark
+     bars). They stay subtle by what the owner asked for: small, in a corner (the check above), covering the same sliver of the view
+     (the 1.5 % cap is unchanged), still under the first version's 215-232; they are no longer invisible (the visibility check below). */
+  ck(`cracks are subtle: their lines cover at most ${(maxCover * 100).toFixed(2)} % of the view (<= 1.5 %), mean alpha ${maxAlpha.toFixed(0)} (<= 195; the first version drew 215-232)`, maxCover <= 0.015 && maxAlpha <= 195);
+  {
+    /* GORE4: ... yet a real effect a table sees. A crack pixel is SEEN on a ground when it moves that ground's luma by >= 50 levels.
+       On a dark ground (the Warehouse at night, the interface's bars) at least 45 % as many pixels are seen as on a light one, at
+       every strength (GORE3: 26 %: only the short lit stretch by the corner), and the weakest crack a table can get shows >= 90 */
+    const luma = (a, j) => 0.2126 * a[j] + 0.7152 * a[j + 1] + 0.0722 * a[j + 2];
+    let worst = 9, least = 1e9;
+    for (const sv of [0.2, 0.35, 0.5, 0.65, 0.8, 1]) {
+      let dark = 0, light = 0;
+      for (let i = 0; i < 8; i++) {
+        const fr = shot([{ plan: P.crackPlan(g, { strength: sv, seed: `vis${i}` }), t0: 0 }], 2000);
+        let d1 = 0;
+        for (let j = 0; j < fr.length; j += 4) if (fr[j + 3]) { const al = fr[j + 3] / 255, l = luma(fr, j); if (Math.abs(l * al + 24 * (1 - al) - 24) >= 50) { dark++; d1++; } if (Math.abs(l * al + 205 * (1 - al) - 205) >= 50) light++; }
+        least = Math.min(least, d1);
+      }
+      worst = Math.min(worst, dark / Math.max(1, light));
+    }
+    ck(`cracks read on a dark ground as well as on a light one (seen on dark / seen on light >= ${worst.toFixed(2)} at every strength, >= 0.45; the weakest shows ${least} px on dark, >= 90)`, worst >= 0.45 && least >= 90);
+    /* the glint comes back while they hold (the quiet way a still corner gets noticed), never on a reduced-motion or photosensitive seat */
+    const p = P.crackPlan(g, { strength: 0.6, seed: "sweep" }), it = { plan: p, t0: 0 };
+    const white = (ms, q = it) => count(shot([q], ms), (a, i) => a[i] === 255 && a[i + 1] === 255 && a[i + 2] === 255);
+    const b0 = P.breakAt(p);
+    ck("a glint runs out along the holding cracks again and again (two sweeps seen, none between them)", b0 > R.SWEEP_AT + R.SWEEP + 300 && white(R.SWEEP_AT + 200) > 0 && white(R.SWEEP_AT + R.SWEEP + 200) > 0 && white(R.SWEEP_AT + R.GLINT_MS + 300) === 0 && white(R.SWEEP_AT - 200) === 0);
+    ck("... its place moves outward along them", (() => { const far = (ms) => { const fr = shot([it], ms); let m = 0; for (let j = 0; j < fr.length; j += 4) if (fr[j] === 255 && fr[j + 1] === 255 && fr[j + 2] === 255 && fr[j + 3]) { const q = j / 4; m = Math.max(m, Math.hypot(q % g.w - p.origin.x, ((q / g.w) | 0) - p.origin.y)); } return m; }; return far(R.SWEEP_AT + 350) > far(R.SWEEP_AT + 100) + 3; })());
+    const stl = { plan: P.crackPlan(g, { strength: 0.6, seed: "sweep", still: true }), t0: 0 }, sfe = { plan: P.crackPlan(g, { strength: 0.6, seed: "sweep", safe: true }), t0: 0 };
+    ck("... not on a reduced-motion seat, not on a photosensitive seat", white(R.SWEEP_AT + 200, stl) === 0 && white(R.SWEEP_AT + 200, sfe) === 0 && R.glintAt(stl.plan, 300) === -1);
+    ck("the crushed corner flashes on the strike's first two ticks only", white(1) > 0 && white(T + 1) > 0 && white(2 * T + 1) === 0);
+    ck("the holding cracks keep the frame loop awake for the glint (a still or photosensitive seat sleeps)", R.render(sf, [it], 2000).moving === true && R.render(sf, [stl], 2000).moving === false && R.render(sf, [sfe], 2000).moving === false);
+  }
   /* GORE2 (the owner on the old retraction: «Tak samo pęknięcia» [słabo znikają]): the glass FALLS OUT, shard by shard, crater first */
   const top = { plan: P.crackPlan(g, { strength: 0.8, seed: "fall", corner: 0 }), t0: 0 };
   const b0 = P.breakAt(top.plan);
@@ -460,6 +559,17 @@ const T = P.TICK_MS;
   advance(M.QUIET + M.HIT_WAIT + 20);
   ck("a token outside this seat's view: no blood (that screen saw no blow)", live() === 0);
   toks[1].center = { x: 800, y: 450 };
+  reset();
+  /* GORE4: beside the token on the live path too, and nothing where a token leaves no room */
+  toks[0].center = { x: 800, y: 40 };
+  const hTop = api.blood({ strength: 0.7, token: toks[0], seed: "top", dir: -Math.PI / 2 });
+  ck("a token at the top of this seat's view: the blood is played (beside it)", !!hTop && live() === 1);
+  api.clear({ quick: true });
+  toks[0].center = { x: 800, y: 450 }; toks[0].w = toks[0].h = 1900;
+  ck("a token that fills this seat's view: no blood there", api.blood({ strength: 0.7, token: toks[0], seed: "fill" }) === null && live() === 0);
+  toks[0].w = toks[0].h = 100; toks[0].mesh = { width: 160, height: 150 };
+  ck("tokScreen: a token whose art is drawn larger than its square counts by its art", Math.abs(M.tokScreen(toks[0]).fr - 80 / 900) < 1e-9);
+  delete toks[0].mesh;
   reset();
   ck("tokScreen: the token's middle and radius in this view's fractions", (() => { const v = M.tokScreen(toks[0]); return v && Math.abs(v.fx - 0.5) < 1e-9 && Math.abs(v.fy - 0.5) < 1e-9 && Math.abs(v.fr - 50 / 900) < 1e-9 && v.inView; })());
   /* GORE3: no piling: a new splash on the same token makes the older one crumble as it lands */
