@@ -130,7 +130,10 @@ export const SEATS = {
 
 let runN = 0;
 /* one seat playing one roll: every lettering it drew, in this seat's client px (box, cap px), and where the roller stands on its screen.
-   o: { seat, layer, outcome, bd, off (view centre from the roller, squares), seedTag } */
+   o: { seat, layer, outcome, bd, off (view centre from the roller, squares), seedTag,
+        parked (SPLASHBLOCK: the action camera's shot { x, y, scale } as moinen-maps' director reports it while it is away from home),
+        probe (SPLASHBLOCK: called with { Stage, ctl, toClient, board } once the moment has landed (the timers up to probeAt ms, 1500 by
+        default, have run) and before it ends; its value -> res.probe) } */
 export async function seatPlay(o) {
   await realEngine();
   const s = typeof o.seat === "string" ? SEATS[o.seat] : o.seat;
@@ -150,17 +153,19 @@ export async function seatPlay(o) {
     const pan = { x: W / 2 - center.x * zoom, y: H / 2 - center.y * zoom };
     const toClient = (q) => ({ x: q.x * zoom + pan.x, y: q.y * zoom + pan.y });
     globalThis.canvas = { ready: true, grid: { size: GS }, dimensions: { size: GS, sceneRect: { x: 0, y: 0, width: 7000, height: 4200 } },
-      stage: { scale: { x: zoom }, pivot: { x: center.x, y: center.y }, toLocal: (q) => ({ x: (q.x - pan.x) / zoom, y: (q.y - pan.y) / zoom }), toGlobal: toClient },
+      stage: { scale: { x: zoom }, pivot: { x: center.x, y: center.y }, position: { x: W / 2, y: H / 2 }, toLocal: (q) => ({ x: (q.x - pan.x) / zoom, y: (q.y - pan.y) / zoom }), toGlobal: toClient },
       app: { view: { getBoundingClientRect: () => ({ left: 0, top: 0 }) }, screen: { width: W, height: H } },
       tokens: { placeables: b.tokens, get: (id) => b.tokens.find((t) => t.id === id) }, notes: { placeables: b.notes } };
     /* o.badgePlace "corner": the comic looks' default (the live Warehouse), the point from the public geometry (here: up-left of the label) */
     const corner = (q) => ({ x: q.label.x - 0.4 * GS, y: q.label.y - 0.3 * GS });
     const zapi = { zones: () => ({ zones: b.badges }), look: () => ({ numbers: "always", place: o.badgePlace ?? "center", who: o.badgeWho ?? "all" }), geometry: { cornerPoint: corner } };
-    globalThis.game = { user: { isGM: gm }, modules: { get: (id) => (id === "moinen-maps" && b.badges.length ? { active: true, api: { zones: zapi } } : null) } };
+    globalThis.game = { user: { isGM: gm }, modules: { get: (id) => (id === "moinen-maps" && (b.badges.length || o.parked) ? { active: true, api: { ...(b.badges.length ? { zones: zapi } : {}), ...(o.parked ? { directorStage: { status: () => ({ home: { x: center.x, y: center.y, scale: zoom }, parked: o.parked }) } } : {}) } } : null) } };
     const L = fakeEngine(k, !!o.cut); Stage.setLetters(L); Stage.setLayer(o.layer ?? "screen");
     const tag = o.seedTag ?? `${o.bd ?? "empty"}-${o.outcome}`;
-    const ctl = Stage.play(out.e, { token: b.hero, scale: 1, hold: 1, fx: 1, fullFrom: out.full ? 0.7 : null, seed: "SS-" + tag, resolve: () => ({ now: 5, max: 8 }), targets: [b.target.id], from: b.hero, at: 0 });
-    let t; while ((t = timers.filter((x) => !x.done).sort((a, b2) => a.ms - b2.ms)[0])) { t.done = true; t.fn(); }
+    const ctl = Stage.play(out.e, { token: b.hero, scale: 1, hold: 1, fx: 1, fullFrom: out.full ? 0.7 : null, seed: "SS-" + tag, resolve: () => ({ now: 5, max: 8 }), targets: [b.target.id], from: b.hero, at: 0, ...(o.probe ? { momentId: "SB-" + runN } : {}) });
+    let t, probed;
+    if (o.probe) { while ((t = timers.filter((x) => !x.done && x.ms <= (o.probeAt ?? 1500)).sort((a, b2) => a.ms - b2.ms)[0])) { t.done = true; t.fn(); } probed = o.probe({ Stage, ctl, toClient, board: b }); }
+    while ((t = timers.filter((x) => !x.done).sort((a, b2) => a.ms - b2.ms)[0])) { t.done = true; t.fn(); }
     const box = (tk) => { const a = toClient({ x: tk.document.x, y: tk.document.y }); return { l: a.x, t: a.y, r: a.x + GS * zoom, b: a.y + GS * zoom }; };
     const drawn = L.calls.filter((c) => c.o.seed?.startsWith("SS-")).map((c) => {
       const lp = planOf(c.text, { ...c.o, reduced: false }), world = c.o.space === "world", px = world ? zoom : 1;
@@ -175,6 +180,7 @@ export async function seatPlay(o) {
       badges: b.badges.map((q) => { const c = toClient(o.badgePlace === "corner" ? corner(q) : q.label), rr = Math.min(19, Math.max(8, 0.8 * q.label.r * zoom)) * 1.2; return { l: c.x - rr, t: c.y - rr, r: c.x + rr, b: c.y + rr }; }),
       gauges: gaugesOf(document.all), pins: b.notes.map((n) => { const q = toClient({ x: n.document.x, y: n.document.y }); return { x: q.x, y: q.y }; }),
       ui: Object.fromEntries(Object.entries(document.rects).map(([kk, v]) => [kk, v])), yielded: [...new Set(Object.values(document.els).filter((e) => e.yielded).map((e) => e.sel))] };
+    if (o.probe) res.probe = probed;
     Stage.clearAll(); Stage.setLayer("screen"); S.setReduced(false);
     return res;
   } finally { globalThis.setTimeout = st; globalThis.clearTimeout = ct; delete globalThis.canvas; delete globalThis.game; }
