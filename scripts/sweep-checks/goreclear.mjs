@@ -224,7 +224,7 @@ function lifeOn(ge, se, p, K) {
   globalThis.matchMedia = () => ({ matches: false });
   globalThis.ImageData = class { constructor(d, w, h) { this.data = d; this.width = w; this.height = h; } };
   let lastPut = null;
-  const el = () => ({ style: {}, setAttribute() {}, appendChild() {}, after() {}, remove() {}, isConnected: true, getContext: () => ({ putImageData(img) { lastPut = img; }, clearRect() {} }) });
+  const el = () => ({ style: {}, setAttribute() {}, appendChild() {}, after() {}, remove() {}, isConnected: true, getContext: () => ({ putImageData(img) { lastPut = img; }, clearRect() {}, drawImage() {}, getImageData: () => ({ data: new Uint8ClampedArray(16 * 16 * 4).fill(255) }) }) });
   const board = { ...el() };
   globalThis.document = { getElementById: (id) => (id === "board" ? board : null), createElement: () => el(), body: el() };
   globalThis.getComputedStyle = () => ({ zIndex: "0" });
@@ -300,6 +300,23 @@ function lifeOn(ge, se, p, K) {
   const under = onDisc(discOf(toks[1]));
   advance(1500);
   ck(`a token comes to stand under a splash: no blood over it from the next drawing on (${under} px), the rest of the splash stays (${shown()} of ${ink1} px)`, live1 === 1 && ink1 > 300 && under === 0 && onDisc(discOf(toks[1])) === 0 && shown() > ink1 * 0.3 && api.state().live === 1 && api.log()[0].masked > 0 && api.log()[0].gaveWay === null);
+  /* the camera moves (every token shifts on the screen at once): the glass is drawn again in the camera's own step, not on its next beat */
+  { const a = lastPut.data; let bx = -1, by = -1, best = 0; for (let y = 4; y < g.h - 4; y += 2) for (let x = 4; x < g.w - 4; x += 2) { let c = 0; for (let v = -3; v <= 3; v++) for (let u = -3; u <= 3; u++) if (a[((y + v) * g.w + x + u) * 4 + 3]) c++; if (c > best) { best = c; bx = x; by = y; } }
+    toks[2].center = { x: (bx / g.w) * 1600, y: (by / g.h) * 900 };
+    const stale = onDisc(discOf(toks[2]));
+    for (const fn of hooks.canvasPan ?? []) fn();
+    ck(`the camera moves a token under a splash: the glass is drawn again in the same step, no blood over it (${stale} px lay there; ${onDisc(discOf(toks[2]))} after)`, (hooks.canvasPan ?? []).length > 0 && stale > 0 && onDisc(discOf(toks[2])) === 0 && shown() > 100); }
+  toks[2].center = { x: 800, y: 550 };
+  /* a token whose picture fills its square (opaque corners, no ring): its whole square is kept free, not only the disc in it */
+  { toks[1].document.texture = { src: "square.webp" }; toks[1].mesh = { texture: { baseTexture: { resource: { source: { width: 64, height: 64 } } } } };
+    const a = lastPut.data; let bx = -1, by = -1, best = 0; for (let y = 6; y < g.h - 6; y += 2) for (let x = 6; x < g.w - 6; x += 2) { let c = 0; for (let v = -5; v <= 5; v++) for (let u = -5; u <= 5; u++) if (a[((y + v) * g.w + x + u) * 4 + 3]) c++; if (c > best) { best = c; bx = x; by = y; } }
+    toks[1].center = { x: (bx / g.w) * 1600, y: (by / g.h) * 900 };
+    const sq = { x: toks[1].center.x - 50, y: toks[1].center.y - 50, w: 100, h: 100 };
+    const lay = onBox(sq);
+    advance(100);
+    const kept = api.keepOuts().tokens.find((t) => t.id === "T2");
+    ck(`a token with a square picture under a splash: kept as a box, its whole square free (${lay} px lay there; ${onBox(sq)} after)`, kept && kept.l !== undefined && kept.fr === undefined && lay > 0 && onBox(sq) === 0 && shown() > 100);
+    delete toks[1].document.texture; delete toks[1].mesh; }
   toks[1].center = { x: 900, y: 450 };
 
   /* lettering comes to stand on a splash already on the glass: the splash crumbles away at once, quickly */
@@ -345,6 +362,7 @@ function lifeOn(ge, se, p, K) {
   const tr = readFileSync(join(root, "tokenreact", "main.mjs"), "utf8"), gm = readFileSync(join(root, "gore", "main.mjs"), "utf8");
   ck("the token reactions answer the hook's phase \"ink\" with their standing boxes (layout.mjs standAt, where follow() last drew them)", /phase === "ink"\) inkNow\(d\.rects\)/.test(tr) && /function inkNow\(rects\)[\s\S]{0,900}Lay\.standAt\(c, p\.g, k\)/.test(tr) && /plan\.at = \{ c, k \}/.test(tr));
   ck("the glass asks them when a splash is laid out, while one stays, and when a blow announces itself", /Hooks\.callAll\(REACT_HOOK, \{ phase: "ink", rects \}\)/.test(gm) && /tick % P\.GUARD_TICKS === 0\) guard\(now\)/.test(gm) && /if \(G\.items\.length\) setTimeout\(guard, 0\)/.test(gm));
+  ck("the glass is drawn again when the camera moves, from the stage's own pivot and scale (a frame ahead of the drawn transform)", gm.includes('Hooks.on("canvasPan"') && gm.includes("(c.x - st.pivot.x) * st.scale.x + st.position.x + o.left"));
   ck("the take's switch is never stored (no setting, no flag)", !/settings\.(register|set)\([^)]*[cC]lear/.test(gm) && /let CLEAR = true/.test(gm));
 }
 

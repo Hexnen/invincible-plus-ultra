@@ -136,7 +136,31 @@ function fit() {
 function seesTok(t) {
   try { return !!t && !t.destroyed && t.scene?.id === canvas.scene?.id && (t.isVisible ?? t.visible) !== false && (t.document?.hidden !== true || !!game.user?.isGM); } catch { return false; }
 }
-/** the tokens this seat sees, as discs in fractions of its view ({ id, fx, fy, fr }); only those that touch the view */
+/* a token's art: a round portrait (a disc) or a picture that fills its square (a box). Round: the dynamic ring is on, or the picture's
+   corners are see-through (read once per picture from a 16 x 16 copy); when it cannot be read: round, as GORE4 takes the struck token */
+const artShapes = new Map();
+function artShape(t) {
+  try {
+    if (t.document?.ring?.enabled) return "disc";
+    const src = String(t.document?.texture?.src ?? "");
+    if (artShapes.has(src)) return artShapes.get(src);
+    let shape = "disc";
+    const el = t.mesh?.texture?.baseTexture?.resource?.source ?? t.texture?.baseTexture?.resource?.source ?? null;
+    if (el && (el.width || el.videoWidth) && typeof document?.createElement === "function") {
+      const c = document.createElement("canvas");
+      c.width = c.height = 16;
+      const x = c.getContext("2d", { willReadFrequently: true });
+      x.drawImage(el, 0, 0, 16, 16);
+      const d = x.getImageData(0, 0, 16, 16).data, a = (px, py) => d[(py * 16 + px) * 4 + 3];
+      if ([a(0, 0), a(15, 0), a(0, 15), a(15, 15)].filter((v) => v > 128).length >= 3) shape = "box";
+    }
+    if (artShapes.size > 400) artShapes.clear();
+    artShapes.set(src, shape);
+    return shape;
+  } catch { return "disc"; }
+}
+/** the tokens this seat sees, in fractions of its view: a round portrait as a disc { id, fx, fy, fr }, a picture that fills its square
+    as a box { id, l, t, r, b }; only those that touch the view */
 export function tokDiscs(skip = null) {
   const out = [];
   try {
@@ -147,7 +171,8 @@ export function tokDiscs(skip = null) {
       if (!s) continue;
       const rx = (s.fr * m) / vw, ry = (s.fr * m) / vh;
       if (s.fx + rx < 0 || s.fy + ry < 0 || s.fx - rx > 1 || s.fy - ry > 1) continue;
-      out.push({ id: t.id, fx: s.fx, fy: s.fy, fr: s.fr });
+      if (artShape(t) === "box") out.push({ id: t.id, l: s.fx - rx, t: s.fy - ry, r: s.fx + rx, b: s.fy + ry });
+      else out.push({ id: t.id, fx: s.fx, fy: s.fy, fr: s.fr });
     }
   } catch (err) { once(err); }
   return out;
@@ -164,7 +189,7 @@ export function inkBoxes() {
   } catch (err) { once(err); }
   return out;
 }
-const discsPx = (ds, gap = 0) => { const g = G.g, m = Math.min(g.w, g.h); return ds.map((d) => ({ id: d.id, x: d.fx * g.w, y: d.fy * g.h, r: d.fr * m + gap })); };
+const discsPx = (ds, gap = 0) => { const g = G.g, m = Math.min(g.w, g.h); return ds.map((d) => (d.fr !== undefined ? { id: d.id, x: d.fx * g.w, y: d.fy * g.h, r: d.fr * m + gap } : { id: d.id, x0: d.l * g.w - gap, y0: d.t * g.h - gap, x1: d.r * g.w + gap, y1: d.b * g.h + gap })); };
 const boxesPx = (bs) => { const g = G.g; return bs.map((b) => ({ x0: b.l * g.w, y0: b.t * g.h, x1: b.r * g.w, y1: b.b * g.h })); };
 function quicken(plan) { for (const q of plan.second ? [plan, plan.second.plan] : [plan]) q.life = { ...q.life, dissolve: Math.min(q.life.dissolve, P.CLEAR_FAST) }; }
 /* lettering stands (or is about to stand) where a splash lies: the splash crumbles away at once, quickly (never a straight cut round
@@ -352,13 +377,26 @@ export function mayShow({ gm, sameScene, visible, hidden, owner }, seats = "all"
   if (seats === "owners") return gm || owner;
   return true;
 }
+/* where the board's canvas starts in the window (read at most twice a second) */
+let originAt = -1e9, origin = { left: 0, top: 0 };
+function boardOrigin() {
+  const t = pnow();
+  if (t - originAt > 500) { originAt = t; try { const r = canvas.app?.view?.getBoundingClientRect?.(); origin = { left: r?.left ?? 0, top: r?.top ?? 0 }; } catch { origin = { left: 0, top: 0 }; } }
+  return origin;
+}
 /** where a token is on THIS screen: its middle and radius as fractions of the view (radius / the short side), and whether the view
     holds its middle */
 export function tokScreen(tok) {
   try {
     const c = tok.center;
     let x, y;
-    if (typeof canvas.clientCoordinatesFromCanvas === "function") ({ x, y } = canvas.clientCoordinatesFromCanvas(c));
+    /* GORECLEAR: from the stage's own pivot and scale when it has them: while the camera moves they are a frame ahead of the drawn
+       transform (clientCoordinatesFromCanvas reads the last drawn one), and the glass is drawn for the frame to come */
+    const st = canvas.stage;
+    if (st?.pivot && st.position && Number.isFinite(st.pivot.x) && Number.isFinite(st.position.x) && Number.isFinite(st.scale?.x)) {
+      const o = boardOrigin();
+      x = (c.x - st.pivot.x) * st.scale.x + st.position.x + o.left; y = (c.y - st.pivot.y) * (st.scale.y ?? st.scale.x) + st.position.y + o.top;
+    } else if (typeof canvas.clientCoordinatesFromCanvas === "function") ({ x, y } = canvas.clientCoordinatesFromCanvas(c));
     else {
       const T = canvas.stage.worldTransform, rect = canvas.app?.view?.getBoundingClientRect?.() ?? { left: 0, top: 0 };
       x = T.a * c.x + T.c * c.y + T.tx + rect.left; y = T.b * c.x + T.d * c.y + T.ty + rect.top;
@@ -556,6 +594,17 @@ function registerHooks() {
   Hooks.on("createChatMessage", onMessage);
   Hooks.on("updateChatMessage", onMessage);
   window.addEventListener("resize", () => { if (G.items.length) kick(); });
+  /* GORECLEAR: the camera moves under a splash: the glass is drawn again at once, in the camera's own step (not on its next 24 Hz
+     beat), so the part of it over a token goes in the same frame the token arrives under it */
+  Hooks.on("canvasPan", () => {
+    try {
+      if (!CLEAR || !G.items.some((it) => it.kind === "blood")) return;
+      clearTimeout(G.idle);
+      if (G.raf) { try { cancelAnimationFrame(G.raf); } catch { /* none */ } G.raf = 0; }
+      G.lastTick = -1;
+      frame();
+    } catch (err) { once(err); }
+  });
 }
 export function start(phases = {}) {
   try {

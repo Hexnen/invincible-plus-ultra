@@ -126,10 +126,18 @@ export function render(sf, items, now, mask = null) {
   const dirty = union(prev, sf.box);
   return { box: dirty, live, moving };
 }
-function cutOut(sf, b, discs) {
+function cutOut(sf, b, shapes) {
   const { w, T, G } = sf;
   let n = 0;
-  for (const d of discs) {
+  for (const d of shapes) {
+    if (d.r === undefined) {      // a box (a token whose art fills its square)
+      for (let y = Math.max(b.y0, Math.ceil(d.y0 - 0.5)); y <= Math.min(b.y1, Math.floor(d.y1 - 0.5)); y++) {
+        if (sf.hi[y] < 0) continue;
+        const x0 = Math.max(sf.lo[y], Math.ceil(d.x0 - 0.5)), x1 = Math.min(sf.hi[y], Math.floor(d.x1 - 0.5));
+        for (let x = x0, i = y * w + x0; x <= x1; x++, i++) if (T[i] > 0) { T[i] = 0; G[i] = 0; n++; }
+      }
+      continue;
+    }
     const y0 = Math.max(b.y0, Math.floor(d.y - d.r)), y1 = Math.min(b.y1, Math.ceil(d.y + d.r));
     for (let y = y0; y <= y1; y++) {
       if (sf.hi[y] < 0) continue;
@@ -141,8 +149,10 @@ function cutOut(sf, b, discs) {
   }
   return n;
 }
-/** GORECLEAR: how much of a splash's standing ink (its second blow too; not its drips) lies on keep-outs given in art px: discs
-    [{ x, y, r }] and boxes [{ x0, y0, x1, y1 }] -> { ink, discs, boxes } (pixels) */
+/** GORECLEAR: how much of a splash's standing ink (its second blow too; not its drips) lies on two lists of shapes given in art px
+    (each a disc { x, y, r } or a box { x0, y0, x1, y1 }): the tokens and the lettering -> { ink, discs: px on the first list, boxes:
+    px on the second } */
+const inShape = (o, cx, cy) => (o.r !== undefined ? (cx - o.x) ** 2 + (cy - o.y) ** 2 < o.r * o.r : cx > o.x0 && cx < o.x1 && cy > o.y0 && cy < o.y1);
 export function inkOn(p, discs = [], boxes = []) {
   let ink = 0, nd = 0, nb = 0;
   if (p?.kind !== "blood") return { ink, discs: nd, boxes: nb };
@@ -152,8 +162,8 @@ export function inkOn(p, discs = [], boxes = []) {
       if (c.t[j] <= THR) continue;
       ink++;
       const i = c.idx[j], y = (i / w) | 0, x = i - y * w, cx = x + 0.5, cy = y + 0.5;
-      for (const d of discs) if ((cx - d.x) ** 2 + (cy - d.y) ** 2 < d.r * d.r) { nd++; break; }
-      for (const r of boxes) if (cx > r.x0 && cx < r.x1 && cy > r.y0 && cy < r.y1) { nb++; break; }
+      for (const d of discs) if (inShape(d, cx, cy)) { nd++; break; }
+      for (const r of boxes) if (inShape(r, cx, cy)) { nb++; break; }
     }
   }
   return { ink, discs: nd, boxes: nb };
