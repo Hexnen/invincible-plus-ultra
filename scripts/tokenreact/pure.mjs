@@ -257,21 +257,56 @@ export function basePx(tokenPx, vh) {
   return Math.max(floor, Math.min(vh * SIZE_RULE.baseMaxVh, tokenPx * SIZE_RULE.tokenK));
 }
 const letters = (w) => [...String(w ?? "")].filter((ch) => /[\p{L}\p{N}]/u.test(ch)).length;
-/** the cap height (screen px) one reaction's word should have: kind, amount 0..1, the word, the token's size on screen, the view height */
-export function targetPx(kind, amt, word, tokenPx, vh, vw = vh * 16 / 9, k = 1) {
+/* SIZEDEAD (blind review ADVS3 D3: the table's reaction size "large" and the lettering's Size 2.0 reached every seat's settings and changed
+   nothing: a knock-down word drew the same px at every choice). Two causes. (1) The ceilings (capVh, the width cap, the drawn box) did
+   not move with the choice, and the loudest words stand AT a ceiling at the normal size already ("KA-THOOM!!" is held by the width cap), so
+   "large" asked for more and got the same; beside a big token "small" changed nothing either. (2) The lettering's own Size was divided out
+   of every reaction word (SAMEPIC: it was each screen's own then; it is the TABLE's since engine 1.9.16) and never put back.
+   The rule now: the table's size u = the reactions' step x the lettering's Size (tableSize), held to SIZE_TABLE.lo .. hi. It multiplies the
+   word's wanted size, its legible floor AND its ceilings, so a step is a step for every kind of word, at a ceiling or at the floor. Two
+   ceilings no choice lifts: the cap height never over SIZE_TABLE.capVh of the view, the word never wider than SIZE_TABLE.widthVw of it.
+   What the board has room for comes after (layout.mjs: tied to its token, off the other tokens, pins and panels, whole in the view): a
+   place that cannot hold the chosen size takes the word smaller, so in a crowd a bigger step may draw no bigger than the room allows. */
+export const SIZE_STEP = Object.freeze({ small: 0.8, normal: 1, large: 1.25 });
+export const SIZE_TABLE = Object.freeze({ lo: 0.5, hi: 3.2, capVh: 0.28, widthVw: 0.5 });      // (half the view wide: the word and its number still find a place by the token inside the standard view)
+/** the table's size for the reaction words: the reactions' own step (small | normal | large) x the lettering's Size (the engine's table
+    preference `scale`, 0.5 .. 2.5), held to SIZE_TABLE.lo .. hi */
+/* the stops of a word's scale against the engine's own size (main scaleFor); the lower one moves with the table's size */
+export const SCALE_STOP = Object.freeze({ lo: 0.2, hi: 8, min: 0.02 });
+/** the legible floor of a word in px: a share of the engine's own size px0, times the table's size u (SIZEDEAD: part of the word's plan) */
+export const stopPx = (px0, u = 1) => (px0 > 0 ? SCALE_STOP.lo * (u > 0 ? u : 1) * px0 : 0);
+/** a word's or number's scale against the engine's own size: wanted / natural. held (a number): kept over the lower stop, which moves
+    with the table's size u; not held (a word: its plan already holds the floor, under its ceilings): only kept sane */
+export function wordScale(ratio, u = 1, held = true) {
+  const k = u > 0 ? u : 1;
+  return Math.max(held ? SCALE_STOP.lo * k : SCALE_STOP.min, Math.min(SCALE_STOP.hi * Math.max(1, k), ratio));
+}
+export function tableSize(step, letteringScale = 1) {
+  const s = SIZE_STEP[step] ?? 1, e = Number(letteringScale) > 0 ? Number(letteringScale) : 1;
+  return Math.max(SIZE_TABLE.lo, Math.min(SIZE_TABLE.hi, s * e));
+}
+/** the ceilings of one word at the table's size u: { capH (cap height, px), width (the word's width, px) } */
+export function sizeCeil(tokenPx, vh, vw = vh * 16 / 9, u = 1) {
+  const w1 = Math.max(SIZE_RULE.widthTok * tokenPx, SIZE_RULE.widthVw * vw);
+  return { capH: Math.min(vh * SIZE_RULE.capVh * u, vh * Math.max(SIZE_RULE.capVh, SIZE_TABLE.capVh)), width: Math.min(w1 * u, Math.max(w1, SIZE_TABLE.widthVw * vw)) };
+}
+/** the cap height (screen px) one reaction's word should have: kind, amount 0..1, the word, the token's size on screen, the view height;
+    k = the unit's own share (a crowd's shrink: the wanted size only), u = the table's size (tableSize: wanted size, floor and ceilings) */
+export function targetPx(kind, amt, word, tokenPx, vh, vw = vh * 16 / 9, k = 1, u = 1) {
   const s = SOUND[kind]; if (!s) return 0;
   const n = Math.max(2, letters(word)), short = Math.max(1, (SIZE_RULE.shortLen / n) ** SIZE_RULE.shortPow);
-  const want = basePx(tokenPx, vh) * s.sev * (SIZE_RULE.amtLo + SIZE_RULE.amtK * Math.max(0, Math.min(1, amt))) * short * k;
-  const widthCap = Math.max(SIZE_RULE.widthTok * tokenPx, SIZE_RULE.widthVw * vw) / (SIZE_RULE.aspect * (n + 0.5));
-  return Math.max(Math.min(want, vh * SIZE_RULE.capVh, widthCap), basePx(tokenPx, vh) * Math.min(1, s.sev) * Math.min(1, k));
+  const want = basePx(tokenPx, vh) * s.sev * (SIZE_RULE.amtLo + SIZE_RULE.amtK * Math.max(0, Math.min(1, amt))) * short * k * u;
+  const ceil = sizeCeil(tokenPx, vh, vw, u), widthCap = ceil.width / (SIZE_RULE.aspect * (n + 0.5));
+  return Math.max(Math.min(want, ceil.capH, widthCap), basePx(tokenPx, vh) * Math.min(1, s.sev) * Math.min(1, k) * u);
 }
 /** the drawn word against the same limits (FXLT, seen on lane 20 with engine 1.6.0): the cap height obeys targetPx, but a tall hand (stacked
     letters, a deep extrusion: "FLUMP!" drew 2.1 caps tall) or a wide one still covered three tokens at zoom 0.42. Once the engine has
-    measured the drawn box (hold box, in caps) the word shrinks so the box stays under capVh x 1.25 of the view height and inside the width cap.
+    measured the drawn box (hold box, in caps) the word shrinks so the box stays under capVh x 1.25 of the view height and inside the width cap
+    (SIZEDEAD: both at the table's size u, as targetPx's).
     -> a factor <= 1 for the scale */
-export function fitDrawn({ cap, hbW, hbH, tokenPx, vh, vw = vh * 16 / 9 }) {
+export function fitDrawn({ cap, hbW, hbH, tokenPx, vh, vw = vh * 16 / 9, u = 1 }) {
   if (!(cap > 0) || !(hbW > 0) || !(hbH > 0)) return 1;
-  const maxH = vh * SIZE_RULE.capVh * 1.25, maxW = Math.max(SIZE_RULE.widthTok * tokenPx, SIZE_RULE.widthVw * vw);
+  const ceil = sizeCeil(tokenPx, vh, vw, u), maxH = ceil.capH * 1.25, maxW = ceil.width;
   return Math.min(1, maxH / (cap * hbH), maxW / (cap * hbW));
 }
 /* the engine's magnitude (contract v4, 0..2): it lifts the engine's ceiling for the worst blows; the size itself is targetPx */

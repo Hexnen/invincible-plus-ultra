@@ -5,13 +5,16 @@ import "./impact-node-prime.mjs";      // CALLERS2: the vendored engine's impact
 // board of several tokens, note pins, and a stand-in engine that also answers L.planFor (the drawn box of a word, as the engine plans it) and
 // records every impact frame asked for. cfg = { name, gm, W, H, side, zoom, center, toks: [{ id, x, y, hidden, unseen, hm }], notes:
 // [{ id, x, y, size, pub }], hits: [{ t, id, stat, to }] (t = ms after the start) , wait }
+// SIZEDEAD: size = the table's reaction step (small | normal | large), letterScale = the lettering's Size as the TABLE holds it (the
+// stand-in engine multiplies every word by it, as the engine does after its size model), oldEngine = an engine before 1.9.16 (no table:
+// its Size is each screen's own)
 const cfg = JSON.parse(process.argv[2] ?? "{}");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const W = cfg.W ?? 1600, H = cfg.H ?? 900, SIDE = cfg.side ?? 300;
 
 const hooks = {};
 globalThis.Hooks = { on: (k, fn) => ((hooks[k] ??= []).push(fn), 1), once: (k, fn) => ((hooks[k] ??= []).push(fn), 1), callAll: (k, ...a) => { for (const fn of hooks[k] ?? []) fn(...a); } };
-const settings = new Map(), values = { "invincible-plus-ultra.tokenReactEnabled": true, "invincible-plus-ultra.tokenReactSize": "normal", "invincible-plus-ultra.tokenReactLang": "en" };
+const settings = new Map(), values = { "invincible-plus-ultra.tokenReactEnabled": true, "invincible-plus-ultra.tokenReactSize": cfg.size ?? "normal", "invincible-plus-ultra.tokenReactLang": "en" };
 const user = { isGM: !!cfg.gm, id: cfg.gm ? "GM" : "P1" };
 globalThis.game = {
   user, i18n: { lang: "en", has: () => false, localize: (k) => k },
@@ -54,15 +57,17 @@ for (const n of cfg.notes ?? []) {
 const set = (tok, stat, v) => { tok.actor._stats.modifiedTime = ++stamp; tok.actor.system.derived[stat].value = v; Hooks.callAll("updateActor", tok.actor, { system: { derived: { [stat]: { value: v } } } }, {}); };
 
 const { sizeFor } = await import("../letters/size.mjs");
-const sizeK = (o) => 0.62 + 0.7 * (o?.sound?.loud ?? 0.6);
+const LOUD_K = Number(cfg.loudK) > 0 ? Number(cfg.loudK) : 1;      // SIZEDEAD: a louder stand-in engine (its own size big enough for the legible floor to hold a word, as live)
+const sizeK = (o) => (0.62 + 0.7 * (o?.sound?.loud ?? 0.6)) * LOUD_K;
 const ctxOf = (o) => ({ space: "world", magnitude: o.magnitude, scale: o.scale ?? 1, tokenSpan: 100, grid: 100, zoom: cam.z, vw: W - SIDE, vh: H, sizeK: sizeK(o), aspect: 3, fit: o.fit ?? "legible", alive: 0 });
-const pxOf = (o) => sizeFor(ctxOf(o)).px;
+const LETTER_K = Number(cfg.letterScale) > 0 ? Number(cfg.letterScale) : 1;
+const pxOf = (o) => sizeFor(ctxOf(o)).px * LETTER_K;      // SIZEDEAD: the engine's own Size, applied after its size model (engine h.size = info.size * _k)
 /* the drawn box of a word in caps: Bungee-like digits for numbers, the invincible hand's narrow letters for words (a stand-in, the same on
    every seat) */
 const boxOf = (text) => { const n = [...String(text)].length; return /^[+-]\d+(×\d+)?$/.test(text) ? { w: 0.25 + 0.8 * n, h: 1.2 } : { w: 0.62 * n + 0.2, h: 1.35 }; };
 const plays = [], impacts = [];
 const t00 = performance.now();
-const fake = { version: "test", limits: { screen: 16, world: 48 }, prefs: { scale: 1 }, ready: async () => true, count: () => 0,
+const fake = { version: "test", limits: { screen: 16, world: 48 }, prefs: { scale: LETTER_K }, ...(cfg.oldEngine ? {} : { table: { scale: LETTER_K }, setTable: async () => true }), ready: async () => true, count: () => 0,
   sizeOf: (text, o) => ({ ...sizeFor(ctxOf(o)), sizeK: sizeK(o) }),
   planFor: (text) => ({ plan: { _holdBox: boxOf(text) } }),
   contactAt: (h) => h.opts.startAt,

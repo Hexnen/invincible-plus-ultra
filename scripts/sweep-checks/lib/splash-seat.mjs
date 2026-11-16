@@ -162,7 +162,7 @@ export async function seatPlay(o) {
     globalThis.game = { user: { isGM: gm }, modules: { get: (id) => (id === "moinen-maps" && (b.badges.length || o.parked) ? { active: true, api: { ...(b.badges.length ? { zones: zapi } : {}), ...(o.parked ? { directorStage: { status: () => ({ home: { x: center.x, y: center.y, scale: zoom }, parked: o.parked }) } } : {}) } } : null) } };
     const L = fakeEngine(k, !!o.cut); Stage.setLetters(L); Stage.setLayer(o.layer ?? "screen");
     const tag = o.seedTag ?? `${o.bd ?? "empty"}-${o.outcome}`;
-    const ctl = Stage.play(out.e, { token: b.hero, scale: 1, hold: 1, fx: 1, fullFrom: out.full ? 0.7 : null, seed: "SS-" + tag, resolve: () => ({ now: 5, max: 8 }), targets: [b.target.id], from: b.hero, at: 0, ...(o.probe ? { momentId: "SB-" + runN } : {}) });
+    const ctl = Stage.play(out.e, { token: b.hero, scale: o.scale ?? 1, hold: 1, fx: 1, fullFrom: out.full ? 0.7 : null, seed: "SS-" + tag, resolve: () => ({ now: 5, max: 8 }), targets: [b.target.id], from: b.hero, at: 0, ...(o.probe ? { momentId: "SB-" + runN } : {}) });
     let t, probed;
     if (o.probe) { while ((t = timers.filter((x) => !x.done && x.ms <= (o.probeAt ?? 1500)).sort((a, b2) => a.ms - b2.ms)[0])) { t.done = true; t.fn(); } probed = o.probe({ Stage, ctl, toClient, board: b }); }
     while ((t = timers.filter((x) => !x.done).sort((a, b2) => a.ms - b2.ms)[0])) { t.done = true; t.fn(); }

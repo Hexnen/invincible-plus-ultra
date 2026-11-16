@@ -22,6 +22,8 @@ export const CLEAN = {
   tokTol: 0.04,                                            // a token's ring may graze the standing ink by this share of its area
   panelPad: 8,                                             // px kept from a panel (a seat's own copy of a shared panel stands a few px off)
   slotK: 0.04, slideK: 0.06, outK: 0.6, shrinkK: 1.6, passK: 0.35,     // preference, in shares of the group's area
+  grid: 0.98, gridBack: 2,                                 // SIZEDEAD: the fine grid of absolute sizes (each rung 0.98 of the last), and how many rungs
+                                                           // under the biggest clean one a word stands
   memberK: 0.25                                            // a crowd's word placed by one member rather than by the crowd's box
 };
 /* REACTPLACE (blind review ADVS3 D4, D12: a Resolve word 650 px long began at the left tool column and put its "-10" on a token; on the
@@ -115,6 +117,36 @@ export function covers(r, obs, own = null, view = null, quick = false, t = null)
       bias: added to every place's score (a crowd's word tried beside one member: see crowdSpot), outs: how far out (CLEAN.outs) }
     -> { slot, k, c0 (centre before follow's pushes), c (where it stands), clean, cost, score } */
 export function cleanSpot(a0) {
+  const q = ladderSpot(a0);
+  /* SIZEDEAD (seen live, lane 5: a knock-down with no room for its planned size stood 61 px at the table's "small", 43 at "normal", 37 at
+     "large"): the sizes tried are a ladder of shares of the PLANNED size, so two plans of one word land on different rungs (and, the
+     places tried being shares of the box, on different places): the bigger plan could end the smaller word. A clean place under the
+     planned size is now looked for again on a fine grid of ABSOLUTE sizes (CLEAN.grid: the same px sizes whatever the plan, so two plans
+     of one word try the very same boxes at the very same places), from the biggest size allowed down; the word stands CLEAN.gridBack
+     rungs under the biggest clean one (the place is judged on the planned box; the drawn word differs from it by a few percent, and a
+     word right at the edge of "its own token is the nearest" read as a neighbour's: reactplace edgeL). So where room is short every
+     choice of the table draws one size, the room's, and where there is room each its own. Never over the sizes given (a size the table
+     fixed, the table's size on a seat's own search), never under minK */
+  if (a0.noRefine || !q?.clean) return q;
+  const ks = a0.ks ?? CLEAN.ks, kMax = Math.max(...ks), unit = a0.g?.w;
+  if (!(q.k < kMax - 1e-9) || !(unit > 0)) return q;
+  const step = Math.log(1 / CLEAN.grid), kMin = Math.max(a0.minK ?? 0, Math.min(...ks) * 0.9);
+  const kAt = (i) => Math.exp(i * step) / unit;
+  let i = Math.ceil(Math.log(unit * kMax) / step - 1e-9) - 1, top = null;
+  for (; kAt(i) >= Math.max(kMin, q.k * CLEAN.grid ** 6); i--) {
+    const r = ladderSpot({ ...a0, ks: [kAt(i)], minK: 0, first: null });
+    if (r?.clean) { top = i; break; }
+  }
+  if (top == null) return q;
+  for (let b = CLEAN.gridBack; b <= CLEAN.gridBack + 3; b++) {
+    const k = kAt(top - b);
+    if (k < kMin) break;
+    const r = ladderSpot({ ...a0, ks: [k], minK: 0, first: null });
+    if (r?.clean) return r;
+  }
+  return q;
+}
+function ladderSpot(a0) {
   const g = a0.g, tp = a0.tokPx || Math.max(a0.tok.w, a0.tok.h) || 100;
   const ks = (a0.ks ?? CLEAN.ks).filter((k) => k >= (a0.minK ?? 0) - 1e-9);
   /* REACTPLACE: a place is tied to the word's own token (a0.own), or for a crowd's word to its nearest member (a0.members); how far out

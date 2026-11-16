@@ -33,7 +33,7 @@ const MOD = "invincible-plus-ultra";
 const LOG = `${MOD} (token reactions) |`;
 const KEY = { enabled: "tokenReactEnabled", size: "tokenReactSize", layer: "tokenReactLayer", lang: "tokenReactLang" };
 const LAYERS = ["overlay", "weather", "tokens", "ground", "top"];      // the engine's world layers (contract v3 `layer`); overlay = its default
-const SIZE = { small: 0.8, normal: 1, large: 1.25 };
+/* SIZEDEAD: the steps are pure SIZE_STEP; the table's size = the step x the lettering's Size (tableSizeOf, below) */
 /* the tactical fight's public stream (tactics/store.mjs HOOK and, on the executor, HOOK_GM: the same names, checked by sweep-checks/ltok.mjs) */
 const TAC_HOOK = `${MOD}.tactics`, TAC_HOOK_GM = `${MOD}.tacticsGm`;
 const DMG_FLAVOR_KEY = "INVINCIBLE.Chat.DamageInfo.DamageTaken";
@@ -782,7 +782,9 @@ function cleanPlace(it, fit, o, kf, ctx) {
   /* 1. shared: the side search's own shared choice (fitSame's first step), clean where it stands? */
   const a0 = P.fitSlot(tr, plan.box, std, plan.blocked, { ...o, slide: true });
   const s0 = at(a0.slot, a0.k, std, panelsS, obsS);
-  const kept = s0.clean;
+  /* SIZEDEAD: a choice the side search had to shrink goes to the clean search too (its fine grid of sizes: one size for every plan of the
+     word where room is short); kept only at its planned size */
+  const kept = s0.clean && !(a0.k < 0.999);
   S = kept ? s0 : spot(std, panelsS, obsS, null);
   if (!S.clean && ctx.allowFold && it.inCluster?.mode === "full" && it.mode === "number") return { fold: true };
   ctx.placedS.push({ ...S.r, kind: "word" });
@@ -1067,12 +1069,27 @@ function tokenRects(skip) {
    more words alive shrink the ceiling): the words are now sized "screen" (cap height in CSS px, from the shared target alone), the engine's own
    Scale (a client setting) divided out, and the zoom handled here (follow) */
 const engineK = (L) => { const k = Number(L?.prefs?.scale); return k > 0 ? k : 1; };
-function scaleFor(L, text, opts, targetPx) {
+/* SIZEDEAD: ... and put back as part of the TABLE's size, where the layout counts it (the word's box, its ceilings, its place): the
+   lettering's Size is the table's since engine 1.9.16 (one value on every seat), so it no longer breaks the one picture. An older engine
+   (its Size each screen's own) keeps the old rule: divided out, not counted */
+const tableScaleOf = (L) => { try { const k = Number(L?.table?.scale); return typeof L?.setTable === "function" && k > 0 ? k : 1; } catch { return 1; } };
+const tableSizeOf = (L) => P.tableSize(get(KEY.size, "normal"), tableScaleOf(L));
+/* SIZEDEAD (seen live, lane 5: with the table's size counted, a knock-down drew 61 px at "small", 43 at "normal", 37 at "large"): the
+   scale's lower stop (0.2 of the engine's own size: the legible floor, ~80 px for a loud word on the reference view) held every loud
+   word at ONE drawn size whatever the table chose, and only where it was drawn: its box, its ceilings and its place were those of the
+   smaller size asked for, so the word stood up to a quarter bigger than the box the layout judged, and a bigger choice of the table
+   (a bigger box, the same word) was shrunk harder by the layout. The floor is now part of a WORD's planned size (planOf: it moves with
+   the table's size and stays under the ceilings), so a word is drawn at the size it was planned, judged and placed at; a number keeps
+   the stop where it is drawn (held = true), moved with the table's size */
+const naturalPx = (L, text, opts) => {
   try {
     const s = L.sizeOf?.(text, { ...opts, scale: 1, fit: "screen" });
-    const px0 = s && Number.isFinite(s.natural) && Number.isFinite(s.sizeK) ? s.natural * s.sizeK : 0;
-    return px0 > 0 ? Math.max(0.2, Math.min(8, targetPx / px0)) / engineK(L) : 1;
-  } catch { return 1; }
+    return s && Number.isFinite(s.natural) && Number.isFinite(s.sizeK) ? s.natural * s.sizeK : 0;
+  } catch { return 0; }
+};
+function scaleFor(L, text, opts, targetPx, u = 1, held = true) {
+  const px0 = naturalPx(L, text, opts);
+  return px0 > 0 ? P.wordScale(targetPx / px0, u, held) / engineK(L) : 1;
 }
 /* SAMEPIC: the reference window (same-picture.mjs), not this one: two windows show the word at one size against its token */
 const vh = () => P.REF_VH;
@@ -1090,7 +1107,8 @@ function rectOf(it) {
 }
 function planOf(L, it) {
   const tok = it.tok, lk = it.lk;
-  const user = SIZE[get(KEY.size, "normal")] ?? 1;
+  /* SIZEDEAD: the table's size (the reactions' step x the lettering's Size): the word's wanted size, its floor and its ceilings */
+  const user = tableSizeOf(L);
   const tokRect = rectOf(it);
   const tokPx = tokRect.tokPx ?? Math.max(tokRect.w, tokRect.h);
   const word = it.mode === "full" || it.mode === "mark";
@@ -1104,10 +1122,20 @@ function planOf(L, it) {
   const grow = P.seriesGrow(lk.step ?? 0, lk.sstep ?? lk.step ?? 0);
   /* CROWD2: the growth applies to the size the series' first word stood at (after the legible floor, which swallowed a small growth: a -1's
      word stands at the floor), never over the cap */
-  let cap = word ? Math.min(vh() * P.SIZE_RULE.capVh, P.targetPx(lk.kind, lk.amt, lk.sizeWord ?? lk.word, tokPx, vh(), vw(), user * it.scale) * grow) : 0;
+  const ceilH = P.sizeCeil(tokPx, vh(), vw(), user).capH;
+  let cap = word ? Math.min(ceilH, P.targetPx(lk.kind, lk.amt, lk.sizeWord ?? lk.word, tokPx, vh(), vw(), it.scale, user) * grow) : 0;
   /* CROWD (ADVX 17): a cluster's word is never under the crowd floor (far out the crowd reads as one event, not a heap of specks) */
-  if (word && it.cluster) cap = Math.min(vh() * P.SIZE_RULE.capVh, Math.max(cap, P.crowdFloor(vh()) * user));
-  const numCap = (word ? cap * P.SIZE_RULE.numK : P.basePx(tokPx, vh()) * P.SIZE_RULE.crowdNumK * 1.1 * user * it.scale);
+  if (word && it.cluster) cap = Math.min(ceilH, Math.max(cap, P.crowdFloor(vh()) * user));
+  const z0 = view.ok() ? view.zoom() : 1;
+  const base = { space: "world", token: tok.document, anchor: "center", reduced: reduced(), fit: "screen", ...layer() };
+  const wordOpts = word ? { ...base, mood: lk.mood, sound: lk.sound, magnitude: lk.magnitude, seed: it.seed, hold: lk.hold, rotation: lk.rotation, colors: lk.colors, ...(lk.hand ? { hand: lk.hand } : {}), ...lk.motion, ...(Number.isFinite(lk.from) ? { from: lk.from } : {}), ...(Number.isFinite(lk.dirSign) ? { dir: lk.dirSign } : {}) } : null;   // PALETTE: lk.hand = a pinned block (colour only); DIRECT: grows away from the attacker
+  /* SIZEDEAD: the legible floor of a word (pure stopPx: a share of the engine's own size, times the table's size), under its ceiling */
+  if (wordOpts) cap = Math.min(ceilH, Math.max(cap, P.stopPx(naturalPx(L, lk.word, wordOpts), user)));
+  const numOpts = nums.map((n, i) => ({ ...base, mood: n.mood, sound: n.sound, hand: n.hand, colors: n.colors, magnitude: Math.max(0.3, lk.magnitude * 0.8), seed: `${it.seed}#n${i}`, rotation: word ? -lk.side * 3 : 0, in: n.in, holdKind: "boil", out: n.out }));
+  let numCap = (word ? cap * P.SIZE_RULE.numK : P.basePx(tokPx, vh()) * P.SIZE_RULE.crowdNumK * 1.1 * user * it.scale);
+  /* SIZEDEAD: a word's numbers hold their own floor in the plan too, never over their word (held where it was drawn, and moved with the
+     table's size, a "-9" stood 141 px beside a 125 px word at the biggest choice). A number without a word keeps the stop where it is drawn */
+  if (word && numOpts.length) numCap = Math.min(Math.max(cap, numCap), Math.max(numCap, P.stopPx(Math.max(...nums.map((n, i) => naturalPx(L, n.text, numOpts[i]))), user)));
   const aspect = word ? P.SIZE_RULE.aspect * ([...lk.word].length + 0.5) : 0;      // refined from the drawn word once it is up (follow)
   /* room for the motion: a rise leaves upward, and a power-up's letters may climb like stairs (seen in ADVT c4: "RAAA!" climbed out
      of the view by a whole cap) */
@@ -1126,19 +1154,12 @@ function planOf(L, it) {
   const numIdx = nums.map((n, i) => { const j = n.of && it.roomOf ? it.roomOf.slice(0, nMax).indexOf(n.of) : (it.roomStats ?? []).slice(0, 2).indexOf(n.stat); return j >= 0 ? j : Math.min(i, Math.max(0, (word ? room : numRoom).length - 1)); });
   let g = word ? P.group(gArgs)
     : P.group({ cap: numCap, aspect: 0, nums: numRoom, numCap, side: 0, up: 0.25, down: 0.15 });
-  const z0 = view.ok() ? view.zoom() : 1;
-  const base = { space: "world", token: tok.document, anchor: "center", reduced: reduced(), fit: "screen", ...layer() };
-  const wordOpts = word ? { ...base, mood: lk.mood, sound: lk.sound, magnitude: lk.magnitude, seed: it.seed, hold: lk.hold, rotation: lk.rotation, colors: lk.colors, ...(lk.hand ? { hand: lk.hand } : {}), ...lk.motion, ...(Number.isFinite(lk.from) ? { from: lk.from } : {}), ...(Number.isFinite(lk.dirSign) ? { dir: lk.dirSign } : {}) } : null;   // PALETTE: lk.hand = a pinned block (colour only); DIRECT: grows away from the attacker
   /* ALIGN (engine 1.9.1 recipe, owner: one accent): the word that gets the moment's impact does not flash on its own; the impact IS its
      accent and lands on its contact. Every seat passes the same (the event decides, not the seat), so the word's contact is one rule */
   if (wordOpts && (it.impact || it.folded)) wordOpts.flash = false;      // IMPCALL2: a folded blow's flash was the roll's
-  if (wordOpts) wordOpts.scale = scaleFor(L, lk.word, wordOpts, cap);
-  const numOpts = nums.map((n, i) => {
-    const o = { ...base, mood: n.mood, sound: n.sound, hand: n.hand, colors: n.colors, magnitude: Math.max(0.3, lk.magnitude * 0.8), seed: `${it.seed}#n${i}`, rotation: word ? -lk.side * 3 : 0, in: n.in, holdKind: "boil", out: n.out };
-    o.scale = scaleFor(L, n.text, o, numCap);
-    return o;
-  });
-  const plan = { tokRect, tokPx, box: { w: g.w, h: g.h }, g, gArgs, z0, cap, numCap, nums, numIdx, wordOpts, numOpts, text: word ? lk.word : null, slot: "above", rect: () => rectOf(it),
+  if (wordOpts) wordOpts.scale = scaleFor(L, lk.word, wordOpts, cap, user, false);
+  numOpts.forEach((o, i) => { o.scale = scaleFor(L, nums[i].text, o, numCap, user, !word); });
+  const plan = { tokRect, tokPx, box: { w: g.w, h: g.h }, g, gArgs, z0, cap, numCap, user, nums, numIdx, wordOpts, numOpts, text: word ? lk.word : null, slot: "above", rect: () => rectOf(it),
     frame: view.frame ?? liveFrame() };      // KOSAME: the view it was laid out on (measure fits the drawn word in it)
   /* CROWD (ADVX 8: "THWUP!UP!": two words placed on letter-count estimates, then each re-fitted alone on its drawn box against the others'
      stale estimates): the word's drawn box is asked of the engine BEFORE it is placed (L.planFor: the same plan the word will play, with the
@@ -1156,7 +1177,7 @@ function planOf(L, it) {
         plan.gArgs = { ...gArgs, aspect: hb.w, tall: hb.h, pad: P.footPad(m, hb) };      // CALLERS2: the engine's standing footprint (m.stand)
         if (m?.reach && m.unit > 0) plan.reach = { l: m.reach.l / m.unit, r: m.reach.r / m.unit, u: m.reach.u / m.unit, d: m.reach.d / m.unit };
         g = P.group(plan.gArgs); plan.g = g; plan.box = { w: g.w, h: g.h };
-        const f = P.fitDrawn({ cap, hbW: hb.w, hbH: hb.h, tokenPx: tokPx, vh: vh(), vw: vw() });
+        const f = P.fitDrawn({ cap, hbW: hb.w, hbH: hb.h, tokenPx: tokPx, vh: vh(), vw: vw(), u: user });
         if (f < 0.98) shrink(plan, f);
         plan.measured = true; plan.pre = true;
       }
@@ -1175,7 +1196,7 @@ function measure(plan, tok = null) {
   plan.measured = true;
   if (plan.kLoc < 0.999) { shrink(plan, 1 / plan.kLoc, true); plan.kLoc = 1; }      // SAMEPIC: the guard is fitted again below on the drawn box
   /* the drawn box over the limits: the word (live, its handle's scale is read every frame) and the numbers not yet started shrink with it */
-  const f = P.fitDrawn({ cap: plan.cap, hbW: hb.w, hbH: hb.h, tokenPx: plan.tokPx ?? 100, vh: vh(), vw: vw() });
+  const f = P.fitDrawn({ cap: plan.cap, hbW: hb.w, hbH: hb.h, tokenPx: plan.tokPx ?? 100, vh: vh(), vw: vw(), u: plan.user ?? 1 });
   if (f < 0.98) shrink(plan, f);      // the numbers already started (they wait for the blow's instant) shrink too
   if (!plan.gArgs.pad && engine?.measure && plan.text) {      // CALLERS2: the footprint, measured by the engine when it was not before the play
     try { const m = engine.measure(plan.text, { ...plan.wordOpts, reduced: false, view: { dpr: 1 } }); const mh = m?.plan?._holdBox; if (mh) plan.gArgs = { ...plan.gArgs, pad: P.footPad(m, mh) }; } catch (err) { once(err); }
@@ -1305,7 +1326,7 @@ function play(L, it, queued = false) {
       if (entry.nums.length || !plan.g.nums || isCaptioned(tok.id)) return;
       const nl = P.numberLook(stat, sign, n, lk.amt);
       const o = { space: "world", token: tok.document, anchor: "center", reduced: red, ...layer(), mood: nl.mood, sound: nl.sound, hand: nl.hand, colors: nl.colors, magnitude: Math.max(0.3, lk.magnitude * 0.8), seed: `${it.seed}#late`, rotation: -lk.side * 3, in: nl.in, holdKind: "boil", out: nl.out };
-      o.scale = scaleFor(L, nl.text, o, plan.numCap || plan.cap * P.SIZE_RULE.numK);
+      o.scale = scaleFor(L, nl.text, o, plan.numCap || plan.cap * P.SIZE_RULE.numK, plan.user ?? 1, !plan.text);
       if (!plan.g.nums.length && plan.gArgs) { plan.gArgs = { ...plan.gArgs, nums: [nl.text] }; plan.measured = false; const g = P.group(plan.gArgs); plan.g = g; plan.box = { w: g.w, h: g.h }; measure(plan); }
       playNum(nl, o, 0, true);
     };

@@ -142,15 +142,17 @@ async function seat({ W, H, ui = {}, layer, zoom, pan, k = 1, e, name, tokens, n
       /* seat A: GM, 1920x1080, zoom 0.75, the chat card up; seat B: player, 1680x1050, zoom 1.25, panned elsewhere (the block in its middle: a smaller window that cannot hold the block shifts or shrinks it, SAMEPIC tier 3, checked in samepic S1/S3).
          CRITPEAK (SYNC M1/M2: a map word no seat saw): a seat whose view does not hold the roller plays the moment on its own screen (seat C,
          below); before, B was panned so the hero was OFF its screen and lettered the board block there, out of its sight */
+      /* SIZEDEAD: the splash Size is the table's (a world setting, one value on every seat) and now sizes the board block too, so the seats no longer
+         differ in it here; the board block at Size 0.6 / 1 / 1.5 on two seats is checked in sweep-checks/sizedead.mjs (C) */
       const A = await seat({ W: 1920, H: 1080, ui: { card: true }, layer, zoom: 0.75, pan: { x: -300, y: -250 }, k: 1, e, name, tokens, notes: pins, hero, full: name === "crit" });
-      const B = await seat({ W: 1680, H: 1050, ui: {}, layer, zoom: 1.25, pan: { x: -852, y: -912 }, k: 1.3, e, name, tokens, notes: pins, hero, full: name === "crit", scale: 1.4 });
-      const C = await seat({ W: 1366, H: 768, ui: {}, layer, zoom: 1.25, pan: { x: -1900, y: -400 }, k: 1.3, e, name, tokens, notes: pins, hero, full: name === "crit", scale: 1.4 });
+      const B = await seat({ W: 1680, H: 1050, ui: {}, layer, zoom: 1.25, pan: { x: -852, y: -912 }, k: 1.3, e, name, tokens, notes: pins, hero, full: name === "crit" });
+      const C = await seat({ W: 1366, H: 768, ui: {}, layer, zoom: 1.25, pan: { x: -1900, y: -400 }, k: 1.3, e, name, tokens, notes: pins, hero, full: name === "crit" });
       ok(C.calls.length > 0 && C.calls.every((c) => c.o.space !== "world"), `N1 map ${layer} ${name}: a seat whose view does not hold the roller plays the moment on its screen (CRITPEAK: it sees a word)`);
       /* the drawn scene size = size x the engine's Scale (rounded to 0.1 scene px: the size is handed over in hundredths) */
       const sig = (s) => s.calls.map((c) => ({ text: c.text, seed: c.o.seed, space: c.o.space, layer: c.o.layer, at: c.o.at, size: Math.round(c.o.size * s.L.prefs.scale * 10) / 10, out: c.o.out, maxWidth: c.o.maxWidth }));
       const tag = `N1 map ${layer} ${name}`;
       ok(A.calls.length > 0 && A.calls.every((c) => c.o.space === "world"), `${tag}: the moment is on the board (world space) on the GM's seat`);
-      eq(sig(B), sig(A), `${tag}: the player's seat letters the same words at the same scene place and scene size as the GM's (other window, zoom, pan, chat card, engine Scale 1.3, client Scale 1.4, the hero off the player's screen)`);
+      eq(sig(B), sig(A), `${tag}: the player's seat letters the same words at the same scene place and scene size as the GM's (other window, zoom, pan, chat card, engine Scale 1.3, the hero off the player's screen)`);
       /* N2: inside the scene, exits in place */
       const sc = A.calls.map((c) => drawn(c, A.L, { zoom: 1, toClient: (q) => q }));
       ok(sc.every((b) => b.x - b.w / 2 >= 0 && b.y - b.h / 2 >= 0 && b.x + b.w / 2 <= 3000 && b.y + b.h / 2 <= 2000), `N2 ${tag}: the whole block is inside the scene`);
