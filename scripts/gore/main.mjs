@@ -6,7 +6,7 @@
        pixelated), so every art pixel is a crisp square at any window size, zoom of the scene or DPR. Drawn on the comic's 24 Hz beat and
        only while something changes; nothing runs when the glass is empty;
      - the TABLE's options (world, GM only, live; shown in the "Comic effects" window, tab Blood and cracks): blood 0..3, cracks 0..3,
-       who sees it, how long it stays. A seat's own reduced motion and Foundry's photosensitive mode still apply on that seat;
+       who sees it (GOREOWN: by default only the seats of the players who own the hurt character), how long it stays. A seat's own reduced motion and Foundry's photosensitive mode still apply on that seat;
      - a character's Health / Resolve drop (any way: a roll, the tactical engine, the sheet) seen on every seat by the same hooks,
        landed on the token reaction's blow (hook invincible-plus-ultra.tokenReact, phase "hit") when one plays, else after the same short
        wait on every seat; the seed is the change's server stamp, so every seat draws the same splash;
@@ -44,6 +44,7 @@ let CLEAR = true;
 /* GOREUI: on. api.debug({ marks: false }) forgets the map's markers and the choice of corner on THIS page only (a take's "before") */
 let MARKS = true;
 const LOG_MAX = 80;
+const wlog = [];                     // GOREOWN: this seat's last answers to "is this hurt character's effect shown here"
 const glog = [];                     // this seat's last splashes: how each was placed and what of it lay on a token or on lettering
 let engineL = null;                  // the lettering engine on this page (its impact frames)
 
@@ -57,7 +58,7 @@ function registerSettings() {
   const K = P.KEYS;
   if (!has(K.blood)) game.settings.register(MOD, K.blood, { name: "Blood on the screen", scope: "world", config: false, type: Number, default: P.DEFAULTS.goreBlood, range: { min: 0, max: 3, step: 1 } });
   if (!has(K.cracks)) game.settings.register(MOD, K.cracks, { name: "Cracks on the screen", scope: "world", config: false, type: Number, default: P.DEFAULTS.goreCracks, range: { min: 0, max: 3, step: 1 } });
-  if (!has(K.seats)) game.settings.register(MOD, K.seats, { name: "Who sees blood and cracks", scope: "world", config: false, type: String, default: P.DEFAULTS.goreSeats, choices: { all: "all", owners: "owners" } });
+  if (!has(K.seats)) game.settings.register(MOD, K.seats, { name: "Who sees blood and cracks", scope: "world", config: false, type: String, default: P.DEFAULTS.goreWho, choices: Object.fromEntries(P.SEATS.map((s) => [s, s])) });
   if (!has(K.hold)) game.settings.register(MOD, K.hold, { name: "How long blood and cracks stay", scope: "world", config: false, type: Number, default: P.DEFAULTS.goreHold, range: { min: 0.5, max: 2, step: 0.25 } });
 }
 function opts() {
@@ -533,12 +534,20 @@ function read(actor) {
 function remember(tok) { try { const v = read(tok?.actor); if (v && tok?.id) seen.set(tok.id, v); } catch (e) { once(e); } }
 function rememberAll() { seen.clear(); try { for (const t of canvas?.tokens?.placeables ?? []) remember(t); } catch (e) { once(e); } }
 
-/** whether THIS seat may be shown an effect of this token (the table's "who sees it"; never a token this seat does not see) */
-export function mayShow({ gm, sameScene, visible, hidden, owner }, seats = "all") {
+/** whether THIS seat may be shown an effect of this token (the table's "who sees it": plan.mjs seatShows; never a token this seat does
+    not see). GOREOWN: without a choice given it is the table's default, the owner rule */
+export function mayShow({ gm, sameScene, visible, hidden, owner, playerOwned }, seats = P.DEFAULTS[P.KEYS.seats]) {
   if (!sameScene || !visible) return false;
   if (hidden && !gm) return false;
-  if (seats === "owners") return gm || owner;
-  return true;
+  return P.seatShows(seats, { gm, owner, playerOwned });
+}
+/** GOREOWN: whether some PLAYER owns this character (a GM owns everything, so a GM never counts; a player who is not logged in still
+    does: the answer does not change when someone leaves the table) */
+export function playerOwned(actor) {
+  try {
+    for (const u of game.users ?? []) if (u && !u.isGM && actor?.testUserPermission?.(u, "OWNER")) return true;
+  } catch { /* no users: nobody */ }
+  return false;
 }
 /* where the board's canvas starts in the window (read at most twice a second) */
 let originAt = -1e9, origin = { left: 0, top: 0 };
@@ -573,11 +582,11 @@ export function tokScreen(tok) {
     return { fx: x / vw, fy: y / vh, fr: Math.max(0.004, r / Math.min(vw, vh)), inView: x >= 0 && y >= 0 && x <= vw && y <= vh };
   } catch { return null; }
 }
-function seatMay(tok) {
+function seatMay(tok, seats = opts().seats) {
   try {
     const gm = !!game.user?.isGM;
     return mayShow({ gm, sameScene: tok.scene?.id === canvas.scene?.id, visible: (tok.isVisible ?? tok.visible) !== false, hidden: tok.document?.hidden === true,
-      owner: !!tok.actor?.testUserPermission?.(game.user, "OWNER") }, opts().seats);
+      owner: !gm && !!tok.actor?.testUserPermission?.(game.user, "OWNER"), playerOwned: seats === "owner" && gm ? playerOwned(tok.actor) : false }, seats);
   } catch { return false; }
 }
 function changed(tok, options) {
@@ -637,7 +646,12 @@ function fire(id, at) {
   clearTimeout(e.timer);
   try {
     const tok = canvas.tokens?.get(id) ?? e.tok;
-    if (!tok || !seatMay(tok)) return;
+    if (!tok) return;
+    /* GOREOWN: this seat's answer for this hurt character, kept for a live check (api.who) */
+    const may = seatMay(tok);
+    wlog.push({ tok: tok.id, name: tok.name ?? null, at: Date.now(), seats: opts().seats, gm: !!game.user?.isGM, shown: may, stats: e.changes.map((c) => c.stat) });
+    if (wlog.length > LOG_MAX) wlog.shift();
+    if (!may) return;
     /* GORE3 (finding 5): a seat whose view does not hold the struck token saw no blow: no blood, no cracks there */
     const near = tokScreen(tok);
     if (!near?.inView) return;
@@ -658,7 +672,9 @@ function dirOf(tok) {
     const s = sources.get(tok.id);
     if (!s || Date.now() - s.t > ATTACK_MS) return null;
     const src = canvas.tokens?.get(s.src);
-    if (!src || src.id === tok.id || !seatMay(src)) return null;
+    /* GOREOWN: the attacker only has to be SEEN by this seat (it was asked "may this seat be shown the attacker's blood": under the
+       owner rules a player's own character hit by someone else's lost its direction, and co-owners could get different ones) */
+    if (!src || src.id === tok.id || !seatMay(src, "all")) return null;
     const a = src.center, b = tok.center;
     return Math.atan2(b.y - a.y, b.x - a.x);
   } catch { return null; }
@@ -707,7 +723,8 @@ export const api = {
   clear,
   /** where a token sits on THIS screen: { fx, fy, fr, inView } (fractions of the view; the blood's anchor) */
   tokScreen: (t) => tokScreen(typeof t === "string" ? canvas?.tokens?.get(t) : t),
-  /** the same effect on EVERY seat at one instant (each seat still applies the table's options and its own accessibility) */
+  /** the same effect on EVERY seat at one instant (each seat still applies the table's levels and its own accessibility; GOREOWN: a
+      call made on purpose is not asked "who sees it", that rule is for a character being hurt) */
   net: { blood: (o) => send("blood", { ...o, token: typeof o?.token === "string" ? o.token : o?.token?.id }), cracks: (o) => send("cracks", o), clear: (o) => send("clear", o) },
   /** a sample on this screen (the table window's Preview): a light blow, a crack, a knock-down, AS THE TABLE IS SET (GORE4: it
       played at the normal level whatever the GM had chosen, so a change of level showed nothing; a level at 0 now shows nothing, the
@@ -733,6 +750,9 @@ export const api = {
       another token / on lettering as laid out), maxTok / maxInk (the most through its life), masked (px the glass left out over
       tokens), gaveWay (ms after landing it started to crumble for lettering) }; { clear: true } empties it */
   log: (o) => { if (o?.clear) glog.length = 0; return glog.map((e) => ({ ...e })); },
+  /** GOREOWN: this seat's last hurt characters and whether their blood / cracks were for this seat: { tok, name, seats (the table's
+      choice then), gm, shown, stats }; { clear: true } empties it */
+  who: (o) => { if (o?.clear) wlog.length = 0; return wlog.map((e) => ({ ...e })); },
   /** what the blood would keep clear of on this seat now: { tokens: discs, words: boxes } in fractions of the view */
   keepOuts: () => ({ tokens: tokDiscs(), words: inkBoxes(), marks: markShapes(), ui: uiRects(0).length }),
   /** GOREUI: how much of each corner's quarter is taken on this seat for a web of `reach` (share of the view's short side; default a

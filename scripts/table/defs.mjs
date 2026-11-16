@@ -177,7 +177,7 @@ export const TABS = [
   ] },
   /* GORE: blood and cracks on the screen (scripts/gore/): the table's too */
   { id: "gore", icon: "fa-solid fa-droplet", sections: [
-    { id: "show", rows: [M("gore.blood", "goreBlood"), M("gore.cracks", "goreCracks"), M("gore.seats", "goreSeats"), M("gore.hold", "goreHold")] }
+    { id: "show", rows: [M("gore.blood", "goreBlood"), M("gore.cracks", "goreCracks"), M("gore.seats", "goreWho"), M("gore.hold", "goreHold")] }
   ] },
   /* GMGOVERN: the fight's own surfaces (scripts/combat/, scripts/turn/, scripts/tactics/) */
   { id: "combat", icon: "fa-solid fa-hand-fist", sections: [

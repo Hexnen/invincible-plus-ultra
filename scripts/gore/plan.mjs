@@ -92,9 +92,25 @@ const lerp = (a, b, u) => a + (b - a) * u;
 const easeOut = (u) => 1 - (1 - clamp(u, 0, 1)) ** 2;
 
 /* ---------------- the table's options (world, GM: scripts/gore/main.mjs registers them) ---------------- */
-export const KEYS = { blood: "goreBlood", cracks: "goreCracks", seats: "goreSeats", hold: "goreHold" };
-export const SEATS = ["all", "owners"];
-export const DEFAULTS = { goreBlood: 2, goreCracks: 2, goreSeats: "all", goreHold: 1 };
+/* GOREOWN (the owner, 2026-11-16: blood and cracks only for the token's owner). Who is shown a hurt character's blood and cracks:
+     "owner"   (the default) only the seats of the players who own the character (each of them, when several do); the GM's seat only
+               for a character no player owns (provisional, question GOREOWN-1);
+     "owners"  the character's owners and the GM (the GM for every character);
+     "all"     every seat that sees the character.
+   The choice is stored under a NEW key (goreWho). The earlier key (OLD_SEATS_KEY: "all" by default, or "owners") is read by nobody
+   any more: whatever a world stored there, the table starts on "owner", on every seat at once and with no migration step, and the GM
+   may then choose again in the window. The old document is left in the world untouched (an older build of the module still finds it). */
+export const KEYS = { blood: "goreBlood", cracks: "goreCracks", seats: "goreWho", hold: "goreHold" };
+export const OLD_SEATS_KEY = "goreSeats";
+export const SEATS = ["owner", "owners", "all"];
+export const DEFAULTS = { goreBlood: 2, goreCracks: 2, goreWho: "owner", goreHold: 1 };
+/** whether a seat is shown an effect of a character under the table's choice (visibility is asked apart: main.mjs mayShow).
+    gm: the seat is a GM's; owner: the seat's user owns the character; playerOwned: some player (not a GM) owns it */
+export function seatShows(seats, { gm = false, owner = false, playerOwned = false } = {}) {
+  if (seats === "all") return true;
+  if (seats === "owners") return !!gm || !!owner;
+  return gm ? !playerOwned : !!owner;
+}
 /* the 0..3 slider (the owner's size rule for the map lettering, 2026-11-15: 0 = none, 2 = the normal size): strength x */
 export const LEVEL = [0, 0.65, 1, 1.3];
 export function cleanOpts(v = {}) {
@@ -102,7 +118,7 @@ export function cleanOpts(v = {}) {
   return {
     blood: lvl(v.goreBlood, DEFAULTS.goreBlood),
     cracks: lvl(v.goreCracks, DEFAULTS.goreCracks),
-    seats: SEATS.includes(v.goreSeats) ? v.goreSeats : DEFAULTS.goreSeats,
+    seats: SEATS.includes(v.goreWho) ? v.goreWho : DEFAULTS.goreWho,
     hold: Number.isFinite(Number(v.goreHold)) ? clamp(Number(v.goreHold), 0.5, 2) : DEFAULTS.goreHold
   };
 }
