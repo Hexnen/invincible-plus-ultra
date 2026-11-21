@@ -199,6 +199,13 @@ export function hidLeftAdd(list, id) {
     would name the token the GM has selected, often a hidden NPC); the dice of an effect about somebody hidden (`e.gm`, engine-pure
     diceHidden) go to the GMs alone, with no id in the card's flag. gms() -> the GMs' user ids (asked only then).
     -> { data (for Roll#toMessage), mode (its options: the GM-only way in both the v14 and the older name), seal(msg) (the whisper kept) } */
+/* Roll#toMessage's visibility option for this core: Foundry 14 (v14 = CONFIG.ChatMessage.modes exists) takes messageMode and logs a
+   deprecation warning for rollMode (which would also override messageMode); Foundry 13 knows only rollMode. */
+export function toMessageMode(mode, v14) {
+  if (!isObj(mode)) return {};
+  const { messageMode, rollMode, ...rest } = mode;
+  return { ...rest, ...(v14 ? (messageMode ? { messageMode } : {}) : (rollMode ? { rollMode } : {})) };
+}
 export function diceCard(e, mod, flavor, alias, gms) {
   const hidden = e?.gm === 1, to = hidden ? (typeof gms === "function" ? gms() : []) : null, why = String(e?.why ?? "");
   const data = { flavor, speaker: { scene: null, actor: null, token: null, alias: String(alias ?? "") }, flags: { [mod]: { tactics: { dice: hidden ? why.split(":")[0] : why } } }, ...(hidden ? { whisper: to } : {}) };

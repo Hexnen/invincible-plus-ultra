@@ -104,7 +104,7 @@ async function perform(combat, e) {
       const faces = roll.dice[0]?.results?.map((r) => r.result) ?? [];
       let op = null;
       /* FXE3 (view-pure diceCard): the card speaks for the user who threw it (never the GM's selected token); dice about somebody hidden go to the GMs alone */
-      try { const card = V.diceCard(e, MOD, t(`ITAC.dice.${String(e.why ?? "").split(":")[0]}`, {}, t("ITAC.dice.engine")), game.user?.name, () => ChatMessage.getWhisperRecipients("GM").map((u) => u.id)), mode = card.mode; const m = await ChatMessage.create(card.seal(await roll.toMessage(card.data, { create: false, ...mode })), { ipuTactics: true }); if (m?.id) op = { t: "message", id: m.id }; } catch { /* the faces count; the card is a courtesy */ }   // D95: Roll#toMessage hands no document options on: the card is created here, with the engine's mark
+      try { const card = V.diceCard(e, MOD, t(`ITAC.dice.${String(e.why ?? "").split(":")[0]}`, {}, t("ITAC.dice.engine")), game.user?.name, () => ChatMessage.getWhisperRecipients("GM").map((u) => u.id)), mode = V.toMessageMode(card.mode, !!globalThis.CONFIG?.ChatMessage?.modes); const m = await ChatMessage.create(card.seal(await roll.toMessage(card.data, { create: false, ...mode })), { ipuTactics: true }); if (m?.id) op = { t: "message", id: m.id }; } catch { /* the faces count; the card is a courtesy */ }   // D95: Roll#toMessage hands no document options on: the card is created here, with the engine's mark
       return { result: faces, op };
     }
     case "rollRequest": sendRoll(combat, e); return {};
