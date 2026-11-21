@@ -1506,7 +1506,7 @@ export function start(phases = {}) {
     run("init", () => { try { registerSettings(); registerHooks(); } catch (err) { once(err); } });
     run("ready", () => { syncOwner(); if (canvas?.ready) rememberAll(); Clock.start(); });
     /* for a look from the console: api.tokenReact.test(token, { stat, from, to }) plays a change on this client alone */
-    Hooks.once("ready", () => setTimeout(() => {
+    run("ready", () => setTimeout(() => {      // the phase may have passed already (the import resolved after ready): run() then attaches at once
       try {
         const mod = game.modules.get(MOD);
         if (mod) mod.api = Object.assign(mod.api ?? {}, { tokenReact: { state: () => ({ on: Owner.isOn(), pending: pending.size, seen: seen.size, playing: playing.size }),

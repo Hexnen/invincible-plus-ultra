@@ -310,7 +310,7 @@ export function start(phases = {}) {
       import("../letters/index.mjs").then(({ letters }) => letters()).then((L) => { engine = L; }).catch(() => { /* no engine: default prefs */ });
       import("./panel.mjs").then((Panel) => Panel.start()).catch((err) => console.warn(LOG, "panel not loaded", err));
     });
-    Hooks.once("ready", () => setTimeout(() => {
+    run("ready", () => setTimeout(() => {      // the phase may have passed already (the import resolved after ready): run() then attaches at once
       try {
         const mod = game.modules.get(MOD);
         if (mod) mod.api = Object.assign(mod.api ?? {}, { tokenAnim: { react, preview, series, stop, stopAll, mode, events, anims: P.ANIM_IDS.slice(), lying: () => [...lying.entries()].map(([id, e]) => ({ id, side: e.side, fallAt: e.fallAt, upAt: e.upAt, amount: Math.round(P.lieAmount(e, now()) * 1000) / 1000 })), state: () => ({ active: active.size, lying: lying.size, layers: [...active.values()].reduce((n, a) => n + a.layers.length, 0), attached: !!renderer, saved: saved.length, depth, stats: { ...stats }, recent: recent.slice() }) } });
