@@ -1133,12 +1133,21 @@ const UNDO_TXT = {
 };
 const undoText = () => UNDO_TXT[game.i18n.lang === "pl" ? "pl" : "en"];
 
+/* The ledger lives in flags of the ATTACK card, which its (player) author may edit, and any player can post a message with forged
+   flags. An entry is honoured only when the Damage Taken card it names was written by a GM client (only the GM's own createChatMessage
+   records it) and that card's speaker is the entry's actor: a forged entry cannot point Undo at another actor's Health or items. */
+function ledgerTrusted(entry) {
+  const dm = entry?.damageMsgId ? game.messages.get(entry.damageMsgId) : null;
+  return !!dm && dm.author?.isGM === true && !!dm.flavor && isLabel(dm.flavor, DMG_FLAVOR_KEY)
+    && typeof entry.actorUuid === "string" && !!entry.actorUuid && dm.speakerActor?.uuid === entry.actorUuid;
+}
+
 /* the attack message + ledger entry that produced this Damage Taken card (null for old cards, macros, another table) */
 function ledgerFor(damageMsgId) {
   if (!damageMsgId) return null;
   for (const m of game.messages) {
     if (!Array.isArray(msgFlag(m, "applied"))) continue;
-    const entry = ledgerOf(m).find((e) => e.damageMsgId === damageMsgId);
+    const entry = ledgerOf(m).find((e) => e.damageMsgId === damageMsgId && ledgerTrusted(e));
     if (entry) return { attack: m, entry };
   }
   return null;
@@ -1250,7 +1259,7 @@ function undoReset(msgId) {
 async function runUndo(attackId, uid, btn) {
   if (!game.user.isGM || !attackId || !uid || UNDO_BUSY.has(uid) || UNDONE.has(uid)) return;
   const entry = ledgerOf(game.messages.get(attackId)).find((e) => e.uid === uid);
-  if (!entry) return;
+  if (!entry || !ledgerTrusted(entry)) return;
   UNDO_BUSY.add(uid);
   const T = undoText();
   const label = btn?.querySelector?.(".isp-undo-t");
