@@ -324,7 +324,8 @@ const onDeleteLogJournal = guard("deleteJournal", (j, options, userId) => {
 /** FXY (T030 / T034): another GM's deleteLog marked the journal `deleting`: hold the actor's log from now on (holdLog) */
 const onFlagLogJournal = guard("updateJournal", (j, changes, options, userId) => {
   const lg = j?.flags?.[MOD]?.log;
-  if (lg?.kind !== "actor" || !changes?.flags?.[MOD]?.log?.deleting || (userId && userId === game.user?.id)) return;
+  // only a new mark (a timestamp) counts: clearing the mark arrives in v14 as a ForcedDeletion operator object, which is truthy too
+  if (lg?.kind !== "actor" || typeof changes?.flags?.[MOD]?.log?.deleting !== "number" || (userId && userId === game.user?.id)) return;
   holdLog(lg.actorId);
 });
 

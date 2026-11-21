@@ -147,7 +147,13 @@ export async function reconcile(actor) {
 export async function flagJournal(actorId, patch) {
   const j = actorJournal(actorId);
   if (!j) return;
-  const upd = {}; for (const [k, v] of Object.entries(patch)) upd[`flags.${MOD}.log.${k}`] = v;
+  /* v14 deprecates the legacy "-=key": null deletion syntax: a "-=key" of the patch becomes the ForcedDeletion operator where it exists (14) */
+  const FD = globalThis.foundry?.data?.operators?.ForcedDeletion;
+  const upd = {};
+  for (const [k, v] of Object.entries(patch)) {
+    if (FD && k.startsWith("-=") && v === null) upd[`flags.${MOD}.log.${k.slice(2)}`] = new FD();
+    else upd[`flags.${MOD}.log.${k}`] = v;
+  }
   stats.journalUpdates++;
   await j.update(upd, O());
 }

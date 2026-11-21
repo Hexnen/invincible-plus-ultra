@@ -712,6 +712,7 @@ function preview(opts = {}) {
 async function resetState(actor) {
   actor ??= canvas?.tokens?.controlled?.[0]?.actor;
   if (!actor) return ui.notifications.warn('Select a token or pass an actor.');
-  await actor.update({ [`flags.${FLAG}.-=state`]: null });
+  const FD = foundry.data?.operators?.ForcedDeletion;   // v14: the legacy "-=key" deletion syntax is deprecated; ForcedDeletion where it exists
+  await actor.update(FD ? { [`flags.${FLAG}.state`]: new FD() } : { [`flags.${FLAG}.-=state`]: null });
   ui.notifications.info(`${LOG} state reset for ${actor.name}`);
 }

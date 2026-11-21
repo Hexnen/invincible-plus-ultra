@@ -1281,8 +1281,11 @@ async function runUndo(attackId, uid, btn) {
         if (left.length) await message.update({ flags: { [MODULE_ID]: { applied: left } } });
         else {
           /* nothing left: clear the ledger, also a legacy one (otherwise the fallback would bring the old entries back) */
-          const clear = { [`flags.${MODULE_ID}.-=applied`]: null };
-          if (message.flags?.[LEGACY_ID]?.applied !== undefined) clear[`flags.${LEGACY_ID}.-=applied`] = null;
+          /* v14 deprecates the legacy "-=key" deletion syntax: the ForcedDeletion operator where it exists (14), the legacy key on 13 */
+          const FD = foundry.data?.operators?.ForcedDeletion;
+          const drop = (scope) => (FD ? [`flags.${scope}.applied`, new FD()] : [`flags.${scope}.-=applied`, null]);
+          const clear = Object.fromEntries([drop(MODULE_ID)]);
+          if (message.flags?.[LEGACY_ID]?.applied !== undefined) { const [k, v] = drop(LEGACY_ID); clear[k] = v; }
           await message.update(clear);
         }
       });
