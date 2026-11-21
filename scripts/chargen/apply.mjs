@@ -214,7 +214,9 @@ export async function plan(actor, state) {
   if (v.errors.length) errors.unshift(msg("Err", "Invalid", { count: v.errors.length }));
   for (const i of v.warnings ?? []) warnings.push({ code: i.code, key: i.key, params: i.params, path: i.path, step: i.step, message: i.key });
   const ti = teamIntent(actor, state);                                  // phase 5f: team base integration
-  const relayOk = !!game.user.isGM || (!!game.modules.get("socketlib")?.active && !!game.modules.get(MODULE_ID)?.socket);   // B11: players reach the GM only through socketlib
+  /* B11: a player's create / join reaches the GM with a sender id the server vouches for: socketlib, or (Foundry 14+, base/relay.mjs) the module
+     channel, whose listener gets the real sender id from the server */
+  const relayOk = !!game.user.isGM || (!!game.modules.get(MODULE_ID)?.socket && (!!game.modules.get("socketlib")?.active || Number(game.release?.generation) >= 14));
   if ((ti.action === "create" || ti.action === "join") && !relayOk) errors.push(msg("Err", "NoRelay", {}, { step: "team" }));
   else if (ti.action === "member") warnings.push(msg("Warn", "BaseMember", { team: ti.card.name }));
   else if (ti.action === "create") {

@@ -36,8 +36,9 @@ function canCreate() {
   const b = bapi();
   try { return !!b && (b.isStaff() || game.settings.get(MOD, "basePlayersCreate") === true); } catch { return false; }
 }
-/** B11: create-team / request-join / ask are carried to the GM by socketlib's SERVER sender only; without it a player cannot create or join a base (a GM always can, the request stays local) */
-function relayOk() { try { return !!game.user.isGM || (!!game.modules.get("socketlib")?.active && !!game.modules.get(MOD)?.socket); } catch { return false; } }
+/** B11: create-team / request-join / ask reach the GM only with a SERVER-given sender id: socketlib, or on Foundry 14+ the module channel (its listener
+    gets the real sender id, base/relay.mjs); otherwise a player cannot create or join a base (a GM always can, the request stays local) */
+function relayOk() { try { return !!game.user.isGM || (!!game.modules.get(MOD)?.socket && (!!game.modules.get("socketlib")?.active || Number(game.release?.generation) >= 14)); } catch { return false; } }
 const effMode = (T, card) => (card ? "member" : T.mode === "join" || T.mode === "create" ? T.mode : "text");
 const maxRank = (a, b) => (RANK_ORDER.indexOf(a) >= RANK_ORDER.indexOf(b) ? a : b);
 const countOf = (map) => Object.keys(map ?? {}).length;
