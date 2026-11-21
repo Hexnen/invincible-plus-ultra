@@ -22,11 +22,12 @@ export function cardHtml(r) {
   return `<div class="ipb-chat ipb-join" data-team="${esc(r.teamId)}">${head}${text}${foot}</div>`;
 }
 
-/** Messages of requests still waiting (optionally of one user). */
+/** Messages of requests still waiting (optionally of one user). Only cards a GM / assistant wrote count (as in decide()): a player's forged "pending"
+    card must neither stand in for another user's real request nor fill that user's MAX_PENDING_PER_USER quota. */
 export function pending({ userId, actorId, teamId } = {}) {
   return game.messages.filter((m) => {
     const r = flagOf(m);
-    return r?.state === "pending" && (!userId || r.userId === userId) && (!actorId || r.actorId === actorId) && (!teamId || r.teamId === teamId);
+    return r?.state === "pending" && S.isStaff(m.author) && (!userId || r.userId === userId) && (!actorId || r.actorId === actorId) && (!teamId || r.teamId === teamId);
   });
 }
 
