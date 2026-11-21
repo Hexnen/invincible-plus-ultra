@@ -144,6 +144,8 @@ export async function reconcile(actor) {
   await j.update({ ownership: own }, O());   // nested object, never dotted keys: the ownership field is a typed mapping
   return true;
 }
+/* v14 deprecates the legacy "-=key": null deletion syntax (a compatibility warning per use): the ForcedDeletion operator where it exists (14), the legacy key on 13 */
+const del = (parent, key) => { const FD = globalThis.foundry?.data?.operators?.ForcedDeletion; return FD ? { [`${parent}.${key}`]: new FD() } : { [`${parent}.-=${key}`]: null }; };
 export async function flagJournal(actorId, patch) {
   const j = actorJournal(actorId);
   if (!j) return;
@@ -168,7 +170,7 @@ export async function writeSnapshot(actorId, ops) {
   const upd = {};
   const base = `flags.${MOD}.log.snaps.${actorId}`;
   for (const [k, v] of Object.entries(ops.set)) upd[`${base}.${k}`] = v;
-  for (const k of ops.del) upd[`${base}.-=${k}`] = null;
+  for (const k of ops.del) Object.assign(upd, del(base, k));
   stats.snapWrites++; stats.journalUpdates++;
   await gm.update(upd, O());
 }
@@ -265,7 +267,7 @@ async function removeEntries(journal, secretFor, byPage, pages) {
     for (const id of ids) delete keep[id];
     const es = Object.values(keep).filter(M.isEntryLike);
     const u = { _id: doc.id, [`flags.${MOD}.log.n`]: Object.keys(keep).length, [`flags.${MOD}.log.first`]: es.length ? Math.min(...es.map((x) => x.t)) : 0, [`flags.${MOD}.log.last`]: es.length ? Math.max(...es.map((x) => x.t2 || x.t)) : 0, [`flags.${MOD}.log.bytes`]: M.byteSize(keep) };
-    for (const id of ids) u[`flags.${MOD}.log.e.-=${id}`] = null;
+    for (const id of ids) Object.assign(u, del(`flags.${MOD}.log.e`, id));
     updates.push(u);
   }
   if (updates.length) { stats.pageUpdates += updates.length; await journal.updateEmbeddedDocuments("JournalEntryPage", updates, O()); }
@@ -328,7 +330,7 @@ export async function deleteLog(actorId) {
   if (gm) {
     const ids = Object.values(pageDocs(gm, actorId)).map((p) => p.id);
     if (ids.length) { stats.journalUpdates++; await gm.deleteEmbeddedDocuments("JournalEntryPage", ids, O()); }
-    if (gm.flags?.[MOD]?.log?.snaps?.[actorId] !== undefined) { stats.journalUpdates++; await gm.update({ [`flags.${MOD}.log.snaps.-=${actorId}`]: null }, O()); }
+    if (gm.flags?.[MOD]?.log?.snaps?.[actorId] !== undefined) { stats.journalUpdates++; await gm.update(del(`flags.${MOD}.log.snaps`, actorId), O()); }
   }
   if (j) await j.delete(O());
   invalidate();

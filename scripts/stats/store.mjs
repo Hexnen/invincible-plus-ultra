@@ -56,6 +56,9 @@ export const actorRec = (id) => Q.actors.get(id) ?? all().actors[id] ?? null;
 /** every fight record, the queued ones included */
 export const fightsAll = () => { const o = { ...all().fights }; for (const k of Q.dropFights) delete o[k]; for (const [k, r] of Q.fights) o[k] = r; return o; };
 
+/* v14 deprecates the legacy "-=key": null deletion syntax (a compatibility warning per use): the ForcedDeletion operator where it exists (14), the legacy key on 13 */
+const del = (parent, key) => { const FD = globalThis.foundry?.data?.operators?.ForcedDeletion; return FD ? { [`${parent}.${key}`]: new FD() } : { [`${parent}.-=${key}`]: null }; };
+
 function arm() { if (!timer) timer = setTimeout(() => { timer = 0; chain = chain.then(flush).catch((e) => console.warn(`${MOD} | stats not saved`, e)); }, 800); }
 export const settle = () => { if (timer) { clearTimeout(timer); timer = 0; chain = chain.then(flush).catch((e) => console.warn(`${MOD} | stats not saved`, e)); } return chain; };
 
@@ -91,7 +94,7 @@ async function flush() {
     if (!j.pages.get(pid) && !creates.some((c) => c._id === pid)) creates.push({ _id: pid, name: pid, type: "text", text: { content: "" }, flags: { [MOD]: { stats: { f: {} } } } });
     up(pid)[`flags.${MOD}.stats.f.${id}`] = body;
   }
-  for (const id of drops) { const pid = where.get(id); if (pid && j.pages.get(pid)) up(pid)[`flags.${MOD}.stats.f.-=${id}`] = null; }
+  for (const id of drops) { const pid = where.get(id); if (pid && j.pages.get(pid)) Object.assign(up(pid), del(`flags.${MOD}.stats.f`, id)); }
   if (creates.length) await j.createEmbeddedDocuments("JournalEntryPage", creates, { keepId: true, ...OPT() });
   /* a fact created in a page created just now goes in with the page's update */
   if (ups.size) await j.updateEmbeddedDocuments("JournalEntryPage", [...ups.values()], OPT());
@@ -99,7 +102,7 @@ async function flush() {
   if (head !== Number(root.head)) data[`flags.${MOD}.stats.head`] = head;
   if (hw > (Number(root.hw) || 0)) data[`flags.${MOD}.stats.hw`] = hw;
   for (const [k, rec] of fights) data[`flags.${MOD}.stats.fights.${k}`] = rec;
-  for (const k of dropF) data[`flags.${MOD}.stats.fights.-=${k}`] = null;
+  for (const k of dropF) Object.assign(data, del(`flags.${MOD}.stats.fights`, k));
   for (const [k, rec] of actors) data[`flags.${MOD}.stats.actors.${k}`] = rec;
   if (Object.keys(data).length) await j.update(data, OPT());
 }
