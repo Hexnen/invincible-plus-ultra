@@ -195,7 +195,7 @@ function groupStarts(combat, all = false) {
       const n = groupMembers(cb), had = cb.flags?.[MOD]?.groupStart;
       if (n != null && (all || !Number.isFinite(had)) && had !== n) up.push({ _id: cb.id, [`flags.${MOD}.groupStart`]: n });
     }
-    if (up.length) combat.updateEmbeddedDocuments("Combatant", up);
+    if (up.length) combat.updateEmbeddedDocuments("Combatant", up).catch((e) => console.warn(LOG, "group start failed", e));      // async: a combat deleted meanwhile must not leave an unhandled rejection
   } catch (e) { console.warn(LOG, "group start failed", e); }
 }
 
