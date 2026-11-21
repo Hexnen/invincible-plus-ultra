@@ -334,7 +334,8 @@ async function relay(combat) {
   if (!sock) { notify("warn", t("ITN.Note.NoRelay")); return; }
   if (!game.users.activeGM) { notify("warn", t("ITN.Note.NoGM")); return; }
   const res = await sock.executeAsGM("endTurn", combat.id, combat.combatant.id, combat.round);
-  if (res && res.ok === false) notify("warn", t("ITN.Note.Failed", { why: res.why }));
+  // the GM side answers a code ("stale" / "disabled" / "not owner"): say it in the player's language, never the raw code
+  if (res && res.ok === false) notify("warn", res.why === "stale" ? t("ITN.Note.NotYours") : res.why === "disabled" ? t("ITN.End.Off.GM") : res.why === "not owner" ? t("ITN.Note.NotOwner") : t("ITN.Note.Failed", { why: String(res.why ?? "?") }));
 }
 
 /* ---------- hooks ---------- */

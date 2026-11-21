@@ -53,7 +53,8 @@ export const EN = {
   "ITN.Note.NoGM": "No GM is connected, so this turn cannot be ended from here. Ask the GM.",
   "ITN.Note.NoRelay": "The turn would start a new round, which only the GM can do. Ask the GM.",
   "ITN.Note.Failed": "The turn could not be ended: {why}",
-  "ITN.Note.NotYours": "It is not this character's turn."
+  "ITN.Note.NotYours": "It is not this character's turn.",
+  "ITN.Note.NotOwner": "You do not own this character, so you cannot end its turn."
 };
 
 export const PL = {
@@ -108,7 +109,8 @@ export const PL = {
   "ITN.Note.NoGM": "Nie ma połączonego MG, więc nie można stąd zakończyć tury. Poproś MG.",
   "ITN.Note.NoRelay": "Ta tura rozpoczęłaby nową rundę, a to może zrobić tylko MG. Poproś MG.",
   "ITN.Note.Failed": "Nie udało się zakończyć tury: {why}",
-  "ITN.Note.NotYours": "To nie jest tura tej postaci."
+  "ITN.Note.NotYours": "To nie jest tura tej postaci.",
+  "ITN.Note.NotOwner": "Nie jesteś właścicielem tej postaci, więc nie możesz zakończyć jej tury."
 };
 
 /* Local resolver. Language: game.i18n.lang, PL on top of EN. A missing key shows the key (never throws). */
