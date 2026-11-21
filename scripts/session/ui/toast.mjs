@@ -9,7 +9,10 @@ const reduced = () => { try { return matchMedia("(prefers-reduced-motion: reduce
 const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
 const ic = (cls) => { const i = mk("i", cls); i.setAttribute("aria-hidden", "true"); return i; };
 
-export function removeNotice() { try { document.getElementById(ID)?.remove(); } catch { /* no DOM */ } }
+/* the shown notice's own teardown (timer + document keydown listener): a notice removed from outside (the review ended while the pointer
+   rested on it, so its timer was paused) must not leave its listener on the document */
+let dropShown = null;
+export function removeNotice() { try { if (dropShown) dropShown(); else document.getElementById(ID)?.remove(); } catch { /* no DOM */ } }
 
 export function showNotice(text, onOpen, ms = 25000) {
   try {
@@ -27,13 +30,14 @@ export function showNotice(text, onOpen, ms = 25000) {
     const arm = () => { clearTimeout(timer); started = Date.now(); timer = setTimeout(gone, left); };
     const hold = () => { if (!started) return; clearTimeout(timer); left = Math.max(4000, left - (Date.now() - started)); started = 0; };
     const onKey = (ev) => { if (ev.key === "Escape" && !ev.defaultPrevented && document.getElementById(ID) === box) gone(); };
-    function gone() { clearTimeout(timer); document.removeEventListener("keydown", onKey, true); box.remove(); }
+    function gone() { clearTimeout(timer); document.removeEventListener("keydown", onKey, true); box.remove(); if (dropShown === gone) dropShown = null; }
     open.addEventListener("click", () => { gone(); onOpen?.(); });
     x.addEventListener("click", gone);
     box.addEventListener("pointerenter", hold); box.addEventListener("pointerleave", arm);
     box.addEventListener("focusin", hold); box.addEventListener("focusout", (ev) => { if (!box.contains(ev.relatedTarget)) arm(); });
     document.body.append(box);
     document.addEventListener("keydown", onKey, true);
+    dropShown = gone;
     arm();
     box.animate?.(reduced() ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, transform: "translateY(10px)" }, { opacity: 1, transform: "none" }],
       { duration: reduced() ? 120 : 200, easing: "cubic-bezier(.16, 1, .3, 1)" });
