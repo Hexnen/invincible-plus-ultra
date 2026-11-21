@@ -3,8 +3,9 @@
    or "ask the GM" for a purchase. The GM side re-validates EVERYTHING against real documents (the sender's actual ownership / role, input clamped);
    nothing in the payload is trusted.
    Transport follows scripts/turn: socketlib when it is active (module.json has "socket": true), otherwise the module's own channel
-   "module.invincible-plus-ultra". B11 (A8) TRUST: module sockets carry no authenticated sender on the plain channel, so a user id read from a channel payload is
-   only a CLAIM. socketlib gives the real sender (`this.socketdata.userId`, set by the server): only those requests (and the GM's own, local ones) are "trusted".
+   "module.invincible-plus-ultra". B11 (A8) TRUST: a user id read from a channel payload is only a CLAIM. socketlib gives the real sender
+   (`this.socketdata.userId`), and on the plain channel the server passes it as the listener's second argument: only those requests (and the GM's own,
+   local ones) are "trusted".
    Every op except `reconcile` (idempotent, computed from real documents, harmless for any claimed user) needs a trusted sender; on the plain channel they
    answer code "untrusted" instead of acting on a claim. B11 (A9): staff are never limited, everybody else has a per-op quota (QUOTA below). */
 import * as P from "./pure.mjs";
@@ -190,12 +191,16 @@ export function start() {
       return;
     }
   } catch (e) { console.warn(`${MOD} | base relay: socketlib not usable, using the module channel`, e); sock = null; }
-  game.socket.on(CHANNEL, async (msg) => {
+  game.socket.on(CHANNEL, async (msg, senderId) => {
     if (!msg || typeof msg !== "object") return;
     if (msg.k === "req") {
       if (!iAmActiveGM()) return;
-      const env = await run(msg.op, msg.args, msg.userId, { proto: msg.proto, mod: msg.mod, trusted: false });          // the id in the payload is a claim
-      game.socket.emit(CHANNEL, { k: "res", id: msg.id, to: msg.userId, env });
+      // the server hands every listener the REAL sender id as the second argument (v14 handleCustomSocket): that one is trusted; without it the
+      // id in the payload is only a claim (untrusted, as before)
+      const real = typeof senderId === "string" && game.users.has(senderId) ? senderId : null;
+      const who = real ?? msg.userId;
+      const env = await run(msg.op, msg.args, who, { proto: msg.proto, mod: msg.mod, trusted: !!real });
+      game.socket.emit(CHANNEL, { k: "res", id: msg.id, to: who, env });
     } else if (msg.k === "res" && msg.to === game.user.id) {
       pending.get(msg.id)?.(msg.env);
     }
