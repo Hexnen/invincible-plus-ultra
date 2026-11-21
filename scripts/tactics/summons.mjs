@@ -48,8 +48,15 @@ export async function perform(combat, e, roster) {
         const { actor, delta } = await Sys.summonGroup({ name, members: e.members, template: t("ITAC.kit.summonActor") }, Sys.actorOf(owner));
         const data = (await actor.getTokenDocument({ ...beside(scene, ot), elevation: ot.elevation, hidden: ot.hidden, disposition: ot.disposition, actorLink: false, name, delta })).toObject();
         const [tok] = await scene.createEmbeddedDocuments("Token", [data], OPT);
-        const [cb] = await combat.createEmbeddedDocuments("Combatant", [{ tokenId: tok.id, sceneId: scene.id, actorId: actor.id, hidden: tok.hidden,
-          flags: { [MOD]: { tactics: { summonOf: e.owner, summon: { kind: "summon", item: e.item ?? null, auto: 1, ...(e.delayed ? { delayed: 1 } : {}) } } } } }], OPT);
+        let cb;
+        try {
+          [cb] = await combat.createEmbeddedDocuments("Combatant", [{ tokenId: tok.id, sceneId: scene.id, actorId: actor.id, hidden: tok.hidden,
+            flags: { [MOD]: { tactics: { summonOf: e.owner, summon: { kind: "summon", item: e.item ?? null, auto: 1, ...(e.delayed ? { delayed: 1 } : {}) } } } } }], OPT);
+          if (!cb) throw new Error("combatant not created");
+        } catch (err) {      // no combatant (the combat went away, the write was refused): the token made a moment ago must not stay on the map with no undo
+          await scene.deleteEmbeddedDocuments("Token", [tok.id], OPT).catch(() => {});
+          throw err;
+        }
         const spot = Zones.available() ? Zones.spotOf(ot) : null;
         if (spot) await Mv.performMove({ t: "zput", who: cb.id, to: spot, group: [] }, (cid) => (cid === cb.id ? tok : combat.combatants.get(cid)?.token)).catch(() => {});      // the map stands it in its owner's zone
         return { op: { t: "summon+", combatId: combat.id, combatantId: cb.id, sceneId: scene.id, tokenId: tok.id }, result: { combatant: cb.id } };
