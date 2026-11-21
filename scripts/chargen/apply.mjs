@@ -511,9 +511,20 @@ async function restore(actor, snap, createdIds = null) {
   await actor.update(upd, member ? {} : { ipbSync: true });   // not a member: our own legitimate writer for the team texts (a no-op option otherwise)
 }
 
+/* The backup flag keeps fields / after.fields keyed by DOTTED paths ("system.civilianName"), but Foundry's ObjectField cleaning expands dotted keys at every
+   depth when the flag is written, so the stored copy is nested ({ system: { civilianName } }). Read back that way, undoStatus compared whole "system"
+   objects (always "changed": every undo after a reload or from another client asked to confirm drift) and restore() could not drop a member's
+   "system.team" / "system.teamBase". The values are scalars, so flattening restores the exact paths (an already flat memory snapshot is unchanged). */
+const flatPaths = (o) => (o && typeof o === "object" && !Array.isArray(o) ? foundry.utils.flattenObject(o) : o);
+function fromFlag(flag) {
+  if (!flag || typeof flag !== "object") return flag;
+  const out = { ...flag, fields: flatPaths(flag.fields) };
+  if (flag.after && typeof flag.after === "object") out.after = { ...flag.after, fields: flatPaths(flag.after.fields) };
+  return out;
+}
 const snapOf = (actor) => {
   if (!actor) return null;
-  const mem = memory.get(actor.uuid) ?? null, flag = getp(actor._source, `flags.${MODULE_ID}.chargenBackup`) ?? null;
+  const mem = memory.get(actor.uuid) ?? null, flag = fromFlag(getp(actor._source, `flags.${MODULE_ID}.chargenBackup`) ?? null);
   if (mem && flag && (Number(flag.at) || 0) > (Number(mem.at) || 0)) return flag;   // another client applied later: the shared flag is newer than this client's memory
   return mem ?? flag;
 };
