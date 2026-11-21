@@ -278,6 +278,9 @@ function tableHash(table) {
 
 /* ------------------------------------------------------------------ pack side */
 const metaOf = (doc) => doc?.flags?.[MODULE_ID]?.chargen ?? null;
+/* edited by the user = its content no longer matches the stored hash. A table whose in-place update was cut short (meta written, results not yet
+   replaced: a lost connection, a refused write) carries pending: true and is NOT "edited": the next build finishes it instead of skipping it forever */
+const isEdited = (doc) => { const m = metaOf(doc); return m?.pending !== true && tableHash(doc) !== m?.hash; };
 function requireGM() { if (!game.user?.isGM) { const e = new Error(t("IPCT.Err.NotGM")); e.code = "notgm"; throw e; } }
 function getPack() {
   const pack = game.packs.get(TABLE_PACK);
@@ -345,12 +348,13 @@ export async function build({ force = false } = {}) {
         continue;
       }
       const m = metaOf(cur);
-      const edited = tableHash(cur) !== m.hash;
+      const edited = isEdited(cur);
       if (edited && !force) { rep.skipped.push(s.key); continue; }
-      if (!edited && m.hash === s.hash && m.v === DATA_VERSION) { rep.unchanged.push(s.key); continue; }
-      await cur.update({ name: s.name, formula: s.formula, replacement: true, displayRoll: true, [`flags.${MODULE_ID}.chargen`]: metaFor(s) });
+      if (!edited && m.pending !== true && m.hash === s.hash && m.v === DATA_VERSION) { rep.unchanged.push(s.key); continue; }
+      await cur.update({ name: s.name, formula: s.formula, replacement: true, displayRoll: true, [`flags.${MODULE_ID}.chargen`]: { ...metaFor(s), pending: true } });
       await cur.deleteEmbeddedDocuments("TableResult", cur.results.map((r) => r.id));
       await cur.createEmbeddedDocuments("TableResult", s.results.map(resultData));
+      await cur.update({ [`flags.${MODULE_ID}.chargen.pending`]: false });
       rep.updated.push(s.key);
     }
     for (let i = 0; i < toCreate.length; i += 25) await RollTable.implementation.createDocuments(toCreate.slice(i, i + 25), { pack: pack.collection });
@@ -374,8 +378,8 @@ export async function status() {
       const cur = have.get(s.key);
       if (!cur) { out.missing.push(s.key); continue; }
       const m = metaOf(cur);
-      if (tableHash(cur) !== m.hash) out.edited.push(s.key);
-      else if (m.hash !== s.hash || m.v !== DATA_VERSION) out.outdated.push(s.key);
+      if (isEdited(cur)) out.edited.push(s.key);
+      else if (m.pending === true || m.hash !== s.hash || m.v !== DATA_VERSION) out.outdated.push(s.key);
     }
     const keys = new Set(specs.map((s) => s.key));
     out.orphans = [...have.keys()].filter((k) => !keys.has(k));
@@ -390,7 +394,7 @@ export async function remove({ force = false } = {}) {
   getPack();
   return withUnlocked(async (pack) => {
     const del = [], kept = [];
-    for (const x of await packTables(pack)) (!force && tableHash(x) !== metaOf(x).hash ? kept : del).push(x);
+    for (const x of await packTables(pack)) (!force && isEdited(x) ? kept : del).push(x);
     if (del.length) await RollTable.implementation.deleteDocuments(del.map((x) => x.id), { pack: pack.collection });
     /* folders: deepest first, only when nothing else lives in them */
     const remaining = await pack.getIndex({ fields: ["folder"] });
