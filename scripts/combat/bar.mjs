@@ -609,13 +609,13 @@ function wire() {
     if (!tile || ev.target !== tile) return;
     const id = tile.parentElement.dataset.id;
     if (ev.key === "Enter" || ev.key === " ") {
-      ev.preventDefault();
+      ev.preventDefault(); ev.stopPropagation();      // ours: Foundry's Space (pause) must not fire as well
       if (ev.shiftKey) doSheet(id);
       else if (!doSelect(id)) doPan(id);
     } else if (ev.key === "ArrowLeft" || ev.key === "ArrowRight") {
       const lis = [...list.children].filter((n) => !n.classList.contains("icbar-leaving"));
       const to = lis[lis.indexOf(tile.parentElement) + (ev.key === "ArrowRight" ? 1 : -1)]?.firstElementChild;
-      if (to) { ev.preventDefault(); to.focus(); }
+      if (to) { ev.preventDefault(); ev.stopPropagation(); to.focus(); }      // ours: Foundry's arrows (pan) must not fire as well
     }
   });
   let over = null;

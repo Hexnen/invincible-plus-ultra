@@ -217,8 +217,8 @@ export class ChargenApp extends ApplicationV2 {
       const tag = ev.target?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || ev.target?.isContentEditable) return;
       const k = ev.key.toLowerCase();
-      if (k === "z" && !ev.shiftKey) { ev.preventDefault(); this.#history(-1); }
-      else if (k === "y" || (k === "z" && ev.shiftKey)) { ev.preventDefault(); this.#history(1); }
+      if (k === "z" && !ev.shiftKey) { ev.preventDefault(); ev.stopPropagation(); this.#history(-1); }      // ours: Foundry's Ctrl+Z would also undo the last canvas change
+      else if (k === "y" || (k === "z" && ev.shiftKey)) { ev.preventDefault(); ev.stopPropagation(); this.#history(1); }
     });
   }
 

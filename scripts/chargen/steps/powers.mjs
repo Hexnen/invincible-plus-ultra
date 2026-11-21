@@ -458,8 +458,8 @@ export default {
     });
     root.addEventListener("keydown", (ev) => {
       const el = ev.target;
-      if (ev.key === "Enter" && el instanceof HTMLInputElement && el.name === "src-custom") { ev.preventDefault(); root.querySelector('[data-act="src-custom"]')?.click(); }
-      else if ((ev.key === "Delete" || ev.key === "Backspace") && el instanceof HTMLElement && el.dataset.act === "toggle-power" && el.getAttribute("aria-pressed") === "true") { ev.preventDefault(); el.click(); }
+      if (ev.key === "Enter" && el instanceof HTMLInputElement && el.name === "src-custom") { ev.preventDefault(); ev.stopPropagation(); root.querySelector('[data-act="src-custom"]')?.click(); }
+      else if ((ev.key === "Delete" || ev.key === "Backspace") && el instanceof HTMLElement && el.dataset.act === "toggle-power" && el.getAttribute("aria-pressed") === "true") { ev.preventDefault(); ev.stopPropagation(); el.click(); }      // ours: Foundry's Delete would delete the controlled tokens
     });
 
     root.addEventListener("change", (ev) => {

@@ -340,7 +340,7 @@ export class BaseSheet extends ActorSheetV2 {
     else if (ev.key === "Home") i = 0;
     else if (ev.key === "End") i = ids.length - 1;
     else return;
-    ev.preventDefault();
+    ev.preventDefault(); ev.stopPropagation();      // ours: Foundry's arrows (pan) must not fire as well
     this.go(ids[i]);
     this.#q(`[role="tab"][data-tab="${ids[i]}"]`)?.focus();
   }

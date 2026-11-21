@@ -421,7 +421,7 @@ function endBtn(e, d) {
     endPress(e.req);
   };
   const btn = h(`button.itd-end${e.armed ? ".itd-end-sure" : ""}${e.auto ? ".itd-end-auto" : ""}${e.ready ? ".itd-end-ready" : ""}${endHeld ? ".itd-end-held" : ""}`, { fk: "end", disabled: !!e.disabled || !!d.rest, tip: e.armed ? null : e.tip, /* U148: resting, End turn keeps its place and ends nothing */
-    attrs: { "aria-label": `${e.label}. ${e.tip}`, "aria-keyshortcuts": "Space", "aria-busy": endHeld ? "true" : null, "aria-expanded": e.confirm && !e.auto ? String(!!e.armed) : null, "aria-controls": e.armed ? "itd-endq" : null, style: e.auto ? `--itd-end-ms: ${autoDelay(e)}ms` : null },
+    attrs: { "aria-label": `${e.label}. ${e.tip}`, "aria-keyshortcuts": "Shift+Space", "aria-busy": endHeld ? "true" : null, "aria-expanded": e.confirm && !e.auto ? String(!!e.armed) : null, "aria-controls": e.armed ? "itd-endq" : null, style: e.auto ? `--itd-end-ms: ${autoDelay(e)}ms` : null },
     on: { click: press } }, actIcon("@end"), h("span", { text: endHeld && endLabel ? endLabel : e.label }));
   if (!e.armed || !e.ask || d.rest) return btn;
   const k = (key) => h("kbd.itd-endq-k", { text: key });

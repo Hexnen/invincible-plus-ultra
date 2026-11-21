@@ -250,13 +250,13 @@ function ensureRoot() {
     const card = ev.target.closest?.(".ipt-card");
     if (!card || ev.target !== card) return;
     const id = card.parentElement.dataset.id;
-    if (ev.key === "Enter") { ev.preventDefault(); if (ev.shiftKey) cb.sheet(id); else cb.select(id); }
-    else if (ev.key === " ") { ev.preventDefault(); togglePin(id); }
-    else if (ev.key === "Escape") { if (pinned.delete(id) || hot === id) { hot = null; applyOpen(); } }
+    if (ev.key === "Enter") { ev.preventDefault(); ev.stopPropagation(); if (ev.shiftKey) cb.sheet(id); else cb.select(id); }
+    else if (ev.key === " ") { ev.preventDefault(); ev.stopPropagation(); togglePin(id); }      // ours: Foundry's Space (pause) must not fire as well
+    else if (ev.key === "Escape") { if (pinned.delete(id) || hot === id) { ev.preventDefault(); ev.stopPropagation(); hot = null; applyOpen(); } }      // consumed only when it unpinned
     else if (ev.key === "ArrowUp" || ev.key === "ArrowDown") {
       const lis = [...list.children].filter((n) => !n.classList.contains("ipt-leaving"));
       const to = lis[lis.indexOf(card.parentElement) + (ev.key === "ArrowDown" ? 1 : -1)]?.firstElementChild;
-      if (to) { ev.preventDefault(); to.focus(); }
+      if (to) { ev.preventDefault(); ev.stopPropagation(); to.focus(); }
     }
   });
   document.body.appendChild(root);

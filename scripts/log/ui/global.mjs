@@ -147,7 +147,7 @@ export class TableLogApp extends ApplicationV2 {
     tabs.addEventListener("keydown", (ev) => {
       const order = ["timeline", "maintenance"], i = order.indexOf(this.#tab);
       const next = ev.key === "ArrowRight" ? order[(i + 1) % 2] : ev.key === "ArrowLeft" ? order[(i + 1) % 2] : ev.key === "Home" ? order[0] : ev.key === "End" ? order[1] : null;
-      if (next) { ev.preventDefault(); this.#select(next, true); this.#root.querySelector(`[data-tab="${next}"]`).focus(); }
+      if (next) { ev.preventDefault(); ev.stopPropagation(); this.#select(next, true); this.#root.querySelector(`[data-tab="${next}"]`).focus(); }
     });
     const pane = (key) => h("div.ipl-tpane", { role: "tabpanel", id: `${id}-pane-${key}`, "aria-labelledby": `${id}-tab-${key}`, "data-pane": key, hidden: key !== this.#tab });
     return h("div.ipl-t", { "data-tab": this.#tab }, tabs, pane("timeline"), pane("maintenance"));

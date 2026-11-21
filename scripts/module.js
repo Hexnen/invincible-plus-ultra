@@ -303,7 +303,7 @@ Hooks.on("renderApplicationV2", (app, element) => {
     if (ev.key !== "Enter" && ev.key !== " ") return;
     const t = ev.target;
     if (!t.matches?.("label.rollable, .isp-px-frame, nav.sheet-tabs a[data-action], a.effect-control, img.profile-img[data-action]")) return; // only when the control itself has focus, never while typing
-    ev.preventDefault();
+    ev.preventDefault(); ev.stopPropagation(); // the key is ours: Foundry's own binding (Space = pause) must not fire as well
     (t.matches(".isp-px-frame") ? t.querySelector("img") : t)?.click();
   });
 
@@ -346,7 +346,7 @@ Hooks.on("renderApplicationV2", (app, element) => {
     if (ev.key !== "Enter" && ev.key !== " ") return;
     const t = ev.target;
     if (!t.matches?.('[role="button"][data-action]')) return;
-    ev.preventDefault();
+    ev.preventDefault(); ev.stopPropagation(); // the key is ours: Foundry's own binding must not fire as well
     t.click();
   });
 });
@@ -563,7 +563,7 @@ document.addEventListener("keydown", (ev) => {
   if (ev.key !== "Enter" && ev.key !== " ") return;
   const t = ev.target;
   if (!t?.matches?.(CHAT_CONTROLS)) return; // only when the control itself has focus
-  ev.preventDefault();
+  ev.preventDefault(); ev.stopPropagation(); // stopped in the document's bubble phase: it never reaches Foundry's window listener (Space = pause)
   t.click();
 });
 

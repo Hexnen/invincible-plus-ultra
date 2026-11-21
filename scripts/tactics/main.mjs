@@ -85,8 +85,13 @@ function announce(combat) {
    again when needed; one more try after a pause: a module fetch that fails once (a busy server) must not leave a player on the fallback
    dialogs for the whole session. */
 const surfacesFile = () => import("./ui/main.mjs").catch(() => new Promise((r) => setTimeout(r, 1500)).then(() => import(`./ui/main.mjs?retry=${Date.now()}`)));
-let early = null;
-const preload = () => { early ??= { prompts: import("./ui/prompts.mjs").catch(() => import("./ui/prompts.mjs")), ui: import("./ui/main.mjs").catch(() => surfacesFile()) }; };
+let early = null, surfaces = null;      // surfaces: the surfaces' module once loaded (the keybinding calls its keyAction)
+const preload = () => { early ??= { prompts: import("./ui/prompts.mjs").catch(() => import("./ui/prompts.mjs")), ui: import("./ui/main.mjs").catch(() => surfacesFile()) }; early.ui.then((m) => { surfaces = m; }).catch(() => {}); };
+/* the keybinding "Tactics: end turn" (Shift+Space, rebindable): the first press opens the question "End the turn?", the second confirms.
+   Bare Space stays Foundry's (the GM's pause) except as the Yes of an open question (ui/keys-pure.mjs). Registered in init, only when
+   tactical combat runs on this world; the surfaces' keyAction says false (the key is not consumed) whenever the dock does not act on it. */
+const registerKeys = () => { try { if (!game.keybindings.actions.has(`${MOD}.tacticsEndTurn`)) game.keybindings.register(MOD, "tacticsEndTurn", { name: t("ITAC.Key.endTurn.Name"), hint: t("ITAC.Key.endTurn.Hint"),
+  editable: [{ key: "Space", modifiers: ["Shift"] }], restricted: false, repeat: false, precedence: CONST.KEYBINDING_PRECEDENCE.NORMAL, onDown: () => { try { return !!surfaces?.keyAction?.("EndTurn"); } catch { return false; } } }); } catch (e) { console.warn(`${MOD} | tactics: keybinding not registered`, e); } };
 
 /** ready: everything that listens. Only called when tactical combat runs on this world. */
 async function startRunning() {
@@ -100,7 +105,7 @@ async function startRunning() {
   try { ui.combat?.render?.(); } catch { /* not drawn yet */ }
   Store.subscribe(() => Prompts.sync());
   /* the designed surfaces (ui/main.mjs: the action dock and the GM desk); when they cannot start, the minimal dialogs above stay in charge */
-  try { const UI = await (early?.ui ?? surfacesFile()); if (UI.start()) Prompts.setSurfaces(true); } catch (e) { console.warn(`${MOD} | tactics surfaces failed to start`, e); }
+  try { const UI = await (early?.ui ?? surfacesFile()); if (UI.start()) Prompts.setSurfaces(true); surfaces = UI; } catch (e) { console.warn(`${MOD} | tactics surfaces failed to start`, e); }
   Hooks.on("updateCombat", (combat, changes) => { if (changes?.flags?.[MOD] !== undefined || "round" in (changes ?? {}) || "turn" in (changes ?? {})) announce(combat); });
   Hooks.on("createCombat", (combat) => announce(combat));
   Hooks.on("deleteCombat", (combat) => { last.delete(combat.id); Store.notify({ kind: "deleted", combat, state: null }); Summons.clearCopies(combat.id); });   // D98
@@ -162,7 +167,8 @@ export function start(phases = {}) {
       const why = blocker();
       setRunning(!why); setLive(!why);
       if (!why) Klass.install({ late: !!phases.init });        // the import resolved after init: documents may already exist
-      if (!why && typeof document !== "undefined") preload();      // RLD: the surfaces' files from now on (a page only), started at ready as before
+      if (!why && typeof document !== "undefined") preload();
+      if (!why && typeof document !== "undefined") registerKeys();      // the keybinding "Tactics: end turn" (Shift+Space)      // RLD: the surfaces' files from now on (a page only), started at ready as before
       run("ready", async () => {
         try {
           attach();

@@ -104,12 +104,16 @@ const markAll = async (T, u, cid) => { await T.req(u, { op: "mark", actor: cid, 
   eq([gOff.end.auto, gOff.end.confirm, gOff.out?.reason], [false, true, "spent"], "FXN-1 + FXP-6: without it: the hourglass line, End turn asks");
 }
 
-/* ---- the keys: Space opens the question and answers Yes; Esc answers No first */
+/* ---- the keys: Shift+Space (END_TURN) opens the question and answers Yes; bare Space only answers Yes; Esc answers No first */
 {
   const d = { show: true, rest: false, prompts: [], end: { req: { op: "endTurn" }, armed: false, confirm: true } };
-  eq(K.plan(d, {}, { key: " " }), { click: "end" }, "keys: Space presses End turn (which opens the question)");
+  eq(K.plan(d, {}, { key: K.END_TURN }), { click: "end" }, "keys: Shift+Space presses End turn (which opens the question)");
+  eq(K.plan(d, {}, { key: " " }), null, "keys: bare Space with no question open stays Foundry's (the GM's pause)");
   const a = { ...d, end: { ...d.end, armed: true } };
-  eq(K.plan(a, { endArmed: true }, { key: " " }), { click: "end" }, "keys: Space again is the question's Yes");
+  eq(K.plan(a, { endArmed: true }, { key: K.END_TURN }), { click: "end" }, "keys: Shift+Space again is the question's Yes");
+  eq(K.plan(a, { endArmed: true }, { key: " " }), { click: "end" }, "keys: Space is the question's Yes (ANSA-3)");
+  ok(/\/\^Numpad\/\.test\(ev\.code/.test(src("./ui/main.mjs")) && /ev\.key === " " && ev\.shiftKey\) return;/.test(src("./ui/main.mjs")), "keys: the numpad (any ev.code Numpad*) stays Foundry's; Shift+Space is left to the keybinding");
+  ok(/register\(MOD, "tacticsEndTurn"[\s\S]*?key: "Space", modifiers: \["Shift"\][\s\S]*?keyAction\?\.\("EndTurn"\)/.test(src("./main.mjs")), "keys: the keybinding tacticsEndTurn (Shift+Space) calls keyAction(END_TURN)");
   eq(K.plan(a, { endArmed: true }, { key: "Enter" }), { click: "end" }, "keys: Enter is the Yes too");
   eq(K.plan(a, { endArmed: true, armed: "move" }, { key: "Escape" }), { set: { endArmed: false } }, "keys: Esc answers No before it puts anything else away");
   eq(K.plan(d, { armed: "move" }, { key: "Escape" }), { set: { armed: null, mode: null, amend: null } }, "keys: without the question Esc does what it did");

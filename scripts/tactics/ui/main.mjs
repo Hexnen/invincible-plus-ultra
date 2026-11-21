@@ -405,7 +405,7 @@ function refresh() {
     { const ch = Wait.holdWhole(ansc.chase, chaseD, diceNow); ansc.chase = ch.memo; if (ch.held) { chaseD = ch.value; anscHeld = true; } }
     if (anscHeld) diceThen();
     /* SEAM (U144 x D128): the turn that passes by itself waits for the dice in the air (news-pure endWhileDice) */
-    if (data.show && data.end) { data.end = NewsP.endWhileDice(data.end, { busy, since: hold.since, at: now }, { label: t("ITAC.ui.end"), tip: `${t("ITAC.ui.end.tip")} [${t("ITAC.ui.key.space")}]` }); if (data.end.dice) diceThen(); }
+    if (data.show && data.end) { data.end = NewsP.endWhileDice(data.end, { busy, since: hold.since, at: now }, { label: t("ITAC.ui.end"), tip: `${t("ITAC.ui.end.tip")} [${t("ITAC.ui.key.endTurn")}]` }); if (data.end.dice) diceThen(); }
     if (deskD) Desk.render(deskD, st.desk);
     /* U5: the open desk already says whose turn it is and who the table waits for, right beside the dock: the GM's dock does not say it again (one line less over the map) */
     if (staff && deskD && !deskD.collapsed && data.show) { data.waiting = []; data.turn = ""; data.rolls = []; }      // the open desk carries the same roll buttons on its rows
@@ -552,22 +552,45 @@ function onControl(token, on) {
    sidebar): only with the focus on the page itself, the map, or one of the two surfaces. A focus that the POINTER left on a button
    of a surface does not make Enter or Space press that button again (it would un-arm the action just clicked, or veto twice): the
    keys keep their meaning; only a focus walked there by Tab leaves Tab, Enter and Space to the browser. */
+/* the focus lets the keyboard act on the surfaces: { a, inOurs } or null (a text field, another window, a Foundry dialog or menu) */
+function keyFocus() {
+  const a = document.activeElement, inOurs = !!a && (!!Dock.el()?.contains(a) || !!Desk.el()?.contains(a));
+  if (a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable)) return null;
+  if (a && a !== document.body && a !== document.documentElement && a.tagName !== "CANVAS" && !inOurs) return null;
+  if (document.querySelector("dialog[open], .application.dialog, #context-menu")) return null;      // a dialog or a menu of Foundry is up: its keys
+  return { a, inOurs };
+}
+const cardAge = () => (cardTop.id ? Date.now() - cardTop.at : 0);
+/* carry out a plan of keys-pure (the keyboard is now in use: the marks show from here on) */
+function doPlan(plan) {
+  if (!document.body.classList.contains("ita-keys")) { document.body.classList.add("ita-keys"); remember({ keys: true }); try { globalThis.localStorage?.setItem(KEYS_ON, "1"); } catch { /* private window */ } }
+  if (plan.click) Dock.press(plan.click);
+  else if (plan.target) { setDock({ targets: [plan.target] }); try { Pick.show(combatNow(), plan.target); } catch { /* a courtesy */ } }
+  else if (plan.set) setDock(plan.set);
+}
 function onKey(ev) {
   try {
+    if (/^Numpad/.test(ev.code ?? "")) return;      // the numpad is always Foundry's (with NumLock its ev.key reads as a top-row digit and would swallow core panning)
+    if (ev.key === " " && ev.shiftKey) return;      // Shift+Space is the keybinding tacticsEndTurn (keyAction below)
     if (!lastDock || ev.defaultPrevented || ev.repeat || ev.ctrlKey || ev.altKey || ev.metaKey || !Keys.KEYS.includes(ev.key)) return;
-    const a = document.activeElement, inOurs = !!a && (!!Dock.el()?.contains(a) || !!Desk.el()?.contains(a));
-    if (a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable)) return;
-    if (a && a !== document.body && a !== document.documentElement && a.tagName !== "CANVAS" && !inOurs) return;
-    if (document.querySelector("dialog[open], .application.dialog, #context-menu")) return;      // a dialog or a menu of Foundry is up: its keys
-    const plan = Keys.plan(lastDock, st.dock, { key: ev.key, shift: ev.shiftKey, walking: inOurs && !byPointer, age: cardTop.id ? Date.now() - cardTop.at : 0 });
+    const f = keyFocus(); if (!f) return;
+    const { a, inOurs } = f;
+    const plan = Keys.plan(lastDock, st.dock, { key: ev.key, shift: ev.shiftKey, walking: inOurs && !byPointer, age: cardAge() });
     if (!plan) return;
     ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
     if (inOurs && byPointer) { try { a.blur(); } catch { /* nothing focused */ } }
-    if (!document.body.classList.contains("ita-keys")) { document.body.classList.add("ita-keys"); remember({ keys: true }); try { globalThis.localStorage?.setItem(KEYS_ON, "1"); } catch { /* private window */ } }
-    if (plan.click) Dock.press(plan.click);
-    else if (plan.target) { setDock({ targets: [plan.target] }); try { Pick.show(combatNow(), plan.target); } catch { /* a courtesy */ } }
-    else if (plan.set) setDock(plan.set);
+    doPlan(plan);
   } catch (e) { console.warn(LOG, "key failed", e); }
+}
+/** a key from a Foundry keybinding (Keys.END_TURN: Shift+Space): the same guards as onKey; true when it acted (the keybinding consumes the key) */
+export function keyAction(key) {
+  try {
+    if (!lastDock || !keyFocus()) return false;
+    const plan = Keys.plan(lastDock, st.dock, { key, shift: false, walking: false, age: cardAge() });
+    if (!plan) return false;
+    doPlan(plan);
+    return true;
+  } catch (e) { console.warn(LOG, "key failed", e); return false; }
 }
 async function send(which, req, after, how = {}) {
   try {

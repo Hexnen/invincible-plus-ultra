@@ -284,7 +284,7 @@ export class SessionPanel extends ApplicationV2 {
       const i = list.indexOf(from);
       if (i < 0) return;
       const n = dir === "home" ? 0 : dir === "end" ? list.length - 1 : Math.max(0, Math.min(list.length - 1, i + dir));
-      ev.preventDefault(); list[n]?.focus();
+      ev.preventDefault(); ev.stopPropagation(); list[n]?.focus();      // ours: Foundry's arrows (pan) must not fire as well
     };
     const dir = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1, Home: "home", End: "end" }[ev.key];
     if (dir === undefined || ev.altKey || ev.ctrlKey || ev.metaKey) return;

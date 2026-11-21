@@ -418,7 +418,7 @@ export default {
         case "End": next = Math.max(cur, Math.min(r.cap, cur + Math.max(0, left))); break;
         default: return;
       }
-      ev.preventDefault();
+      ev.preventDefault(); ev.stopPropagation();      // ours: Foundry's arrows / PageUp / PageDown (pan, zoom) must not fire as well
       if (ev.key === "PageUp") next = Math.min(next, Math.max(cur, Math.min(r.cap, cur + Math.max(0, left))));
       next = Math.max(ATTR_MIN, next);
       setValue(ctx, root, k, next);

@@ -95,9 +95,12 @@ export const EN_INT = {
   "ITAC.ui.status.carriedBy": "Carried by: {name}",
   "ITAC.ui.urgent": "Red shadow: an answer to what is happening to the character right now.",
   "ITAC.ui.key.space": "Space",
+  "ITAC.ui.key.endTurn": "Shift+Space",
+  "ITAC.Key.endTurn.Name": "Tactics: end turn",
+  "ITAC.Key.endTurn.Hint": "First press asks \"End the turn?\", a second press (or Space / Enter on the question) confirms.",
   "ITAC.ui.key.enter": "Enter",
-  "ITAC.ui.keys": "Keys: digits pick an action, Tab the target, Enter confirms, Space ends the turn, Esc backs out.",
-  "ITAC.ui.keys.macros": "While the macro bar shows, the digits are its own. Tab, Enter, Space and Esc still work on this bar."
+  "ITAC.ui.keys": "Keys: digits pick an action, Tab the target, Enter confirms, Shift+Space ends the turn, Esc backs out.",
+  "ITAC.ui.keys.macros": "While the macro bar shows, the digits are its own. Tab, Enter, Shift+Space and Esc still work on this bar."
 };
 export const PL_INT = {
   "ITAC.journal.gm": "MG",
@@ -194,7 +197,10 @@ export const PL_INT = {
   "ITAC.ui.status.carriedBy": "Niesie: {name}",
   "ITAC.ui.urgent": "Czerwony cień: odpowiedź na to, co się teraz dzieje z postacią.",
   "ITAC.ui.key.space": "Spacja",
+  "ITAC.ui.key.endTurn": "Shift+Spacja",
+  "ITAC.Key.endTurn.Name": "Taktyka: koniec tury",
+  "ITAC.Key.endTurn.Hint": "Pierwsze naciśnięcie pyta „Koniec tury?”, drugie (albo Spacja / Enter na pytaniu) potwierdza.",
   "ITAC.ui.key.enter": "Enter",
-  "ITAC.ui.keys": "Klawisze: cyfry wybierają akcję, Tab cel, Enter zatwierdza, Spacja kończy turę, Esc cofa.",
-  "ITAC.ui.keys.macros": "Dopóki widać pasek makr, cyfry należą do niego. Tab, Enter, Spacja i Esc dalej działają na tym pasku."
+  "ITAC.ui.keys": "Klawisze: cyfry wybierają akcję, Tab cel, Enter zatwierdza, Shift+Spacja kończy turę, Esc cofa.",
+  "ITAC.ui.keys.macros": "Dopóki widać pasek makr, cyfry należą do niego. Tab, Enter, Shift+Spacja i Esc dalej działają na tym pasku."
 };

@@ -1132,8 +1132,8 @@ export function dockData(model, own, facts, t) {
   const tick = !!facts.autoSkip, autoEnd = auto && tick, confirm = !autoEnd;
   /* the question over the button (dock.mjs endAsk): what is still unused, or that nothing is left */
   const ask = { title: t("ITAC.ui.endq.title"), line: unused.length ? t("ITAC.ui.endq.left", { list: unused.join(", ") }) : t("ITAC.ui.endq.none"), yes: t("ITAC.ui.endq.yes"), no: t("ITAC.ui.endq.no"), yesKey: t("ITAC.ui.key.space"), noKey: "Esc" };
-  const end = bar.endTurn ? { label: autoEnd ? t("ITAC.ui.end.auto") : t("ITAC.ui.end"), key: t("ITAC.ui.key.space"),
-    tip: bar.endTurn.disabled ? whyLine(whyOf(t, bar.endTurn.disabled, {}, { ask: false })) : `${autoEnd ? t(spent ? "ITAC.ui.out.spent" : "ITAC.ui.end.autoTip") : auto ? t("ITAC.ui.end.readyTip") : unused.length ? t("ITAC.ui.end.left", { list: unused.join(", ") }) : t("ITAC.ui.end.tip")} [${t("ITAC.ui.key.space")}]`,
+  const end = bar.endTurn ? { label: autoEnd ? t("ITAC.ui.end.auto") : t("ITAC.ui.end"), key: t("ITAC.ui.key.endTurn"),
+    tip: bar.endTurn.disabled ? whyLine(whyOf(t, bar.endTurn.disabled, {}, { ask: false })) : `${autoEnd ? t(spent ? "ITAC.ui.out.spent" : "ITAC.ui.end.autoTip") : auto ? t("ITAC.ui.end.readyTip") : unused.length ? t("ITAC.ui.end.left", { list: unused.join(", ") }) : t("ITAC.ui.end.tip")} [${t("ITAC.ui.key.endTurn")}]`,
     disabled: bar.endTurn.disabled ? whyText(t, bar.endTurn.disabled) : null, req: bar.endTurn.req, confirm, armed: !!own.endArmed && confirm && !bar.endTurn.disabled, auto: autoEnd, ready: auto && !autoEnd, ask, ...(spent ? { spent: true } : {}) }
     : { label: t("ITAC.ui.end"), tip: whyLine(whyOf(t, "notYourTurn", {}, { ask: false })), disabled: whyText(t, "notYourTurn"), req: null, confirm: false, armed: false, auto: false };
   const canRest = !bar.onTurn || !!own.quiet;        // own.quiet: the GM's dock while a connected player's hero has the turn

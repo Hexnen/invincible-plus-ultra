@@ -11,8 +11,9 @@
                  turn, Accept (or Roll) of a roll this user owes. On a card of several answers with NOTHING ticked the first Enter only
                  chooses its Confirm and the second sends it: an Enter meant for "Accept" a moment before the stunt card came up must
                  not throw the stunts away (the same guard as the digits).
-     Space       End turn (the first press opens the question "End the turn?", the second is its Yes; ANSA UXC-1: always asked). Not while a card stands: the card is the top layer,
-                 and a key never reaches past it to the bar.
+     Shift+Space (keybinding tacticsEndTurn, main.mjs keyAction(END_TURN)): End turn (the first press opens the question "End the turn?", the second
+                 is its Yes; ANSA UXC-1: always asked); bare Space only = Yes of the open question (otherwise it stays Foundry's: the GM pauses with it).
+                 Not while a card stands: the card is the top layer, and a key never reaches past it to the bar.
      Escape      puts away the chosen answer, else the end question (its No), else the armed action or the open list, else the open legend (U109)
    main.mjs calls plan() from one keydown listener and never while the user types (a text field, the chat box, another window).
      number(d, own)  -> d with `key` on what a digit reaches (the surfaces show it as a small mark and say it in the tooltip)
@@ -21,6 +22,7 @@
        ev = { key, shift, walking, age }  age: ms the top card has stood on this screen (main.mjs; unknown = new);  walking: the focus is being walked through the surface's buttons by Tab (Tab, Enter and Space stay the browser's) */
 export const DIGITS = Object.freeze(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]);
 export const KEYS = Object.freeze([...DIGITS, "Tab", "Enter", " ", "Escape"]);
+export const END_TURN = "EndTurn";     // pseudo key (not a raw ev.key, so NOT in KEYS): the Shift+Space keybinding, the old Space behaviour (opens and confirms the end question)
 export const CARD_SETTLE_MS = 700;      // U143: a card younger than this takes a digit as a choice only (the guard against a key meant for the bar)
 const numbered = (list, fk) => list.slice(0, DIGITS.length).map((x, i) => ({ key: DIGITS[i], id: x.id, fk: fk(x) }));
 const actFk = (a) => (a.more ? `more:${a.mode ?? "menu"}` : `act:${a.id}`);
@@ -52,7 +54,7 @@ export function number(d, own = {}) {
 const around = (list, cur, back) => { if (!list.length) return null; const i = list.indexOf(cur); return list[i < 0 ? (back ? list.length - 1 : 0) : (i + (back ? list.length - 1 : 1)) % list.length]; };
 export function plan(d, own = {}, ev = {}) {
   const key = ev.key;
-  if (!d || !KEYS.includes(key)) return null;
+  if (!d || (!KEYS.includes(key) && key !== END_TURN)) return null;
   const L = layer(d), card = L.id === "card" ? d.prompts[0] : null, p = d.show ? d.panel : null;
   const sfk = card && L.multi ? `submit:${card.id}` : null;                                  // the Confirm of a card of several answers
   const chosen = card && L.id === "card" && (L.keys.some((k) => k.fk === own.kopt) || (sfk && own.kopt === sfk)) ? own.kopt : null;
@@ -83,7 +85,11 @@ export function plan(d, own = {}, ev = {}) {
     for (const r of d.show ? [...(p?.kind === "mine" ? p.rolls ?? [] : []), ...(d.rolls ?? [])] : []) {      /* U52: the roll of the own action stands in its panel, any other in the line over the bar */ const b = (r.buttons ?? []).find((x) => x.id === "accept" || x.id === "acceptFor") ?? (r.buttons ?? []).find((x) => x.id === "roll"); if (b) return { click: `rb:${r.id}:${b.id}` }; }
     return null;
   }
-  /* Space */
+  if (key === END_TURN) {      /* Shift+Space: the first press opens the question "End the turn?", the second is its Yes */
+    if (card) return null;
+    return d.show && !d.rest && d.end?.req && !d.end.disabled ? { click: "end" } : null;
+  }
+  /* Space: only the Yes of the open end question (ANSA-3); otherwise it stays Foundry's (pause) */
   if (card) return null;
-  return d.show && !d.rest && d.end?.req && !d.end.disabled ? { click: "end" } : null;
+  return d.show && !d.rest && own.endArmed && d.end?.armed && d.end?.req && !d.end.disabled ? { click: "end" } : null;
 }
